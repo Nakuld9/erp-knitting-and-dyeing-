@@ -15,11 +15,14 @@ def _make_engine(url: str) -> Engine:
     kwargs: dict = {"future": True, "pool_pre_ping": True}
     if url.startswith("sqlite"):
         connect_args["check_same_thread"] = False
-        # Single shared in-memory DB across sessions during tests.
-        from sqlalchemy.pool import StaticPool
-
-        kwargs["poolclass"] = StaticPool
         kwargs.pop("pool_pre_ping", None)
+        from sqlalchemy.pool import NullPool, StaticPool
+
+        is_memory = (":memory:" in url) or url.rstrip("/").endswith("sqlite:")
+        # In-memory (tests): one shared connection so every session sees the same DB.
+        # File-backed (dev/demo): a connection per checkout so concurrent requests
+        # don't collide on a single SQLite connection.
+        kwargs["poolclass"] = StaticPool if is_memory else NullPool
     return create_engine(url, connect_args=connect_args, **kwargs)
 
 

@@ -1718,6 +1718,588 @@ function Devices() {
   }, "Print label"))))))));
 }
 
+// ---- masters manager (generic) --------------------------------------------
+const MASTER_ENTITIES = {
+  "tax-codes": {
+    label: "Tax codes",
+    fields: [{
+      n: "code",
+      l: "Code"
+    }, {
+      n: "name",
+      l: "Name"
+    }, {
+      n: "cgst_rate",
+      l: "CGST %",
+      t: "num"
+    }, {
+      n: "sgst_rate",
+      l: "SGST %",
+      t: "num"
+    }, {
+      n: "igst_rate",
+      l: "IGST %",
+      t: "num"
+    }, {
+      n: "hsn_sac",
+      l: "HSN/SAC"
+    }]
+  },
+  "chemicals": {
+    label: "Chemicals & dyes",
+    fields: [{
+      n: "code",
+      l: "Code"
+    }, {
+      n: "name",
+      l: "Name"
+    }, {
+      n: "is_dye",
+      l: "Is dye?",
+      t: "bool"
+    }, {
+      n: "dye_class",
+      l: "Dye class"
+    }, {
+      n: "standard_cost",
+      l: "Std cost",
+      t: "num"
+    }, {
+      n: "reorder_level",
+      l: "Reorder",
+      t: "num"
+    }]
+  },
+  "machines": {
+    label: "Machines",
+    fields: [{
+      n: "machine_type",
+      l: "Type",
+      t: "select",
+      opts: ["KNITTING", "DYEING", "FINISHING"]
+    }, {
+      n: "code",
+      l: "Code"
+    }, {
+      n: "name",
+      l: "Name"
+    }, {
+      n: "capacity_kg",
+      l: "Capacity kg",
+      t: "num"
+    }]
+  },
+  "shades": {
+    label: "Shades",
+    fields: [{
+      n: "code",
+      l: "Code"
+    }, {
+      n: "name",
+      l: "Name"
+    }]
+  },
+  "fabric-types": {
+    label: "Fabric types",
+    fields: [{
+      n: "code",
+      l: "Code"
+    }, {
+      n: "name",
+      l: "Name"
+    }, {
+      n: "construction",
+      l: "Construction"
+    }, {
+      n: "composition",
+      l: "Composition"
+    }, {
+      n: "gsm",
+      l: "GSM",
+      t: "num"
+    }, {
+      n: "width_cm",
+      l: "Width cm",
+      t: "num"
+    }]
+  },
+  "yarns": {
+    label: "Yarns",
+    fields: [{
+      n: "code",
+      l: "Code"
+    }, {
+      n: "name",
+      l: "Name"
+    }, {
+      n: "yarn_type",
+      l: "Type"
+    }, {
+      n: "count",
+      l: "Count"
+    }]
+  }
+};
+function MastersManager() {
+  const [ent, setEnt] = useState("tax-codes");
+  const cfg = MASTER_ENTITIES[ent];
+  const [rows, setRows] = useState([]);
+  const [f, setF] = useState({});
+  const [err, setErr] = useState("");
+  const [ok, setOk] = useState("");
+  const load = useCallback(() => api(`/api/masters/${ent}`).then(setRows).catch(e => setErr(e.message)), [ent]);
+  useEffect(() => {
+    setF({});
+    setErr("");
+    setOk("");
+    load();
+  }, [ent, load]);
+  const submit = async e => {
+    e.preventDefault();
+    setErr("");
+    setOk("");
+    const body = {};
+    cfg.fields.forEach(fl => {
+      let v = f[fl.n];
+      if (fl.t === "bool") {
+        body[fl.n] = !!v;
+        return;
+      }
+      if (v !== undefined && v !== "") body[fl.n] = v;
+    });
+    try {
+      const r = await api(`/api/masters/${ent}`, {
+        method: "POST",
+        body
+      });
+      setOk(`Created ${r.code}`);
+      setF({});
+      load();
+    } catch (ex) {
+      setErr(ex.message);
+    }
+  };
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Panel, {
+    title: "Manage master data"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "row mb"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Entity"), /*#__PURE__*/React.createElement("select", {
+    value: ent,
+    onChange: e => setEnt(e.target.value)
+  }, Object.entries(MASTER_ENTITIES).map(([k, v]) => /*#__PURE__*/React.createElement("option", {
+    key: k,
+    value: k
+  }, v.label))))), /*#__PURE__*/React.createElement("form", {
+    className: "row",
+    onSubmit: submit
+  }, cfg.fields.map(fl => /*#__PURE__*/React.createElement("div", {
+    className: "field",
+    key: fl.n
+  }, /*#__PURE__*/React.createElement("label", null, fl.l), fl.t === "select" ? /*#__PURE__*/React.createElement("select", {
+    value: f[fl.n] || "",
+    onChange: e => setF({
+      ...f,
+      [fl.n]: e.target.value
+    })
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "\u2014"), fl.opts.map(o => /*#__PURE__*/React.createElement("option", {
+    key: o
+  }, o))) : fl.t === "bool" ? /*#__PURE__*/React.createElement("select", {
+    value: f[fl.n] ? "yes" : "no",
+    onChange: e => setF({
+      ...f,
+      [fl.n]: e.target.value === "yes"
+    })
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "no"
+  }, "No"), /*#__PURE__*/React.createElement("option", {
+    value: "yes"
+  }, "Yes")) : /*#__PURE__*/React.createElement("input", {
+    style: {
+      width: fl.t === "num" ? 90 : 150
+    },
+    value: f[fl.n] || "",
+    onChange: e => setF({
+      ...f,
+      [fl.n]: e.target.value
+    })
+  }))), /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Add")), err && /*#__PURE__*/React.createElement("div", {
+    className: "err"
+  }, err), ok && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 8,
+      color: "#16a34a",
+      fontSize: 12.5
+    }
+  }, ok)), /*#__PURE__*/React.createElement(Panel, {
+    title: cfg.label
+  }, rows.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "None yet.") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Code"), /*#__PURE__*/React.createElement("th", null, "Name"))), /*#__PURE__*/React.createElement("tbody", null, rows.map((r, i) => /*#__PURE__*/React.createElement("tr", {
+    key: r.id || i
+  }, /*#__PURE__*/React.createElement("td", null, r.code), /*#__PURE__*/React.createElement("td", null, r.name)))))));
+}
+
+// ---- manual vouchers ------------------------------------------------------
+const VTYPES = [["JV", "Journal"], ["PV", "Payment"], ["RV", "Receipt"], ["CV", "Contra"], ["PI", "Purchase"], ["SI", "Sales"], ["DN", "Debit Note"], ["CN", "Credit Note"], ["SJ", "Stock Journal"], ["PJ", "Production Journal"]];
+function Vouchers() {
+  const accounts = useList("/api/accounts");
+  const acctOpts = accounts.filter(a => a.allow_posting).map(a => ({
+    id: a.code,
+    label: `${a.code} · ${a.name}`
+  }));
+  const [h, setH] = useState({
+    voucher_type_code: "JV",
+    voucher_date: new Date().toISOString().slice(0, 10),
+    posting_reference: genNo("JV"),
+    narration: ""
+  });
+  const [lines, setLines] = useState([{
+    account_code: "",
+    debit: "",
+    credit: "",
+    narration: ""
+  }, {
+    account_code: "",
+    debit: "",
+    credit: "",
+    narration: ""
+  }]);
+  const [res, setRes] = useState(null);
+  const [err, setErr] = useState("");
+  const [recent, setRecent] = useState([]);
+  const loadRecent = useCallback(() => api("/api/vouchers").then(setRecent).catch(() => {}), []);
+  useEffect(() => {
+    loadRecent();
+  }, [loadRecent]);
+  const setLine = (i, k, v) => setLines(ls => ls.map((l, j) => j === i ? {
+    ...l,
+    [k]: v
+  } : l));
+  const num = v => Number(v || 0);
+  const totDr = lines.reduce((s, l) => s + num(l.debit), 0),
+    totCr = lines.reduce((s, l) => s + num(l.credit), 0);
+  const balanced = Math.abs(totDr - totCr) < 0.005 && totDr > 0;
+  const submit = async e => {
+    e.preventDefault();
+    setErr("");
+    setRes(null);
+    try {
+      const body = {
+        ...h,
+        lines: lines.filter(l => l.account_code && (num(l.debit) || num(l.credit))).map(l => ({
+          account_code: l.account_code,
+          debit: l.debit || "0",
+          credit: l.credit || "0",
+          narration: l.narration || null
+        }))
+      };
+      const r = await api("/api/vouchers", {
+        method: "POST",
+        body
+      });
+      setRes({
+        voucher: r.number,
+        status: r.status,
+        total: r.total_debit
+      });
+      setH({
+        ...h,
+        posting_reference: genNo("JV")
+      });
+      setLines([{
+        account_code: "",
+        debit: "",
+        credit: "",
+        narration: ""
+      }, {
+        account_code: "",
+        debit: "",
+        credit: "",
+        narration: ""
+      }]);
+      loadRecent();
+    } catch (ex) {
+      setErr(ex.message);
+    }
+  };
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Panel, {
+    title: "Post a voucher"
+  }, /*#__PURE__*/React.createElement("form", {
+    onSubmit: submit
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "row mb"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Type"), /*#__PURE__*/React.createElement("select", {
+    value: h.voucher_type_code,
+    onChange: e => setH({
+      ...h,
+      voucher_type_code: e.target.value
+    })
+  }, VTYPES.map(([c, l]) => /*#__PURE__*/React.createElement("option", {
+    key: c,
+    value: c
+  }, c, " \xB7 ", l)))), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Date"), /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    value: h.voucher_date,
+    onChange: e => setH({
+      ...h,
+      voucher_date: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Reference"), /*#__PURE__*/React.createElement("input", {
+    value: h.posting_reference,
+    onChange: e => setH({
+      ...h,
+      posting_reference: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field",
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("label", null, "Narration"), /*#__PURE__*/React.createElement("input", {
+    value: h.narration,
+    onChange: e => setH({
+      ...h,
+      narration: e.target.value
+    }),
+    placeholder: "Description"
+  }))), /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Account"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Debit"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Credit"), /*#__PURE__*/React.createElement("th", null, "Narration"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, lines.map((l, i) => /*#__PURE__*/React.createElement("tr", {
+    key: i
+  }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Opts, {
+    items: acctOpts,
+    value: l.account_code,
+    onChange: e => setLine(i, "account_code", e.target.value)
+  })), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, /*#__PURE__*/React.createElement("input", {
+    style: {
+      width: 100
+    },
+    value: l.debit,
+    onChange: e => setLine(i, "debit", e.target.value)
+  })), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, /*#__PURE__*/React.createElement("input", {
+    style: {
+      width: 100
+    },
+    value: l.credit,
+    onChange: e => setLine(i, "credit", e.target.value)
+  })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("input", {
+    style: {
+      width: 150
+    },
+    value: l.narration,
+    onChange: e => setLine(i, "narration", e.target.value)
+  })), /*#__PURE__*/React.createElement("td", null, lines.length > 2 && /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "btn sec",
+    onClick: () => setLines(ls => ls.filter((_, j) => j !== i))
+  }, "\u2715"))))), /*#__PURE__*/React.createElement("tfoot", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Totals"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, inr2(totDr)), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, inr2(totCr)), /*#__PURE__*/React.createElement("th", {
+    colSpan: "2"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "badge " + (balanced ? "ok" : "bad")
+  }, balanced ? "Balanced" : "Dr ≠ Cr"))))), /*#__PURE__*/React.createElement("div", {
+    className: "row",
+    style: {
+      marginTop: 12
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "btn sec",
+    onClick: () => setLines(ls => [...ls, {
+      account_code: "",
+      debit: "",
+      credit: "",
+      narration: ""
+    }])
+  }, "+ Add line"), /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Post voucher")), err && /*#__PURE__*/React.createElement("div", {
+    className: "err"
+  }, err)), /*#__PURE__*/React.createElement(Result, {
+    r: res
+  })), /*#__PURE__*/React.createElement(Panel, {
+    title: "Recent vouchers"
+  }, recent.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "None yet.") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Number"), /*#__PURE__*/React.createElement("th", null, "Date"), /*#__PURE__*/React.createElement("th", null, "Status"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Debit"), /*#__PURE__*/React.createElement("th", null, "Narration"))), /*#__PURE__*/React.createElement("tbody", null, recent.map(v => /*#__PURE__*/React.createElement("tr", {
+    key: v.id
+  }, /*#__PURE__*/React.createElement("td", null, v.number), /*#__PURE__*/React.createElement("td", null, v.voucher_date), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", {
+    className: "badge " + (v.status === "POSTED" ? "ok" : v.status === "REVERSED" ? "warn" : "")
+  }, v.status)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(v.total_debit)), /*#__PURE__*/React.createElement("td", null, v.narration || "-")))))));
+}
+
+// ---- administration -------------------------------------------------------
+function Admin() {
+  const [periods, setPeriods] = useState([]);
+  const [users, setUsers] = useState([]);
+  const roles = useList("/api/admin/roles");
+  const [err, setErr] = useState("");
+  const [ok, setOk] = useState("");
+  const [nu, setNu] = useState({
+    username: "",
+    email: "",
+    full_name: "",
+    password: "",
+    role_codes: []
+  });
+  const load = useCallback(() => {
+    api("/api/admin/periods").then(setPeriods).catch(e => setErr(e.message));
+    api("/api/admin/users").then(setUsers).catch(() => {});
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+  const setPeriod = async (id, action) => {
+    setErr("");
+    try {
+      await api(`/api/admin/periods/${id}/${action}`, {
+        method: "POST"
+      });
+      load();
+    } catch (e) {
+      setErr(e.message);
+    }
+  };
+  const toggleRole = code => setNu(n => ({
+    ...n,
+    role_codes: n.role_codes.includes(code) ? n.role_codes.filter(c => c !== code) : [...n.role_codes, code]
+  }));
+  const addUser = async e => {
+    e.preventDefault();
+    setErr("");
+    setOk("");
+    try {
+      await api("/api/admin/users", {
+        method: "POST",
+        body: nu
+      });
+      setOk(`User ${nu.username} created`);
+      setNu({
+        username: "",
+        email: "",
+        full_name: "",
+        password: "",
+        role_codes: []
+      });
+      load();
+    } catch (ex) {
+      setErr(ex.message);
+    }
+  };
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Panel, {
+    title: "Accounting periods"
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Code"), /*#__PURE__*/React.createElement("th", null, "Name"), /*#__PURE__*/React.createElement("th", null, "Status"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, periods.map(p => /*#__PURE__*/React.createElement("tr", {
+    key: p.id
+  }, /*#__PURE__*/React.createElement("td", null, p.code), /*#__PURE__*/React.createElement("td", null, p.name), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", {
+    className: "badge " + (p.status === "OPEN" ? "ok" : "bad")
+  }, p.status)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, p.status === "OPEN" ? /*#__PURE__*/React.createElement("button", {
+    className: "btn sec",
+    onClick: () => setPeriod(p.id, "close")
+  }, "Close") : /*#__PURE__*/React.createElement("button", {
+    className: "btn sec",
+    onClick: () => setPeriod(p.id, "reopen")
+  }, "Reopen"))))))), /*#__PURE__*/React.createElement(Panel, {
+    title: "Add user"
+  }, /*#__PURE__*/React.createElement("form", {
+    onSubmit: addUser
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "row mb"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Username"), /*#__PURE__*/React.createElement("input", {
+    required: true,
+    value: nu.username,
+    onChange: e => setNu({
+      ...nu,
+      username: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Email"), /*#__PURE__*/React.createElement("input", {
+    value: nu.email,
+    onChange: e => setNu({
+      ...nu,
+      email: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Full name"), /*#__PURE__*/React.createElement("input", {
+    value: nu.full_name,
+    onChange: e => setNu({
+      ...nu,
+      full_name: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Password"), /*#__PURE__*/React.createElement("input", {
+    type: "password",
+    value: nu.password,
+    onChange: e => setNu({
+      ...nu,
+      password: e.target.value
+    })
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "field mb"
+  }, /*#__PURE__*/React.createElement("label", null, "Roles"), /*#__PURE__*/React.createElement("div", {
+    className: "row"
+  }, roles.map(r => /*#__PURE__*/React.createElement("label", {
+    key: r.code,
+    style: {
+      display: "flex",
+      gap: 5,
+      alignItems: "center",
+      fontSize: 12.5
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: nu.role_codes.includes(r.code),
+    onChange: () => toggleRole(r.code)
+  }), " ", r.code)))), /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Create user")), err && /*#__PURE__*/React.createElement("div", {
+    className: "err"
+  }, err), ok && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 8,
+      color: "#16a34a",
+      fontSize: 12.5
+    }
+  }, ok)), /*#__PURE__*/React.createElement(Panel, {
+    title: "Users"
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Username"), /*#__PURE__*/React.createElement("th", null, "Email"), /*#__PURE__*/React.createElement("th", null, "Roles"), /*#__PURE__*/React.createElement("th", null, "Active"))), /*#__PURE__*/React.createElement("tbody", null, users.map(u => /*#__PURE__*/React.createElement("tr", {
+    key: u.id
+  }, /*#__PURE__*/React.createElement("td", null, u.username), /*#__PURE__*/React.createElement("td", null, u.email), /*#__PURE__*/React.createElement("td", null, u.roles.join(", ") || (u.is_superuser ? "(superuser)" : "-")), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", {
+    className: "badge " + (u.is_active ? "ok" : "bad")
+  }, u.is_active ? "Yes" : "No"))))))));
+}
+
 // ---- shell ----------------------------------------------------------------
 const PAGES = {
   owner: {
@@ -1780,6 +2362,18 @@ const PAGES = {
     t: "Devices & Labels",
     c: Devices
   },
+  masters: {
+    t: "Master Data",
+    c: MastersManager
+  },
+  vouchers: {
+    t: "Vouchers",
+    c: Vouchers
+  },
+  admin: {
+    t: "Administration",
+    c: Admin
+  },
   reports: {
     t: "Reports",
     c: Reports
@@ -1808,9 +2402,9 @@ function App() {
     className: "group"
   }, "Dashboards"), navBtn("owner", "Owner"), navBtn("factory", "Factory"), navBtn("accounts", "Accounts"), navBtn("chemical", "Chemical"), /*#__PURE__*/React.createElement("div", {
     className: "group"
-  }, "Transactions"), navBtn("purchase", "Purchase (GRN)"), navBtn("knitting", "Knitting"), navBtn("sales", "Sales Invoice"), navBtn("dyeing", "Dyeing & Dispensing"), /*#__PURE__*/React.createElement("div", {
+  }, "Transactions"), navBtn("purchase", "Purchase (GRN)"), navBtn("knitting", "Knitting"), navBtn("sales", "Sales Invoice"), navBtn("dyeing", "Dyeing & Dispensing"), navBtn("vouchers", "Vouchers"), /*#__PURE__*/React.createElement("div", {
     className: "group"
-  }, "Masters"), navBtn("customers", "Customers"), navBtn("suppliers", "Suppliers"), navBtn("warehouses", "Warehouses"), /*#__PURE__*/React.createElement("div", {
+  }, "Masters"), navBtn("masters", "Master Data"), navBtn("customers", "Customers"), navBtn("suppliers", "Suppliers"), navBtn("warehouses", "Warehouses"), /*#__PURE__*/React.createElement("div", {
     className: "group"
   }, "Quality"), navBtn("quality", "Quality"), /*#__PURE__*/React.createElement("div", {
     className: "group"
@@ -1819,6 +2413,8 @@ function App() {
   }, "Devices"), navBtn("devices", "Devices & Labels"), /*#__PURE__*/React.createElement("div", {
     className: "group"
   }, "Reports"), navBtn("reports", "Reports"), /*#__PURE__*/React.createElement("div", {
+    className: "group"
+  }, "Admin"), navBtn("admin", "Administration"), /*#__PURE__*/React.createElement("div", {
     className: "group"
   }, "Session"), /*#__PURE__*/React.createElement("button", {
     onClick: () => {

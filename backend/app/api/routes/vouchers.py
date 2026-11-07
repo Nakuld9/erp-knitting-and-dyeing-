@@ -84,3 +84,13 @@ def reverse_voucher(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
     db.refresh(reversal)
     return reversal
+
+
+@router.get("", response_model=None)
+def list_vouchers(db: Session = Depends(get_db), user: User = Depends(require_permission("report.read"))):
+    from sqlalchemy import select
+    rows = db.execute(select(Voucher).where(Voucher.company_id == user.company_id)
+                      .order_by(Voucher.voucher_date.desc(), Voucher.number.desc())).scalars().all()
+    return [{"id": str(v.id), "number": v.number, "voucher_date": v.voucher_date.isoformat(),
+             "status": v.status, "narration": v.narration,
+             "total_debit": str(v.total_debit), "total_credit": str(v.total_credit)} for v in rows[:50]]

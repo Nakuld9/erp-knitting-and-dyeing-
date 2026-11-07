@@ -88,16 +88,19 @@ specified (pending-verification) Color Service dispensing integration.
   charts) served at **`/app/`**: four dashboards; **transaction entry** —
   Purchase (GRN), Knitting production, Sales invoice, and a guided Dyeing flow
   (batch → bath → simulate dispensing → live consumption register) that drives
-  the real posting engine and Color Service simulator; master management
-  (customers, suppliers,
-  warehouses); **Quality & Finishing** and **Costing & Profitability** pages; and
-  authenticated Excel/PDF report downloads. No build step and no runtime CDN —
-  libraries are vendored and the JSX is precompiled.
+  the real posting engine and Color Service simulator; a **Vouchers** page for
+  manual journal/payment/receipt/contra entry (with a live balance check);
+  master management (a generic **Master Data** manager for tax codes, chemicals,
+  machines, shades, fabric types and yarns, plus customers, suppliers,
+  warehouses); an **Administration** page (open/close accounting periods, create
+  users and assign roles); **Quality & Finishing** and **Costing & Profitability**
+  pages; and authenticated Excel/PDF report downloads. No build step and no
+  runtime CDN — libraries are vendored and the JSX is precompiled.
 
 **Platform** — JWT auth + RBAC (15 roles), REST API, Alembic migrations,
 idempotent seed + demo data, Docker Compose.
 
-`90 passing tests` cover the accounting invariants, the nine worked posting
+`95 passing tests` cover the accounting invariants, the nine worked posting
 examples, correction dosing, RBAC, full-cycle trial balance, procurement,
 knitting, recipe scaling, the full dispensing cycle, end-to-end traceability,
 the financial statements (P&L / Balance Sheet / Cash Flow / ageing), GST
@@ -183,7 +186,7 @@ erp/
     │   │                     #   banking, dashboard
     │   └── seed/             # chart of accounts, RBAC, seeder, demo data
     ├── alembic/              # migrations (baseline from metadata)
-    └── tests/                # 90 tests: invariants, posting matrix, TB, procurement,
+    └── tests/                # 95 tests: invariants, posting matrix, TB, procurement,
                               #   knitting, dyeing+dispensing, traceability, statements,
                               #   gst, banking, exports, dashboards, quality, API
 ```
