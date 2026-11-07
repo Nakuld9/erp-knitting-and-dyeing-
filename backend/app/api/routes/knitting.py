@@ -36,6 +36,7 @@ class ProductionIn(BaseModel):
     yarn_consumed_kg: Decimal
     wastage_kg: Decimal = Decimal("0")
     sales_order_id: uuid.UUID | None = None
+    yarn_lot_id: uuid.UUID | None = None
     fabric_type_id: uuid.UUID | None = None
     shift: str | None = None
     rolls: list[RollIn] = Field(min_length=1)
@@ -46,7 +47,7 @@ def post_production(payload: ProductionIn, db: Session = Depends(get_db),
                    user: User = Depends(require_permission("knitting.manage"))):
     kp = KnittingProduction(
         company_id=user.company_id, number=payload.number, machine_id=payload.machine_id,
-        yarn_id=payload.yarn_id, sales_order_id=payload.sales_order_id,
+        yarn_id=payload.yarn_id, sales_order_id=payload.sales_order_id, yarn_lot_id=payload.yarn_lot_id,
         fabric_type_id=payload.fabric_type_id, production_date=payload.production_date,
         shift=payload.shift, produced_kg=payload.produced_kg,
         yarn_consumed_kg=payload.yarn_consumed_kg, wastage_kg=payload.wastage_kg, created_by=user.id,

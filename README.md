@@ -46,7 +46,11 @@ specified (pending-verification) Color Service dispensing integration.
 - **Procurement** — chemical/dye GRN → FIFO stock layer + GST purchase voucher.
 - **FIFO perpetual inventory** — costed receipts/consumption; stock sub-ledger
   reconciles with the GL control accounts.
-- **Knitting** — yarn issue (FIFO) → traceable greige rolls + WIP/greige postings.
+- **Lot tracking** — chemicals/dyes **and yarn** are received as priced lots
+  (own lot master + FIFO stock per lot + accounting); knitting can draw from a
+  specific yarn lot, so greige rolls are traceable to the exact yarn lot.
+- **Knitting** — yarn issue (FIFO, by lot) → traceable greige rolls + WIP/greige
+  postings.
 - **Recipe scaling** — %OWF / grams-per-kg (250 kg × 1.4% = 3.5 kg), approved
   versions only.
 - **Dyeing** — batches/baths with roll traceability and the approved recipe.
@@ -100,7 +104,7 @@ specified (pending-verification) Color Service dispensing integration.
 **Platform** — JWT auth + RBAC (15 roles), REST API, Alembic migrations,
 idempotent seed + demo data, Docker Compose.
 
-`95 passing tests` cover the accounting invariants, the nine worked posting
+`98 passing tests` cover the accounting invariants, the nine worked posting
 examples, correction dosing, RBAC, full-cycle trial balance, procurement,
 knitting, recipe scaling, the full dispensing cycle, end-to-end traceability,
 the financial statements (P&L / Balance Sheet / Cash Flow / ageing), GST
@@ -186,7 +190,7 @@ erp/
     │   │                     #   banking, dashboard
     │   └── seed/             # chart of accounts, RBAC, seeder, demo data
     ├── alembic/              # migrations (baseline from metadata)
-    └── tests/                # 95 tests: invariants, posting matrix, TB, procurement,
+    └── tests/                # 98 tests: invariants, posting matrix, TB, procurement,
                               #   knitting, dyeing+dispensing, traceability, statements,
                               #   gst, banking, exports, dashboards, quality, API
 ```

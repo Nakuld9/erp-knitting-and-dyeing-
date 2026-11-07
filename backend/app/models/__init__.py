@@ -34,6 +34,7 @@ from app.models.masters import (  # noqa: F401
     UnitOfMeasure,
     Warehouse,
     YarnMaster,
+    YarnLot,
 )
 from app.models.accounting import (  # noqa: F401
     AccountingPeriod,

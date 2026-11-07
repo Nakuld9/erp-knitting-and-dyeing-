@@ -299,3 +299,57 @@ def create_yarn(p: YarnIn, db: Session = Depends(get_db), user: User = Depends(r
     y = YarnMaster(company_id=user.company_id, created_by=user.id, **p.model_dump())
     db.add(y); db.commit()
     return {"id": str(y.id), "code": y.code}
+
+
+# --- yarn lots (full lot tracking) -----------------------------------------
+
+from app.models.masters import YarnLot  # noqa: E402
+from app.services.inventory import balance as _inv_balance  # noqa: E402
+from app.models.inventory import ItemType as _ItemType  # noqa: E402
+from app.services import yarn as _yarn_svc  # noqa: E402
+from app.services.accounting import posting_engine as _pe  # noqa: E402
+from decimal import Decimal as _Dec  # noqa: E402
+
+
+@router.get("/yarn-lots")
+def list_yarn_lots(yarn_id: _uuid.UUID | None = None, db: Session = Depends(get_db),
+                   user: User = Depends(require_permission("master.read"))):
+    stmt = select(YarnLot).where(YarnLot.company_id == user.company_id)
+    if yarn_id:
+        stmt = stmt.where(YarnLot.yarn_id == yarn_id)
+    out = []
+    for lot in db.execute(stmt.order_by(YarnLot.internal_lot_no)).scalars():
+        bal = _inv_balance(db, company_id=user.company_id, item_type=_ItemType.YARN,
+                           item_id=lot.yarn_id, lot_id=lot.id)
+        out.append({"id": str(lot.id), "yarn_id": str(lot.yarn_id), "internal_lot_no": lot.internal_lot_no,
+                    "supplier_lot_no": lot.supplier_lot_no, "unit_cost": str(lot.unit_cost),
+                    "on_hand": str(bal["qty_on_hand"]), "value": str(bal["value"]),
+                    "label": f"{lot.internal_lot_no} ({bal['qty_on_hand']} kg)"})
+    return out
+
+
+class YarnLotIn(BaseModel):
+    yarn_id: _uuid.UUID
+    internal_lot_no: str
+    qty: Decimal
+    unit_cost: Decimal
+    supplier_id: _uuid.UUID | None = None
+    supplier_lot_no: str | None = None
+    warehouse_id: _uuid.UUID | None = None
+
+
+@router.post("/yarn-lots", status_code=status.HTTP_201_CREATED)
+def receive_yarn_lot(p: YarnLotIn, db: Session = Depends(get_db),
+                     user: User = Depends(require_permission("master.write"))):
+    try:
+        lot, voucher = _yarn_svc.receive_yarn_lot(
+            db, user.company_id, yarn_id=p.yarn_id, internal_lot_no=p.internal_lot_no,
+            qty=p.qty, unit_cost=p.unit_cost, supplier_id=p.supplier_id,
+            supplier_lot_no=p.supplier_lot_no, warehouse_id=p.warehouse_id, created_by=user.id)
+        db.commit()
+    except _pe.PostingError as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    if lot is None:
+        raise HTTPException(status.HTTP_409_CONFLICT, f"Yarn lot {p.internal_lot_no} already received")
+    return {"id": str(lot.id), "internal_lot_no": lot.internal_lot_no, "voucher_number": voucher.number}

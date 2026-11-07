@@ -36,6 +36,7 @@ from app.models.masters import (
     Customer,
     Warehouse,
     YarnMaster,
+    YarnLot,
 )
 from app.services import inventory
 from sqlalchemy import select
@@ -110,9 +111,13 @@ def seed_manufacturing_demo(db: Session, company_id: uuid.UUID, *, opening_qty: 
                       yarn_type="Cotton", count="30s")
     db.add(yarn)
     db.flush()
+    yarn_lot = YarnLot(company_id=company_id, yarn_id=yarn.id, supplier_id=supplier.id,
+                       internal_lot_no="YLOT-Y-30S", warehouse_id=wh_greige.id, unit_cost=Decimal("240"))
+    db.add(yarn_lot)
+    db.flush()
     inventory.receive(
         db, company_id=company_id, item_type=ItemType.YARN, item_id=yarn.id,
-        qty="2000", unit_cost=Decimal("240"), event_type="OPENING",
+        qty="2000", unit_cost=Decimal("240"), lot_id=yarn_lot.id, event_type="OPENING",
         source_module="seed", source_id="opening",
     )
     opening_values["1060"] += Decimal("2000") * Decimal("240")
@@ -173,6 +178,7 @@ def seed_manufacturing_demo(db: Session, company_id: uuid.UUID, *, opening_qty: 
         "lots": {c: lots[c].id for c in lots},
         "lot_refs": {c: lots[c].internal_lot_no for c in lots},
         "yarn_id": yarn.id,
+        "yarn_lot_id": yarn_lot.id,
         "machines": {"knit": knit.id, "jet": jet.id},
         "shade_id": shade.id,
         "fabric_type_id": fabric.id,

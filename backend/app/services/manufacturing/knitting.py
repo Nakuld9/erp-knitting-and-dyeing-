@@ -30,10 +30,11 @@ def record_production(
     if existing is not None:
         return {"already_posted": True, "issue_voucher": existing}
 
-    # 1) Issue yarn from stock (FIFO) -> actual cost.
+    # 1) Issue yarn from stock (FIFO) -> actual cost. If a specific yarn lot is
+    #    set, draw only from that lot so the rolls are traceable to the lot.
     result = inventory.consume(
         db, company_id=kp.company_id, item_type=ItemType.YARN, item_id=kp.yarn_id,
-        qty=kp.yarn_consumed_kg, event_type="YARN_ISSUE",
+        qty=kp.yarn_consumed_kg, lot_id=kp.yarn_lot_id, event_type="YARN_ISSUE",
         source_module="knitting", source_id=str(kp.id), posting_reference=issue_ref,
     )
     yarn_cost = result["total_cost"]

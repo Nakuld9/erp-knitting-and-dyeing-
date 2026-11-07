@@ -371,59 +371,89 @@ function Purchase(){
 function Knitting(){
   const machines=useList("/api/masters/machines?machine_type=KNITTING"); const yarns=useList("/api/masters/yarns");
   const fabrics=useList("/api/masters/fabric-types"); const warehouses=useList("/api/masters/warehouses");
-  const orders=useList("/api/masters/sales-orders");
-  const [h,setH]=useState({number:genNo("KP"),machine_id:"",yarn_id:"",fabric_type_id:"",sales_order_id:"",
+  const orders=useList("/api/masters/sales-orders"); const suppliers=useList("/api/masters/suppliers");
+  const [lots,setLots]=useState([]);
+  const loadLots=useCallback(()=>api("/api/masters/yarn-lots").then(setLots).catch(()=>{}),[]);
+  useEffect(()=>{loadLots()},[loadLots]);
+  const [h,setH]=useState({number:genNo("KP"),machine_id:"",yarn_id:"",yarn_lot_id:"",fabric_type_id:"",sales_order_id:"",
     production_date:new Date().toISOString().slice(0,10),produced_kg:"",yarn_consumed_kg:"",wastage_kg:"0"});
   const [rolls,setRolls]=useState([{roll_no:"",weight_kg:"",warehouse_id:""}]);
   const [res,setRes]=useState(null); const [err,setErr]=useState("");
+  const [lf,setLf]=useState({yarn_id:"",internal_lot_no:"",qty:"",unit_cost:"",supplier_id:""});
+  const [lres,setLres]=useState(null); const [lerr,setLerr]=useState("");
   const setRoll=(i,k,v)=>setRolls(rs=>rs.map((r,j)=>j===i?{...r,[k]:v}:r));
+  const lotOpts=lots.filter(l=>!h.yarn_id || l.yarn_id===h.yarn_id).map(l=>({id:l.id,label:l.label}));
+  const receiveLot=async e=>{ e.preventDefault(); setLerr(""); setLres(null);
+    try{ const r=await api("/api/masters/yarn-lots",{method:"POST",body:{yarn_id:lf.yarn_id,
+        internal_lot_no:lf.internal_lot_no, qty:lf.qty, unit_cost:lf.unit_cost, supplier_id:lf.supplier_id||null}});
+      setLres(r); setLf({yarn_id:"",internal_lot_no:"",qty:"",unit_cost:"",supplier_id:""}); loadLots(); }
+    catch(ex){ setLerr(ex.message); } };
   const submit=async e=>{ e.preventDefault(); setErr(""); setRes(null);
     try{ const body={...h, sales_order_id:h.sales_order_id||null, fabric_type_id:h.fabric_type_id||null,
+        yarn_lot_id:h.yarn_lot_id||null,
         rolls:rolls.map(r=>({roll_no:r.roll_no, weight_kg:r.weight_kg, warehouse_id:r.warehouse_id||null}))};
       const r=await api("/api/knitting/production",{method:"POST",body}); setRes(r);
-      setH({...h,number:genNo("KP")}); setRolls([{roll_no:"",weight_kg:"",warehouse_id:""}]); }
+      setH({...h,number:genNo("KP"),yarn_lot_id:""}); setRolls([{roll_no:"",weight_kg:"",warehouse_id:""}]); loadLots(); }
     catch(ex){ setErr(ex.message); } };
-  return (<Panel title="Knitting production (issues yarn, creates greige rolls)">
-    <form onSubmit={submit}>
-      <div className="row mb">
-        <div className="field"><label>Doc number</label><input value={h.number}
-          onChange={e=>setH({...h,number:e.target.value})}/></div>
-        <div className="field"><label>Machine</label>
-          <Opts items={machines} value={h.machine_id} onChange={e=>setH({...h,machine_id:e.target.value})}/></div>
+  return (<div>
+    <Panel title="Receive yarn lot">
+      <form className="row" onSubmit={receiveLot}>
         <div className="field"><label>Yarn</label>
-          <Opts items={yarns} value={h.yarn_id} onChange={e=>setH({...h,yarn_id:e.target.value})}/></div>
-        <div className="field"><label>Fabric type</label>
-          <Opts items={fabrics} value={h.fabric_type_id} onChange={e=>setH({...h,fabric_type_id:e.target.value})} placeholder="—"/></div>
-        <div className="field"><label>Sales order</label>
-          <Opts items={orders} value={h.sales_order_id} onChange={e=>setH({...h,sales_order_id:e.target.value})} placeholder="—"/></div>
-      </div>
-      <div className="row mb">
-        <div className="field"><label>Date</label><input type="date" value={h.production_date}
-          onChange={e=>setH({...h,production_date:e.target.value})}/></div>
-        <div className="field"><label>Produced (kg)</label><input value={h.produced_kg}
-          onChange={e=>setH({...h,produced_kg:e.target.value})} placeholder="250"/></div>
-        <div className="field"><label>Yarn consumed (kg)</label><input value={h.yarn_consumed_kg}
-          onChange={e=>setH({...h,yarn_consumed_kg:e.target.value})} placeholder="255"/></div>
-        <div className="field"><label>Wastage (kg)</label><input value={h.wastage_kg}
-          onChange={e=>setH({...h,wastage_kg:e.target.value})} placeholder="5"/></div>
-      </div>
-      <table><thead><tr><th>Roll no.</th><th className="num">Weight (kg)</th><th>Warehouse</th><th></th></tr></thead>
-      <tbody>{rolls.map((r,i)=><tr key={i}>
-        <td><input value={r.roll_no} onChange={e=>setRoll(i,"roll_no",e.target.value)} placeholder="R-0001"/></td>
-        <td className="num"><input style={{width:100}} value={r.weight_kg} onChange={e=>setRoll(i,"weight_kg",e.target.value)}/></td>
-        <td><Opts items={warehouses} value={r.warehouse_id} onChange={e=>setRoll(i,"warehouse_id",e.target.value)} placeholder="—"/></td>
-        <td>{rolls.length>1 && <button type="button" className="btn sec" onClick={()=>setRolls(rs=>rs.filter((_,j)=>j!==i))}>✕</button>}</td>
-      </tr>)}</tbody></table>
-      <div className="row" style={{marginTop:12}}>
-        <button type="button" className="btn sec" onClick={()=>setRolls(rs=>[...rs,{roll_no:"",weight_kg:"",warehouse_id:""}])}>+ Add roll</button>
-        <button className="btn">Record production</button>
-      </div>
-      {err && <div className="err">{err}</div>}
-    </form>
-    <Result r={res}/>
-  </Panel>);
+          <Opts items={yarns} value={lf.yarn_id} onChange={e=>setLf({...lf,yarn_id:e.target.value})}/></div>
+        <div className="field"><label>Lot no.</label><input required value={lf.internal_lot_no}
+          onChange={e=>setLf({...lf,internal_lot_no:e.target.value})} placeholder="YLOT-001"/></div>
+        <div className="field"><label>Supplier</label>
+          <Opts items={suppliers} value={lf.supplier_id} onChange={e=>setLf({...lf,supplier_id:e.target.value})} placeholder="—"/></div>
+        <div className="field"><label>Qty (kg)</label><input style={{width:90}} value={lf.qty}
+          onChange={e=>setLf({...lf,qty:e.target.value})}/></div>
+        <div className="field"><label>Unit cost</label><input style={{width:90}} value={lf.unit_cost}
+          onChange={e=>setLf({...lf,unit_cost:e.target.value})}/></div>
+        <button className="btn">Receive</button>
+      </form>
+      {lerr && <div className="err">{lerr}</div>}
+      <Result r={lres}/>
+      {lots.length>0 && <table style={{marginTop:12}}><thead><tr><th>Lot</th><th className="num">On hand (kg)</th><th className="num">Unit cost</th></tr></thead>
+        <tbody>{lots.map(l=><tr key={l.id}><td>{l.internal_lot_no}</td><td className="num">{inr2(l.on_hand)}</td>
+          <td className="num">{inr2(l.unit_cost)}</td></tr>)}</tbody></table>}
+    </Panel>
+    <Panel title="Knitting production (issues yarn, creates greige rolls)">
+      <form onSubmit={submit}>
+        <div className="row mb">
+          <div className="field"><label>Doc number</label><input value={h.number} onChange={e=>setH({...h,number:e.target.value})}/></div>
+          <div className="field"><label>Machine</label>
+            <Opts items={machines} value={h.machine_id} onChange={e=>setH({...h,machine_id:e.target.value})}/></div>
+          <div className="field"><label>Yarn</label>
+            <Opts items={yarns} value={h.yarn_id} onChange={e=>setH({...h,yarn_id:e.target.value,yarn_lot_id:""})}/></div>
+          <div className="field"><label>Yarn lot</label>
+            <Opts items={lotOpts} value={h.yarn_lot_id} onChange={e=>setH({...h,yarn_lot_id:e.target.value})} placeholder="FIFO (any lot)"/></div>
+          <div className="field"><label>Fabric type</label>
+            <Opts items={fabrics} value={h.fabric_type_id} onChange={e=>setH({...h,fabric_type_id:e.target.value})} placeholder="—"/></div>
+          <div className="field"><label>Sales order</label>
+            <Opts items={orders} value={h.sales_order_id} onChange={e=>setH({...h,sales_order_id:e.target.value})} placeholder="—"/></div>
+        </div>
+        <div className="row mb">
+          <div className="field"><label>Date</label><input type="date" value={h.production_date} onChange={e=>setH({...h,production_date:e.target.value})}/></div>
+          <div className="field"><label>Produced (kg)</label><input value={h.produced_kg} onChange={e=>setH({...h,produced_kg:e.target.value})} placeholder="250"/></div>
+          <div className="field"><label>Yarn consumed (kg)</label><input value={h.yarn_consumed_kg} onChange={e=>setH({...h,yarn_consumed_kg:e.target.value})} placeholder="255"/></div>
+          <div className="field"><label>Wastage (kg)</label><input value={h.wastage_kg} onChange={e=>setH({...h,wastage_kg:e.target.value})} placeholder="5"/></div>
+        </div>
+        <table><thead><tr><th>Roll no.</th><th className="num">Weight (kg)</th><th>Warehouse</th><th></th></tr></thead>
+        <tbody>{rolls.map((r,i)=><tr key={i}>
+          <td><input value={r.roll_no} onChange={e=>setRoll(i,"roll_no",e.target.value)} placeholder="R-0001"/></td>
+          <td className="num"><input style={{width:100}} value={r.weight_kg} onChange={e=>setRoll(i,"weight_kg",e.target.value)}/></td>
+          <td><Opts items={warehouses} value={r.warehouse_id} onChange={e=>setRoll(i,"warehouse_id",e.target.value)} placeholder="—"/></td>
+          <td>{rolls.length>1 && <button type="button" className="btn sec" onClick={()=>setRolls(rs=>rs.filter((_,j)=>j!==i))}>✕</button>}</td>
+        </tr>)}</tbody></table>
+        <div className="row" style={{marginTop:12}}>
+          <button type="button" className="btn sec" onClick={()=>setRolls(rs=>[...rs,{roll_no:"",weight_kg:"",warehouse_id:""}])}>+ Add roll</button>
+          <button className="btn">Record production</button>
+        </div>
+        {err && <div className="err">{err}</div>}
+      </form>
+      <Result r={res}/>
+    </Panel>
+  </div>);
 }
-
 // ---- transactions: sales invoice ------------------------------------------
 function Sales(){
   const customers=useList("/api/masters/customers"); const taxes=useList("/api/masters/tax-codes");

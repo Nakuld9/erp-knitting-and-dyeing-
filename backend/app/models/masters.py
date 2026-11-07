@@ -222,6 +222,19 @@ class ChemicalLot(AuditMixin, Base):
     unit_cost: Mapped[object] = mapped_column(Money, default=0)
 
 
+class YarnLot(AuditMixin, Base):
+    __tablename__ = "yarn_lots"
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"), index=True)
+    yarn_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("yarn_masters.id"), index=True)
+    supplier_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("suppliers.id"), nullable=True)
+    internal_lot_no: Mapped[str] = mapped_column(String(40), index=True)
+    supplier_lot_no: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    warehouse_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("warehouses.id"), nullable=True)
+    received_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    unit_cost: Mapped[object] = mapped_column(Money, default=0)
+
+
 class ShadeCode(AuditMixin, Base):
     __tablename__ = "shade_codes"
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)

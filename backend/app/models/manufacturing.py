@@ -43,6 +43,7 @@ class KnittingProduction(AuditMixin, Base):
     sales_order_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sales_orders.id"), nullable=True)
     yarn_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("yarn_masters.id"), index=True)
     yarn_lot: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    yarn_lot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("yarn_lots.id"), nullable=True, index=True)
     fabric_type_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("fabric_types.id"), nullable=True)
     production_date: Mapped[date] = mapped_column(Date, index=True)
     shift: Mapped[str | None] = mapped_column(String(20), nullable=True)

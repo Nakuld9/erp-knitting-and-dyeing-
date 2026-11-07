@@ -948,10 +948,17 @@ function Knitting() {
   const fabrics = useList("/api/masters/fabric-types");
   const warehouses = useList("/api/masters/warehouses");
   const orders = useList("/api/masters/sales-orders");
+  const suppliers = useList("/api/masters/suppliers");
+  const [lots, setLots] = useState([]);
+  const loadLots = useCallback(() => api("/api/masters/yarn-lots").then(setLots).catch(() => {}), []);
+  useEffect(() => {
+    loadLots();
+  }, [loadLots]);
   const [h, setH] = useState({
     number: genNo("KP"),
     machine_id: "",
     yarn_id: "",
+    yarn_lot_id: "",
     fabric_type_id: "",
     sales_order_id: "",
     production_date: new Date().toISOString().slice(0, 10),
@@ -966,10 +973,51 @@ function Knitting() {
   }]);
   const [res, setRes] = useState(null);
   const [err, setErr] = useState("");
+  const [lf, setLf] = useState({
+    yarn_id: "",
+    internal_lot_no: "",
+    qty: "",
+    unit_cost: "",
+    supplier_id: ""
+  });
+  const [lres, setLres] = useState(null);
+  const [lerr, setLerr] = useState("");
   const setRoll = (i, k, v) => setRolls(rs => rs.map((r, j) => j === i ? {
     ...r,
     [k]: v
   } : r));
+  const lotOpts = lots.filter(l => !h.yarn_id || l.yarn_id === h.yarn_id).map(l => ({
+    id: l.id,
+    label: l.label
+  }));
+  const receiveLot = async e => {
+    e.preventDefault();
+    setLerr("");
+    setLres(null);
+    try {
+      const r = await api("/api/masters/yarn-lots", {
+        method: "POST",
+        body: {
+          yarn_id: lf.yarn_id,
+          internal_lot_no: lf.internal_lot_no,
+          qty: lf.qty,
+          unit_cost: lf.unit_cost,
+          supplier_id: lf.supplier_id || null
+        }
+      });
+      setLres(r);
+      setLf({
+        yarn_id: "",
+        internal_lot_no: "",
+        qty: "",
+        unit_cost: "",
+        supplier_id: ""
+      });
+      loadLots();
+    } catch (ex) {
+      setLerr(ex.message);
+    }
+  };
   const submit = async e => {
     e.preventDefault();
     setErr("");
@@ -979,6 +1027,7 @@ function Knitting() {
         ...h,
         sales_order_id: h.sales_order_id || null,
         fabric_type_id: h.fabric_type_id || null,
+        yarn_lot_id: h.yarn_lot_id || null,
         rolls: rolls.map(r => ({
           roll_no: r.roll_no,
           weight_kg: r.weight_kg,
@@ -992,18 +1041,96 @@ function Knitting() {
       setRes(r);
       setH({
         ...h,
-        number: genNo("KP")
+        number: genNo("KP"),
+        yarn_lot_id: ""
       });
       setRolls([{
         roll_no: "",
         weight_kg: "",
         warehouse_id: ""
       }]);
+      loadLots();
     } catch (ex) {
       setErr(ex.message);
     }
   };
-  return /*#__PURE__*/React.createElement(Panel, {
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Panel, {
+    title: "Receive yarn lot"
+  }, /*#__PURE__*/React.createElement("form", {
+    className: "row",
+    onSubmit: receiveLot
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Yarn"), /*#__PURE__*/React.createElement(Opts, {
+    items: yarns,
+    value: lf.yarn_id,
+    onChange: e => setLf({
+      ...lf,
+      yarn_id: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Lot no."), /*#__PURE__*/React.createElement("input", {
+    required: true,
+    value: lf.internal_lot_no,
+    onChange: e => setLf({
+      ...lf,
+      internal_lot_no: e.target.value
+    }),
+    placeholder: "YLOT-001"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Supplier"), /*#__PURE__*/React.createElement(Opts, {
+    items: suppliers,
+    value: lf.supplier_id,
+    onChange: e => setLf({
+      ...lf,
+      supplier_id: e.target.value
+    }),
+    placeholder: "\u2014"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Qty (kg)"), /*#__PURE__*/React.createElement("input", {
+    style: {
+      width: 90
+    },
+    value: lf.qty,
+    onChange: e => setLf({
+      ...lf,
+      qty: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Unit cost"), /*#__PURE__*/React.createElement("input", {
+    style: {
+      width: 90
+    },
+    value: lf.unit_cost,
+    onChange: e => setLf({
+      ...lf,
+      unit_cost: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Receive")), lerr && /*#__PURE__*/React.createElement("div", {
+    className: "err"
+  }, lerr), /*#__PURE__*/React.createElement(Result, {
+    r: lres
+  }), lots.length > 0 && /*#__PURE__*/React.createElement("table", {
+    style: {
+      marginTop: 12
+    }
+  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Lot"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "On hand (kg)"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Unit cost"))), /*#__PURE__*/React.createElement("tbody", null, lots.map(l => /*#__PURE__*/React.createElement("tr", {
+    key: l.id
+  }, /*#__PURE__*/React.createElement("td", null, l.internal_lot_no), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(l.on_hand)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(l.unit_cost))))))), /*#__PURE__*/React.createElement(Panel, {
     title: "Knitting production (issues yarn, creates greige rolls)"
   }, /*#__PURE__*/React.createElement("form", {
     onSubmit: submit
@@ -1033,8 +1160,19 @@ function Knitting() {
     value: h.yarn_id,
     onChange: e => setH({
       ...h,
-      yarn_id: e.target.value
+      yarn_id: e.target.value,
+      yarn_lot_id: ""
     })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Yarn lot"), /*#__PURE__*/React.createElement(Opts, {
+    items: lotOpts,
+    value: h.yarn_lot_id,
+    onChange: e => setH({
+      ...h,
+      yarn_lot_id: e.target.value
+    }),
+    placeholder: "FIFO (any lot)"
   })), /*#__PURE__*/React.createElement("div", {
     className: "field"
   }, /*#__PURE__*/React.createElement("label", null, "Fabric type"), /*#__PURE__*/React.createElement(Opts, {
@@ -1137,9 +1275,8 @@ function Knitting() {
     className: "err"
   }, err)), /*#__PURE__*/React.createElement(Result, {
     r: res
-  }));
+  })));
 }
-
 // ---- transactions: sales invoice ------------------------------------------
 function Sales() {
   const customers = useList("/api/masters/customers");
