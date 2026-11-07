@@ -439,7 +439,7 @@ function Knitting(){
         </div>
         <table><thead><tr><th>Roll no.</th><th className="num">Weight (kg)</th><th>Warehouse</th><th></th></tr></thead>
         <tbody>{rolls.map((r,i)=><tr key={i}>
-          <td><input value={r.roll_no} onChange={e=>setRoll(i,"roll_no",e.target.value)} placeholder="R-0001"/></td>
+          <td><input value={r.roll_no} onChange={e=>setRoll(i,"roll_no",e.target.value)} placeholder="(auto)"/></td>
           <td className="num"><input style={{width:100}} value={r.weight_kg} onChange={e=>setRoll(i,"weight_kg",e.target.value)}/></td>
           <td><Opts items={warehouses} value={r.warehouse_id} onChange={e=>setRoll(i,"warehouse_id",e.target.value)} placeholder="—"/></td>
           <td>{rolls.length>1 && <button type="button" className="btn sec" onClick={()=>setRolls(rs=>rs.filter((_,j)=>j!==i))}>✕</button>}</td>

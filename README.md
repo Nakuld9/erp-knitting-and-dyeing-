@@ -107,12 +107,12 @@ specified (pending-verification) Color Service dispensing integration.
 **Platform** — JWT auth + RBAC (15 roles), REST API, Alembic migrations,
 idempotent seed + demo data, Docker Compose.
 
-`101 passing tests` cover the accounting invariants, the nine worked posting
+`104 passing tests` cover the accounting invariants, the nine worked posting
 examples, correction dosing, RBAC, full-cycle trial balance, procurement,
-knitting, recipe scaling, the full dispensing cycle, end-to-end traceability,
-the financial statements (P&L / Balance Sheet / Cash Flow / ageing), GST
-(registers / GSTR-1 / GSTR-3B / reconciliation), and the
-REST flow. See the acceptance-test map below.
+knitting, roll auto-numbering + lineage, recipe scaling, the full dispensing
+cycle, end-to-end traceability, the financial statements (P&L / Balance Sheet /
+Cash Flow / ageing), GST (registers / GSTR-1 / GSTR-3B / reconciliation), and
+the REST flow. See the acceptance-test map below.
 
 ## Design documents (start here)
 
@@ -193,7 +193,7 @@ erp/
     │   │                     #   banking, dashboard
     │   └── seed/             # chart of accounts, RBAC, seeder, demo data
     ├── alembic/              # migrations (baseline from metadata)
-    └── tests/                # 101 tests: invariants, posting matrix, TB, procurement,
+    └── tests/                # 104 tests: invariants, posting matrix, TB, procurement,
                               #   knitting, dyeing+dispensing, traceability, statements,
                               #   gst, banking, exports, dashboards, quality, API
 ```

@@ -70,6 +70,10 @@ class FabricRoll(AuditMixin, Base):
         ForeignKey("knitting_production.id"), nullable=True, index=True
     )
     fabric_type_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("fabric_types.id"), nullable=True)
+    # Denormalised lineage stamped at production time (shown on the roll + label).
+    machine_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("machines.id"), nullable=True)
+    yarn_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("yarn_masters.id"), nullable=True)
+    yarn_lot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("yarn_lots.id"), nullable=True)
     sales_order_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sales_orders.id"), nullable=True)
     dye_batch_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dye_batches.id"), nullable=True)
     weight_kg: Mapped[object] = mapped_column(Quantity, default=0)

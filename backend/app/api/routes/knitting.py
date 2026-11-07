@@ -21,7 +21,7 @@ router = APIRouter(prefix="/api/knitting", tags=["knitting"])
 
 
 class RollIn(BaseModel):
-    roll_no: str
+    roll_no: str = ""
     weight_kg: Decimal
     length_m: Decimal | None = None
     warehouse_id: uuid.UUID | None = None

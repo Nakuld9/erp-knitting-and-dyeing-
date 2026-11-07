@@ -10,9 +10,12 @@ from sqlalchemy.orm import Session
 from app.core.types import MONEY_SCALE, QTY_SCALE, quantize
 from app.models.inventory import ItemType
 from app.models.manufacturing import FabricRoll, KnittingProduction, RollKind
+from app.models.masters import Machine
 from app.services import inventory
 from app.services.accounting import posting_engine as pe
+from app.services.accounting.posting_engine import fiscal_year_for
 from app.services.accounting.posting_rules import resolve_account
+from app.services.sequences import next_document_number
 
 
 def record_production(
@@ -66,14 +69,25 @@ def record_production(
         total_kg = Decimal(str(kp.produced_kg)) or Decimal("1")
     per_kg_cost = quantize(yarn_cost / total_kg, MONEY_SCALE)
 
+    machine = db.get(Machine, kp.machine_id)
+    mcode = (machine.code if machine else "KN")
+    fy = fiscal_year_for(kp.production_date)
+
     rolls = []
     for spec in roll_specs:
+        # Auto-number when no roll number is supplied: GR-<machine>-<seq>.
+        roll_no = (spec.get("roll_no") or "").strip()
+        if not roll_no:
+            seq = next_document_number(db, company_id=kp.company_id, doc_type="ROLL",
+                                       fiscal_year=fy, prefix=f"GR-{mcode}-")
+            roll_no = seq
         roll = FabricRoll(
-            company_id=kp.company_id, roll_no=spec["roll_no"], kind=RollKind.GREIGE,
+            company_id=kp.company_id, roll_no=roll_no, kind=RollKind.GREIGE,
             knitting_production_id=kp.id, fabric_type_id=kp.fabric_type_id,
+            machine_id=kp.machine_id, yarn_id=kp.yarn_id, yarn_lot_id=kp.yarn_lot_id,
             sales_order_id=kp.sales_order_id, weight_kg=spec["weight_kg"],
             length_m=spec.get("length_m"), gsm=spec.get("gsm"), width_cm=spec.get("width_cm"),
-            warehouse_id=spec.get("warehouse_id"), barcode=spec.get("barcode"),
+            warehouse_id=spec.get("warehouse_id"), barcode=spec.get("barcode") or roll_no,
         )
         db.add(roll)
         db.flush()

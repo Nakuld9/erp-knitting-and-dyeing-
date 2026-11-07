@@ -1238,7 +1238,7 @@ function Knitting() {
   }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("input", {
     value: r.roll_no,
     onChange: e => setRoll(i, "roll_no", e.target.value),
-    placeholder: "R-0001"
+    placeholder: "(auto)"
   })), /*#__PURE__*/React.createElement("td", {
     className: "num"
   }, /*#__PURE__*/React.createElement("input", {

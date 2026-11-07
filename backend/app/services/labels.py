@@ -40,11 +40,15 @@ def roll_label_pdf(db: Session, company_id: uuid.UUID, roll_id: uuid.UUID) -> by
     company = db.get(Company, company_id)
     fabric = db.get(FabricType, roll.fabric_type_id) if roll.fabric_type_id else None
     batch = db.get(DyeBatch, roll.dye_batch_id) if roll.dye_batch_id else None
+    from app.models.masters import Machine, YarnLot, YarnMaster
+    machine = db.get(Machine, roll.machine_id) if roll.machine_id else None
+    yarn = db.get(YarnMaster, roll.yarn_id) if roll.yarn_id else None
+    ylot = db.get(YarnLot, roll.yarn_lot_id) if roll.yarn_lot_id else None
     code = roll.barcode or roll.roll_no
 
     import io
     buf = io.BytesIO()
-    W, H = 100 * mm, 60 * mm
+    W, H = 100 * mm, 72 * mm
     c = canvas.Canvas(buf, pagesize=(W, H))
 
     # border
@@ -75,6 +79,8 @@ def roll_label_pdf(db: Session, company_id: uuid.UUID, roll_id: uuid.UUID) -> by
     lines = [
         f"Kind: {roll.kind}      Quality: {roll.quality_status}",
         f"Fabric: {fabric.name if fabric else '-'}",
+        f"Machine: {machine.code if machine else '-'}   Yarn: {yarn.name if yarn else '-'}",
+        f"Yarn lot: {ylot.internal_lot_no if ylot else '-'}",
         f"Weight: {_fmt(roll.weight_kg,' kg')}   Length: {_fmt(roll.length_m,' m')}",
         f"GSM: {_fmt(roll.gsm)}   Width: {_fmt(roll.width_cm,' cm')}",
         f"Dye batch: {batch.batch_code if batch else '-'}",
