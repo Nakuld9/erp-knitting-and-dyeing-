@@ -495,10 +495,56 @@ function Sales(){
   </Panel>);
 }
 
+// ---- transactions: batching (assign greige rolls to a dye batch/lot) -------
+function Batching(){
+  const shades=useList("/api/masters/shades"); const orders=useList("/api/masters/sales-orders");
+  const [rolls,setRolls]=useState([]); const [batches,setBatches]=useState([]);
+  const [sel,setSel]=useState({});
+  const [f,setF]=useState({batch_code:genNo("DY"),shade_id:"",sales_order_id:""});
+  const [res,setRes]=useState(null); const [err,setErr]=useState("");
+  const load=useCallback(()=>{ api("/api/rolls?kind=GREIGE&unbatched=true").then(setRolls).catch(()=>{});
+    api("/api/dyeing/batches").then(setBatches).catch(()=>{}); },[]);
+  useEffect(()=>{load()},[load]);
+  const chosen=rolls.filter(r=>sel[r.id]);
+  const totalKg=chosen.reduce((s,r)=>s+Number(r.weight_kg||0),0);
+  const toggle=id=>setSel(s=>({...s,[id]:!s[id]}));
+  const create=async e=>{ e.preventDefault(); setErr(""); setRes(null);
+    if(chosen.length===0){ setErr("Select at least one greige roll"); return; }
+    try{ const r=await api("/api/dyeing/batches",{method:"POST",body:{batch_code:f.batch_code,
+        shade_id:f.shade_id||null, sales_order_id:f.sales_order_id||null, roll_ids:chosen.map(r=>r.id)}});
+      setRes(r); setF({...f,batch_code:genNo("DY")}); setSel({}); load(); }
+    catch(ex){ setErr(ex.message); } };
+  return (<div>
+    <Panel title="Create dye batch from greige rolls">
+      <form onSubmit={create}>
+        <div className="row mb">
+          <div className="field"><label>Batch code</label><input value={f.batch_code} onChange={e=>setF({...f,batch_code:e.target.value})}/></div>
+          <div className="field"><label>Shade</label><Opts items={shades} value={f.shade_id} onChange={e=>setF({...f,shade_id:e.target.value})} placeholder="—"/></div>
+          <div className="field"><label>Sales order</label><Opts items={orders} value={f.sales_order_id} onChange={e=>setF({...f,sales_order_id:e.target.value})} placeholder="—"/></div>
+          <div className="field"><label>Selected</label><div style={{padding:"9px 0",fontWeight:700}}>{chosen.length} rolls · {inr2(totalKg)} kg</div></div>
+        </div>
+        <table><thead><tr><th style={{width:40}}></th><th>Roll no.</th><th className="num">Weight (kg)</th><th>Quality</th></tr></thead>
+        <tbody>{rolls.length===0 ? <tr><td colSpan="4" className="muted">No unbatched greige rolls — record a knitting production first.</td></tr>
+          : rolls.map(r=><tr key={r.id}><td><input type="checkbox" checked={!!sel[r.id]} onChange={()=>toggle(r.id)}/></td>
+            <td>{r.roll_no}</td><td className="num">{inr2(r.weight_kg)}</td><td>{r.quality_status}</td></tr>)}</tbody></table>
+        <div className="row" style={{marginTop:12}}><button className="btn">Create batch ({chosen.length} rolls)</button></div>
+        {err && <div className="err">{err}</div>}
+      </form>
+      <Result r={res}/>
+    </Panel>
+    <Panel title="Recent batches">
+      {batches.length===0?<div className="muted">None yet.</div>:
+      <table><thead><tr><th>Batch</th><th className="num">Fabric (kg)</th><th className="num">Rolls</th><th>Status</th></tr></thead>
+      <tbody>{batches.map(b=><tr key={b.id}><td>{b.batch_code}</td><td className="num">{inr2(b.fabric_kg)}</td>
+        <td className="num">{b.rolls}</td><td><span className="badge ok">{b.status}</span></td></tr>)}</tbody></table>}
+    </Panel>
+  </div>);
+}
+
 // ---- transactions: dyeing (batch -> bath -> dispense -> register) ----------
 function Dyeing(){
   const shades=useList("/api/masters/shades"); const machines=useList("/api/masters/machines?machine_type=DYEING");
-  const versions=useList("/api/masters/recipe-versions");
+  const versions=useList("/api/masters/recipe-versions"); const batches=useList("/api/dyeing/batches");
   const [batch,setBatch]=useState(null); const [bath,setBath]=useState(null);
   const [order,setOrder]=useState(null); const [disp,setDisp]=useState(null); const [reg,setReg]=useState(null);
   const [err,setErr]=useState("");
@@ -512,8 +558,12 @@ function Dyeing(){
   const preview=()=>go(async()=>setOrder(await api(`/api/dyeing/baths/${bath.bath_id}/dose-order`)));
   const dispense=()=>go(async()=>{ setDisp(await api(`/api/dyeing/baths/${bath.bath_id}/simulate-dispense`,{method:"POST"}));
     setReg(await api(`/api/dyeing/baths/${bath.bath_id}/consumption-register`)); });
+  const pickBatch=id=>{ const b=batches.find(x=>x.id===id); if(!b){setBatch(null);return;}
+    setBatch({batch_id:b.id,batch_code:b.batch_code}); setHf({...hf,bath_code:b.batch_code+"-B01",fabric_kg:b.fabric_kg}); };
   return (<div>
-    <Panel title="1 · Create dye batch">
+    <Panel title="1 · Create or pick a dye batch">
+      <div className="row mb"><div className="field"><label>Use an existing (batched) batch</label>
+        <Opts items={batches} value={batch?batch.batch_id:""} onChange={e=>pickBatch(e.target.value)} placeholder="— new batch below —"/></div></div>
       <div className="row">
         <div className="field"><label>Batch code</label><input value={bf.batch_code}
           onChange={e=>setBf({...bf,batch_code:e.target.value})}/></div>
@@ -831,6 +881,7 @@ const PAGES={
   owner:{t:"Owner Dashboard",c:OwnerDash}, factory:{t:"Factory Dashboard",c:FactoryDash},
   accounts:{t:"Accounts Dashboard",c:AccountsDash}, chemical:{t:"Chemical Dashboard",c:ChemicalDash},
   purchase:{t:"Purchase (GRN)",c:Purchase}, knitting:{t:"Knitting Production",c:Knitting},
+  batching:{t:"Batching",c:Batching},
   sales:{t:"Sales Invoice",c:Sales}, dyeing:{t:"Dyeing & Dispensing",c:Dyeing},
   customers:{t:"Customers",c:()=> <PartyPage kind="customers"/>},
   suppliers:{t:"Suppliers",c:()=> <PartyPage kind="suppliers"/>},
@@ -853,7 +904,7 @@ function App(){
         {navBtn("accounts","Accounts")}{navBtn("chemical","Chemical")}
         <div className="group">Transactions</div>
         {navBtn("purchase","Purchase (GRN)")}{navBtn("knitting","Knitting")}
-        {navBtn("sales","Sales Invoice")}{navBtn("dyeing","Dyeing & Dispensing")}{navBtn("vouchers","Vouchers")}
+        {navBtn("batching","Batching")}{navBtn("sales","Sales Invoice")}{navBtn("dyeing","Dyeing & Dispensing")}{navBtn("vouchers","Vouchers")}
         <div className="group">Masters</div>
         {navBtn("masters","Master Data")}{navBtn("customers","Customers")}{navBtn("suppliers","Suppliers")}{navBtn("warehouses","Warehouses")}
         <div className="group">Quality</div>{navBtn("quality","Quality")}

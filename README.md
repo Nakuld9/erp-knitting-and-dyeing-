@@ -53,6 +53,9 @@ specified (pending-verification) Color Service dispensing integration.
   postings.
 - **Recipe scaling** — %OWF / grams-per-kg (250 kg × 1.4% = 3.5 kg), approved
   versions only.
+- **Batching** — assign greige rolls to a dye batch (the dyeing lot); the batch
+  fabric weight is summed from the selected rolls, a roll can't be double-batched,
+  and each roll is stamped with its batch for traceability.
 - **Dyeing** — batches/baths with roll traceability and the approved recipe.
 - **Shop-floor hardware** — **weighing scale** and **knitting-machine**
   integration (vendor-neutral adapter + simulator, idempotent ingest), a machine
@@ -104,7 +107,7 @@ specified (pending-verification) Color Service dispensing integration.
 **Platform** — JWT auth + RBAC (15 roles), REST API, Alembic migrations,
 idempotent seed + demo data, Docker Compose.
 
-`98 passing tests` cover the accounting invariants, the nine worked posting
+`101 passing tests` cover the accounting invariants, the nine worked posting
 examples, correction dosing, RBAC, full-cycle trial balance, procurement,
 knitting, recipe scaling, the full dispensing cycle, end-to-end traceability,
 the financial statements (P&L / Balance Sheet / Cash Flow / ageing), GST
@@ -190,7 +193,7 @@ erp/
     │   │                     #   banking, dashboard
     │   └── seed/             # chart of accounts, RBAC, seeder, demo data
     ├── alembic/              # migrations (baseline from metadata)
-    └── tests/                # 98 tests: invariants, posting matrix, TB, procurement,
+    └── tests/                # 101 tests: invariants, posting matrix, TB, procurement,
                               #   knitting, dyeing+dispensing, traceability, statements,
                               #   gst, banking, exports, dashboards, quality, API
 ```

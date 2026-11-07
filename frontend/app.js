@@ -1424,11 +1424,156 @@ function Sales() {
   }));
 }
 
+// ---- transactions: batching (assign greige rolls to a dye batch/lot) -------
+function Batching() {
+  const shades = useList("/api/masters/shades");
+  const orders = useList("/api/masters/sales-orders");
+  const [rolls, setRolls] = useState([]);
+  const [batches, setBatches] = useState([]);
+  const [sel, setSel] = useState({});
+  const [f, setF] = useState({
+    batch_code: genNo("DY"),
+    shade_id: "",
+    sales_order_id: ""
+  });
+  const [res, setRes] = useState(null);
+  const [err, setErr] = useState("");
+  const load = useCallback(() => {
+    api("/api/rolls?kind=GREIGE&unbatched=true").then(setRolls).catch(() => {});
+    api("/api/dyeing/batches").then(setBatches).catch(() => {});
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+  const chosen = rolls.filter(r => sel[r.id]);
+  const totalKg = chosen.reduce((s, r) => s + Number(r.weight_kg || 0), 0);
+  const toggle = id => setSel(s => ({
+    ...s,
+    [id]: !s[id]
+  }));
+  const create = async e => {
+    e.preventDefault();
+    setErr("");
+    setRes(null);
+    if (chosen.length === 0) {
+      setErr("Select at least one greige roll");
+      return;
+    }
+    try {
+      const r = await api("/api/dyeing/batches", {
+        method: "POST",
+        body: {
+          batch_code: f.batch_code,
+          shade_id: f.shade_id || null,
+          sales_order_id: f.sales_order_id || null,
+          roll_ids: chosen.map(r => r.id)
+        }
+      });
+      setRes(r);
+      setF({
+        ...f,
+        batch_code: genNo("DY")
+      });
+      setSel({});
+      load();
+    } catch (ex) {
+      setErr(ex.message);
+    }
+  };
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Panel, {
+    title: "Create dye batch from greige rolls"
+  }, /*#__PURE__*/React.createElement("form", {
+    onSubmit: create
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "row mb"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Batch code"), /*#__PURE__*/React.createElement("input", {
+    value: f.batch_code,
+    onChange: e => setF({
+      ...f,
+      batch_code: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Shade"), /*#__PURE__*/React.createElement(Opts, {
+    items: shades,
+    value: f.shade_id,
+    onChange: e => setF({
+      ...f,
+      shade_id: e.target.value
+    }),
+    placeholder: "\u2014"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Sales order"), /*#__PURE__*/React.createElement(Opts, {
+    items: orders,
+    value: f.sales_order_id,
+    onChange: e => setF({
+      ...f,
+      sales_order_id: e.target.value
+    }),
+    placeholder: "\u2014"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Selected"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: "9px 0",
+      fontWeight: 700
+    }
+  }, chosen.length, " rolls \xB7 ", inr2(totalKg), " kg"))), /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    style: {
+      width: 40
+    }
+  }), /*#__PURE__*/React.createElement("th", null, "Roll no."), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Weight (kg)"), /*#__PURE__*/React.createElement("th", null, "Quality"))), /*#__PURE__*/React.createElement("tbody", null, rolls.length === 0 ? /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+    colSpan: "4",
+    className: "muted"
+  }, "No unbatched greige rolls \u2014 record a knitting production first.")) : rolls.map(r => /*#__PURE__*/React.createElement("tr", {
+    key: r.id
+  }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: !!sel[r.id],
+    onChange: () => toggle(r.id)
+  })), /*#__PURE__*/React.createElement("td", null, r.roll_no), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(r.weight_kg)), /*#__PURE__*/React.createElement("td", null, r.quality_status))))), /*#__PURE__*/React.createElement("div", {
+    className: "row",
+    style: {
+      marginTop: 12
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Create batch (", chosen.length, " rolls)")), err && /*#__PURE__*/React.createElement("div", {
+    className: "err"
+  }, err)), /*#__PURE__*/React.createElement(Result, {
+    r: res
+  })), /*#__PURE__*/React.createElement(Panel, {
+    title: "Recent batches"
+  }, batches.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "None yet.") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Batch"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Fabric (kg)"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Rolls"), /*#__PURE__*/React.createElement("th", null, "Status"))), /*#__PURE__*/React.createElement("tbody", null, batches.map(b => /*#__PURE__*/React.createElement("tr", {
+    key: b.id
+  }, /*#__PURE__*/React.createElement("td", null, b.batch_code), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(b.fabric_kg)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, b.rolls), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", {
+    className: "badge ok"
+  }, b.status))))))));
+}
+
 // ---- transactions: dyeing (batch -> bath -> dispense -> register) ----------
 function Dyeing() {
   const shades = useList("/api/masters/shades");
   const machines = useList("/api/masters/machines?machine_type=DYEING");
   const versions = useList("/api/masters/recipe-versions");
+  const batches = useList("/api/dyeing/batches");
   const [batch, setBatch] = useState(null);
   const [bath, setBath] = useState(null);
   const [order, setOrder] = useState(null);
@@ -1486,9 +1631,34 @@ function Dyeing() {
     }));
     setReg(await api(`/api/dyeing/baths/${bath.bath_id}/consumption-register`));
   });
+  const pickBatch = id => {
+    const b = batches.find(x => x.id === id);
+    if (!b) {
+      setBatch(null);
+      return;
+    }
+    setBatch({
+      batch_id: b.id,
+      batch_code: b.batch_code
+    });
+    setHf({
+      ...hf,
+      bath_code: b.batch_code + "-B01",
+      fabric_kg: b.fabric_kg
+    });
+  };
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Panel, {
-    title: "1 \xB7 Create dye batch"
+    title: "1 \xB7 Create or pick a dye batch"
   }, /*#__PURE__*/React.createElement("div", {
+    className: "row mb"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Use an existing (batched) batch"), /*#__PURE__*/React.createElement(Opts, {
+    items: batches,
+    value: batch ? batch.batch_id : "",
+    onChange: e => pickBatch(e.target.value),
+    placeholder: "\u2014 new batch below \u2014"
+  }))), /*#__PURE__*/React.createElement("div", {
     className: "row"
   }, /*#__PURE__*/React.createElement("div", {
     className: "field"
@@ -2463,6 +2633,10 @@ const PAGES = {
     t: "Knitting Production",
     c: Knitting
   },
+  batching: {
+    t: "Batching",
+    c: Batching
+  },
   sales: {
     t: "Sales Invoice",
     c: Sales
@@ -2539,7 +2713,7 @@ function App() {
     className: "group"
   }, "Dashboards"), navBtn("owner", "Owner"), navBtn("factory", "Factory"), navBtn("accounts", "Accounts"), navBtn("chemical", "Chemical"), /*#__PURE__*/React.createElement("div", {
     className: "group"
-  }, "Transactions"), navBtn("purchase", "Purchase (GRN)"), navBtn("knitting", "Knitting"), navBtn("sales", "Sales Invoice"), navBtn("dyeing", "Dyeing & Dispensing"), navBtn("vouchers", "Vouchers"), /*#__PURE__*/React.createElement("div", {
+  }, "Transactions"), navBtn("purchase", "Purchase (GRN)"), navBtn("knitting", "Knitting"), navBtn("batching", "Batching"), navBtn("sales", "Sales Invoice"), navBtn("dyeing", "Dyeing & Dispensing"), navBtn("vouchers", "Vouchers"), /*#__PURE__*/React.createElement("div", {
     className: "group"
   }, "Masters"), navBtn("masters", "Master Data"), navBtn("customers", "Customers"), navBtn("suppliers", "Suppliers"), navBtn("warehouses", "Warehouses"), /*#__PURE__*/React.createElement("div", {
     className: "group"

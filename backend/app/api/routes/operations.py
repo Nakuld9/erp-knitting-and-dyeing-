@@ -19,7 +19,7 @@ from app.core.deps import require_permission
 from app.models.commercial import GoodsReceiptNote, GRNLine, SalesInvoice, SalesInvoiceLine
 from app.models.core import User
 from app.models.manufacturing import BatchStatus, DyeBatch, DyeBath
-from app.services import procurement, sales
+from app.services import batching, procurement, sales
 from app.services.colorservice import ColorServiceSimulator
 from app.services.colorservice import ingest as cs
 from app.services.colorservice.register import bath_consumption_register
@@ -101,9 +101,14 @@ def post_sales_invoice(payload: SalesInvoiceIn, db: Session = Depends(get_db),
 
 class BatchIn(BaseModel):
     batch_code: str
-    fabric_kg: Decimal
+    fabric_kg: Decimal = Decimal("0")   # auto-summed from rolls when roll_ids given
     shade_id: uuid.UUID | None = None
     sales_order_id: uuid.UUID | None = None
+    roll_ids: list[uuid.UUID] = Field(default_factory=list)
+
+
+class AssignRollsIn(BaseModel):
+    roll_ids: list[uuid.UUID] = Field(min_length=1)
 
 
 class BathIn(BaseModel):
@@ -118,11 +123,54 @@ class BathIn(BaseModel):
 @router.post("/dyeing/batches", status_code=status.HTTP_201_CREATED)
 def create_batch(payload: BatchIn, db: Session = Depends(get_db),
                  user: User = Depends(require_permission("dyeing.manage"))):
-    batch = DyeBatch(company_id=user.company_id, status=BatchStatus.PLANNED,
-                     created_by=user.id, **payload.model_dump())
+    batch = DyeBatch(company_id=user.company_id, status=BatchStatus.PLANNED, created_by=user.id,
+                     batch_code=payload.batch_code, fabric_kg=payload.fabric_kg,
+                     shade_id=payload.shade_id, sales_order_id=payload.sales_order_id)
     db.add(batch)
+    db.flush()
+    if payload.roll_ids:
+        try:
+            batching.assign_rolls(db, user.company_id, batch, payload.roll_ids)
+        except batching.BatchingError as exc:
+            db.rollback()
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
     db.commit()
-    return {"batch_id": str(batch.id), "batch_code": batch.batch_code}
+    return {"batch_id": str(batch.id), "batch_code": batch.batch_code,
+            "fabric_kg": str(batch.fabric_kg), "rolls": len(batch.rolls)}
+
+
+@router.post("/dyeing/batches/{batch_id}/assign-rolls")
+def assign_rolls(batch_id: uuid.UUID, payload: AssignRollsIn, db: Session = Depends(get_db),
+                 user: User = Depends(require_permission("dyeing.manage"))):
+    batch = db.get(DyeBatch, batch_id)
+    if batch is None or batch.company_id != user.company_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Batch not found")
+    try:
+        batching.assign_rolls(db, user.company_id, batch, payload.roll_ids)
+        db.commit()
+    except batching.BatchingError as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    return {"batch_id": str(batch.id), "fabric_kg": str(batch.fabric_kg), "rolls": len(batch.rolls)}
+
+
+@router.get("/dyeing/batches")
+def list_batches(db: Session = Depends(get_db), user: User = Depends(require_permission("dyeing.manage"))):
+    from sqlalchemy import select
+    rows = db.execute(select(DyeBatch).where(DyeBatch.company_id == user.company_id)
+                      .order_by(DyeBatch.batch_code.desc())).scalars().all()
+    return [{"id": str(b.id), "label": f"{b.batch_code} ({b.fabric_kg} kg, {len(b.rolls)} rolls)",
+             "batch_code": b.batch_code, "fabric_kg": str(b.fabric_kg),
+             "rolls": len(b.rolls), "status": b.status} for b in rows[:100]]
+
+
+@router.get("/dyeing/batches/{batch_id}/rolls")
+def batch_rolls(batch_id: uuid.UUID, db: Session = Depends(get_db),
+                user: User = Depends(require_permission("dyeing.manage"))):
+    batch = db.get(DyeBatch, batch_id)
+    if batch is None or batch.company_id != user.company_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Batch not found")
+    return [{"id": str(r.id), "roll_no": r.roll_no, "weight_kg": str(r.weight_kg)} for r in batch.rolls]
 
 
 @router.post("/dyeing/baths", status_code=status.HTTP_201_CREATED)
