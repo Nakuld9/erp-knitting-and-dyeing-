@@ -46,6 +46,11 @@ DEFAULT_RULES: dict[str, dict[str, str]] = {
         "payable": "2010", "inventory": "1100", "input_cgst": "1121",
         "input_sgst": "1122", "input_igst": "1123",
     },
+    "PAYROLL": {
+        "salary_expense": "6010", "employer_pf": "6011", "employer_esi": "6012",
+        "salary_payable": "2030", "pf_payable": "2031", "esi_payable": "2032",
+        "pt_payable": "2033", "tds_payable": "2050",
+    },
     "CUSTOMER_RECEIPT": {"bank": "1020", "receivable": "1040"},
     "SUPPLIER_PAYMENT": {"payable": "2010", "bank": "1020"},
     # Fixed assets. Capitalisation debits the asset's own account; the credit

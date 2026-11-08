@@ -24,6 +24,7 @@ PERMISSIONS: list[tuple[str, str, str]] = [
     ("voucher.reverse", "accounting", "Reverse posted vouchers"),
     ("period.close", "accounting", "Close / reopen accounting periods"),
     ("asset.manage", "accounting", "Manage fixed assets and depreciation"),
+    ("payroll.manage", "accounting", "Manage payroll and salary structures"),
     ("bank.reconcile", "banking", "Perform bank reconciliation"),
     ("report.read", "reports", "View reports and dashboards"),
     ("report.financial", "reports", "View financial statements"),
@@ -52,14 +53,14 @@ ROLES: dict[str, tuple[str, list[str]]] = {
     "ACCOUNTANT": (
         "Accountant",
         ["master.read", "voucher.create", "voucher.post", "bank.reconcile", "report.read",
-         "report.financial", "asset.manage"],
+         "report.financial", "asset.manage", "payroll.manage"],
     ),
     "FINANCE_CONTROLLER": (
         "Finance Controller",
         [
             "master.read", "voucher.create", "voucher.post", "voucher.approve",
             "voucher.reverse", "period.close", "bank.reconcile", "report.read", "report.financial",
-            "inventory.adjust", "asset.manage",
+            "inventory.adjust", "asset.manage", "payroll.manage",
         ],
     ),
     "AUDITOR": ("Auditor", ["master.read", "report.read", "report.financial"]),

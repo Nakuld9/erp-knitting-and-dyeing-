@@ -88,6 +88,12 @@ from app.models.assets import (  # noqa: F401
     DepreciationRun,
     FixedAsset,
 )
+from app.models.payroll import (  # noqa: F401
+    Payslip,
+    PayrollRun,
+    PayrollStatus,
+    SalaryStructure,
+)
 from app.models.banking import BankReconciliation, BankStatementLine  # noqa: F401
 from app.models.quality import (  # noqa: F401
     ComplaintStatus,

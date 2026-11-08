@@ -3538,6 +3538,298 @@ function FixedAssets() {
     onClick: () => dispose(a)
   }, "Dispose"))))))));
 }
+
+// ---- payroll --------------------------------------------------------------
+function Payroll() {
+  const [emps, setEmps] = useState([]);
+  const [structs, setStructs] = useState([]);
+  const [runs, setRuns] = useState([]);
+  const [month, setMonth] = useState(today().slice(0, 7));
+  const [ef, setEf] = useState({
+    code: genNo("EMP"),
+    name: "",
+    designation: ""
+  });
+  const [sf, setSf] = useState({
+    employee_id: "",
+    basic: "20000",
+    hra: "8000",
+    other_allowances: "2000",
+    pf_applicable: true,
+    esi_applicable: false,
+    professional_tax: "200",
+    tds_monthly: "1000"
+  });
+  const [eRes, setERes] = useState(null);
+  const [sRes, setSRes] = useState(null);
+  const [run, setRun] = useState(null);
+  const [err, setErr] = useState("");
+  const load = useCallback(() => {
+    api("/api/payroll/employees").then(setEmps).catch(() => {});
+    api("/api/payroll/salary-structures").then(setStructs).catch(() => {});
+    api("/api/payroll/runs").then(setRuns).catch(() => {});
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+  const addEmp = async e => {
+    e.preventDefault();
+    setErr("");
+    setERes(null);
+    try {
+      const r = await api("/api/payroll/employees", {
+        method: "POST",
+        body: ef
+      });
+      setERes(r);
+      setEf({
+        code: genNo("EMP"),
+        name: "",
+        designation: ""
+      });
+      load();
+    } catch (ex) {
+      setErr(ex.message);
+    }
+  };
+  const setStruct = async e => {
+    e.preventDefault();
+    setErr("");
+    setSRes(null);
+    try {
+      const r = await api("/api/payroll/salary-structures", {
+        method: "POST",
+        body: {
+          ...sf,
+          effective_from: month + "-01"
+        }
+      });
+      setSRes(r);
+      load();
+    } catch (ex) {
+      setErr(ex.message);
+    }
+  };
+  const runPay = async () => {
+    setErr("");
+    setRun(null);
+    try {
+      setRun(await api("/api/payroll/runs", {
+        method: "POST",
+        body: {
+          period_month: month + "-01"
+        }
+      }));
+      load();
+    } catch (ex) {
+      setErr(ex.message);
+    }
+  };
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "row",
+    style: {
+      gap: 16,
+      alignItems: "flex-start"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement(Panel, {
+    title: "Add employee"
+  }, /*#__PURE__*/React.createElement("form", {
+    onSubmit: addEmp
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Code"), /*#__PURE__*/React.createElement("input", {
+    value: ef.code,
+    onChange: e => setEf({
+      ...ef,
+      code: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Name"), /*#__PURE__*/React.createElement("input", {
+    value: ef.name,
+    onChange: e => setEf({
+      ...ef,
+      name: e.target.value
+    }),
+    required: true
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Designation"), /*#__PURE__*/React.createElement("input", {
+    value: ef.designation,
+    onChange: e => setEf({
+      ...ef,
+      designation: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 10
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Add employee"))), /*#__PURE__*/React.createElement(Result, {
+    r: eRes
+  }))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 2
+    }
+  }, /*#__PURE__*/React.createElement(Panel, {
+    title: "Set salary structure"
+  }, /*#__PURE__*/React.createElement("form", {
+    onSubmit: setStruct
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "row mb"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Employee"), /*#__PURE__*/React.createElement(Opts, {
+    items: emps,
+    value: sf.employee_id,
+    onChange: e => setSf({
+      ...sf,
+      employee_id: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Basic"), /*#__PURE__*/React.createElement("input", {
+    value: sf.basic,
+    onChange: e => setSf({
+      ...sf,
+      basic: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "HRA"), /*#__PURE__*/React.createElement("input", {
+    value: sf.hra,
+    onChange: e => setSf({
+      ...sf,
+      hra: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Allowances"), /*#__PURE__*/React.createElement("input", {
+    value: sf.other_allowances,
+    onChange: e => setSf({
+      ...sf,
+      other_allowances: e.target.value
+    })
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "row"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Prof. tax"), /*#__PURE__*/React.createElement("input", {
+    value: sf.professional_tax,
+    onChange: e => setSf({
+      ...sf,
+      professional_tax: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "TDS / month"), /*#__PURE__*/React.createElement("input", {
+    value: sf.tds_monthly,
+    onChange: e => setSf({
+      ...sf,
+      tds_monthly: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "PF?"), /*#__PURE__*/React.createElement("select", {
+    value: sf.pf_applicable ? "y" : "n",
+    onChange: e => setSf({
+      ...sf,
+      pf_applicable: e.target.value === "y"
+    })
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "y"
+  }, "Yes"), /*#__PURE__*/React.createElement("option", {
+    value: "n"
+  }, "No"))), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "ESI?"), /*#__PURE__*/React.createElement("select", {
+    value: sf.esi_applicable ? "y" : "n",
+    onChange: e => setSf({
+      ...sf,
+      esi_applicable: e.target.value === "y"
+    })
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "n"
+  }, "No"), /*#__PURE__*/React.createElement("option", {
+    value: "y"
+  }, "Yes"))), /*#__PURE__*/React.createElement("div", {
+    className: "field",
+    style: {
+      alignSelf: "end"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Save structure")))), /*#__PURE__*/React.createElement(Result, {
+    r: sRes
+  })))), /*#__PURE__*/React.createElement(Panel, {
+    title: "Salary structures"
+  }, structs.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "None yet \u2014 add an employee and set a structure.") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Employee"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Basic"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Gross"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Deductions"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Net pay"))), /*#__PURE__*/React.createElement("tbody", null, structs.map(s => /*#__PURE__*/React.createElement("tr", {
+    key: s.id
+  }, /*#__PURE__*/React.createElement("td", null, s.employee_code, " \u2014 ", s.employee), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(s.basic)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(s.gross)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(s.deductions)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(s.net_pay))))))), /*#__PURE__*/React.createElement(Panel, {
+    title: "Run monthly payroll"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "row"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Pay month"), /*#__PURE__*/React.createElement("input", {
+    type: "month",
+    value: month,
+    onChange: e => setMonth(e.target.value)
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field",
+    style: {
+      alignSelf: "end"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    onClick: runPay
+  }, "Run payroll"))), /*#__PURE__*/React.createElement(Result, {
+    r: run
+  }), err && /*#__PURE__*/React.createElement("div", {
+    className: "err"
+  }, err)), /*#__PURE__*/React.createElement(Panel, {
+    title: "Payroll runs"
+  }, runs.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "None yet.") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Period"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Employees"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Gross"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Net paid"), /*#__PURE__*/React.createElement("th", null, "Status"))), /*#__PURE__*/React.createElement("tbody", null, runs.map(r => /*#__PURE__*/React.createElement("tr", {
+    key: r.id
+  }, /*#__PURE__*/React.createElement("td", null, r.period), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, r.employees), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(r.total_gross)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(r.total_net)), /*#__PURE__*/React.createElement("td", null, stBadge(r.status))))))));
+}
 const PAGES = {
   owner: {
     t: "Owner Dashboard",
@@ -3607,6 +3899,10 @@ const PAGES = {
     t: "Fixed Assets & Depreciation",
     c: FixedAssets
   },
+  payroll: {
+    t: "Payroll",
+    c: Payroll
+  },
   costing: {
     t: "Costing & Profitability",
     c: Costing
@@ -3662,6 +3958,8 @@ function App() {
   }, "Quality"), navBtn("quality", "Quality"), /*#__PURE__*/React.createElement("div", {
     className: "group"
   }, "Assets"), navBtn("assets", "Fixed Assets"), /*#__PURE__*/React.createElement("div", {
+    className: "group"
+  }, "Payroll"), navBtn("payroll", "Payroll"), /*#__PURE__*/React.createElement("div", {
     className: "group"
   }, "Costing"), navBtn("costing", "Costing"), /*#__PURE__*/React.createElement("div", {
     className: "group"

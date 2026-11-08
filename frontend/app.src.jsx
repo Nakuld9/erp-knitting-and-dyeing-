@@ -1124,6 +1124,88 @@ function FixedAssets(){
   </div>);
 }
 
+// ---- payroll --------------------------------------------------------------
+function Payroll(){
+  const [emps,setEmps]=useState([]); const [structs,setStructs]=useState([]); const [runs,setRuns]=useState([]);
+  const [month,setMonth]=useState(today().slice(0,7));
+  const [ef,setEf]=useState({code:genNo("EMP"),name:"",designation:""});
+  const [sf,setSf]=useState({employee_id:"",basic:"20000",hra:"8000",other_allowances:"2000",
+    pf_applicable:true,esi_applicable:false,professional_tax:"200",tds_monthly:"1000"});
+  const [eRes,setERes]=useState(null); const [sRes,setSRes]=useState(null); const [run,setRun]=useState(null);
+  const [err,setErr]=useState("");
+  const load=useCallback(()=>{ api("/api/payroll/employees").then(setEmps).catch(()=>{});
+    api("/api/payroll/salary-structures").then(setStructs).catch(()=>{});
+    api("/api/payroll/runs").then(setRuns).catch(()=>{}); },[]);
+  useEffect(()=>{load()},[load]);
+  const addEmp=async e=>{ e.preventDefault(); setErr(""); setERes(null);
+    try{ const r=await api("/api/payroll/employees",{method:"POST",body:ef});
+      setERes(r); setEf({code:genNo("EMP"),name:"",designation:""}); load(); }
+    catch(ex){ setErr(ex.message); } };
+  const setStruct=async e=>{ e.preventDefault(); setErr(""); setSRes(null);
+    try{ const r=await api("/api/payroll/salary-structures",{method:"POST",
+        body:{...sf, effective_from:month+"-01"}});
+      setSRes(r); load(); }
+    catch(ex){ setErr(ex.message); } };
+  const runPay=async()=>{ setErr(""); setRun(null);
+    try{ setRun(await api("/api/payroll/runs",{method:"POST",body:{period_month:month+"-01"}})); load(); }
+    catch(ex){ setErr(ex.message); } };
+  return (<div>
+    <div className="row" style={{gap:16,alignItems:"flex-start"}}>
+      <div style={{flex:1}}><Panel title="Add employee">
+        <form onSubmit={addEmp}>
+          <div className="field"><label>Code</label><input value={ef.code} onChange={e=>setEf({...ef,code:e.target.value})}/></div>
+          <div className="field"><label>Name</label><input value={ef.name} onChange={e=>setEf({...ef,name:e.target.value})} required/></div>
+          <div className="field"><label>Designation</label><input value={ef.designation} onChange={e=>setEf({...ef,designation:e.target.value})}/></div>
+          <div style={{marginTop:10}}><button className="btn">Add employee</button></div>
+        </form>
+        <Result r={eRes}/>
+      </Panel></div>
+      <div style={{flex:2}}><Panel title="Set salary structure">
+        <form onSubmit={setStruct}>
+          <div className="row mb">
+            <div className="field"><label>Employee</label><Opts items={emps} value={sf.employee_id} onChange={e=>setSf({...sf,employee_id:e.target.value})}/></div>
+            <div className="field"><label>Basic</label><input value={sf.basic} onChange={e=>setSf({...sf,basic:e.target.value})}/></div>
+            <div className="field"><label>HRA</label><input value={sf.hra} onChange={e=>setSf({...sf,hra:e.target.value})}/></div>
+            <div className="field"><label>Allowances</label><input value={sf.other_allowances} onChange={e=>setSf({...sf,other_allowances:e.target.value})}/></div>
+          </div>
+          <div className="row">
+            <div className="field"><label>Prof. tax</label><input value={sf.professional_tax} onChange={e=>setSf({...sf,professional_tax:e.target.value})}/></div>
+            <div className="field"><label>TDS / month</label><input value={sf.tds_monthly} onChange={e=>setSf({...sf,tds_monthly:e.target.value})}/></div>
+            <div className="field"><label>PF?</label><select value={sf.pf_applicable?"y":"n"} onChange={e=>setSf({...sf,pf_applicable:e.target.value==="y"})}><option value="y">Yes</option><option value="n">No</option></select></div>
+            <div className="field"><label>ESI?</label><select value={sf.esi_applicable?"y":"n"} onChange={e=>setSf({...sf,esi_applicable:e.target.value==="y"})}><option value="n">No</option><option value="y">Yes</option></select></div>
+            <div className="field" style={{alignSelf:"end"}}><button className="btn">Save structure</button></div>
+          </div>
+        </form>
+        <Result r={sRes}/>
+      </Panel></div>
+    </div>
+    <Panel title="Salary structures">
+      {structs.length===0?<div className="muted">None yet — add an employee and set a structure.</div>:
+      <table><thead><tr><th>Employee</th><th className="num">Basic</th><th className="num">Gross</th>
+        <th className="num">Deductions</th><th className="num">Net pay</th></tr></thead>
+      <tbody>{structs.map(s=><tr key={s.id}><td>{s.employee_code} — {s.employee}</td>
+        <td className="num">{inr2(s.basic)}</td><td className="num">{inr2(s.gross)}</td>
+        <td className="num">{inr2(s.deductions)}</td><td className="num">{inr2(s.net_pay)}</td></tr>)}</tbody></table>}
+    </Panel>
+    <Panel title="Run monthly payroll">
+      <div className="row">
+        <div className="field"><label>Pay month</label><input type="month" value={month} onChange={e=>setMonth(e.target.value)}/></div>
+        <div className="field" style={{alignSelf:"end"}}><button className="btn" onClick={runPay}>Run payroll</button></div>
+      </div>
+      <Result r={run}/>
+      {err && <div className="err">{err}</div>}
+    </Panel>
+    <Panel title="Payroll runs">
+      {runs.length===0?<div className="muted">None yet.</div>:
+      <table><thead><tr><th>Period</th><th className="num">Employees</th><th className="num">Gross</th>
+        <th className="num">Net paid</th><th>Status</th></tr></thead>
+      <tbody>{runs.map(r=><tr key={r.id}><td>{r.period}</td><td className="num">{r.employees}</td>
+        <td className="num">{inr2(r.total_gross)}</td><td className="num">{inr2(r.total_net)}</td>
+        <td>{stBadge(r.status)}</td></tr>)}</tbody></table>}
+    </Panel>
+  </div>);
+}
+
 const PAGES={
   owner:{t:"Owner Dashboard",c:OwnerDash}, factory:{t:"Factory Dashboard",c:FactoryDash},
   accounts:{t:"Accounts Dashboard",c:AccountsDash}, chemical:{t:"Chemical Dashboard",c:ChemicalDash},
@@ -1136,6 +1218,7 @@ const PAGES={
   suppliers:{t:"Suppliers",c:()=> <PartyPage kind="suppliers"/>},
   warehouses:{t:"Warehouses",c:Warehouses}, quality:{t:"Quality & Finishing",c:Quality},
   assets:{t:"Fixed Assets & Depreciation",c:FixedAssets},
+  payroll:{t:"Payroll",c:Payroll},
   costing:{t:"Costing & Profitability",c:Costing}, devices:{t:"Devices & Labels",c:Devices},
   masters:{t:"Master Data",c:MastersManager}, vouchers:{t:"Vouchers",c:Vouchers}, admin:{t:"Administration",c:Admin},
   reports:{t:"Reports",c:Reports},
@@ -1159,6 +1242,7 @@ function App(){
         {navBtn("masters","Master Data")}{navBtn("customers","Customers")}{navBtn("suppliers","Suppliers")}{navBtn("warehouses","Warehouses")}
         <div className="group">Quality</div>{navBtn("quality","Quality")}
         <div className="group">Assets</div>{navBtn("assets","Fixed Assets")}
+        <div className="group">Payroll</div>{navBtn("payroll","Payroll")}
         <div className="group">Costing</div>{navBtn("costing","Costing")}
         <div className="group">Devices</div>{navBtn("devices","Devices & Labels")}
         <div className="group">Reports</div>{navBtn("reports","Reports")}

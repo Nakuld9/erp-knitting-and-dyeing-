@@ -54,6 +54,9 @@ COA: list[tuple[str, str, AccountType, bool, str | None, set[str]]] = [
     ("2010", "Accounts Payable", L, False, "2000", {"control"}),
     ("2020", "Expenses Payable", L, False, "2000", set()),
     ("2030", "Salary Payable", L, False, "2000", set()),
+    ("2031", "PF Payable", L, False, "2000", set()),
+    ("2032", "ESI Payable", L, False, "2000", set()),
+    ("2033", "Professional Tax Payable", L, False, "2000", set()),
     ("2040", "GST Output", L, True, "2000", set()),
     ("2041", "Output CGST", L, False, "2040", set()),
     ("2042", "Output SGST", L, False, "2040", set()),
@@ -102,6 +105,8 @@ COA: list[tuple[str, str, AccountType, bool, str | None, set[str]]] = [
     # ---------------- INDIRECT EXPENSES ----------------
     ("6000", "Indirect Expenses", X, True, None, set()),
     ("6010", "Salaries", X, False, "6000", set()),
+    ("6011", "Employer PF Contribution", X, False, "6000", set()),
+    ("6012", "Employer ESI Contribution", X, False, "6000", set()),
     ("6020", "Office Expenses", X, False, "6000", set()),
     ("6030", "Repairs and Maintenance", X, False, "6000", set()),
     ("6040", "Factory Administration", X, False, "6000", set()),
