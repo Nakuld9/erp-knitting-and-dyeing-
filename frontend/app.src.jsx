@@ -29,6 +29,20 @@ function Kpi({label, value, cls}){ return (
   <div className="card"><div className="label">{label}</div>
     <div className={"value "+(cls||"")}>{value}</div></div> ); }
 
+// Richer KPI card: coloured icon chip + value + optional % delta.
+function Stat({icon, label, value, delta, tone}){
+  const d = (delta===undefined||delta===null) ? null : Number(delta);
+  return (<div className={"stat "+(tone||"")}>
+    <div className="stat-icon">{icon}</div>
+    <div className="stat-body">
+      <div className="stat-label">{label}</div>
+      <div className="stat-value">{value}</div>
+      {d!==null && <div className={"stat-delta "+(d>=0?"up":"down")}>
+        {d>=0?"▲":"▼"} {Math.abs(d).toFixed(1)}% vs last month</div>}
+    </div>
+  </div>);
+}
+
 function Panel({title, children}){ return (
   <div className="panel">{title && <h3>{title}</h3>}{children}</div> ); }
 
@@ -76,15 +90,16 @@ function OwnerDash(){
   const [d,err]=useData("/api/dashboard/owner");
   if(err) return <Panel>{err}</Panel>; if(!d) return <Panel>Loading…</Panel>;
   const np=Number(d.net_profit);
+  const dl=d.deltas||{};
   return (<div>
-    <div className="cards">
-      <Kpi label="Revenue (YTD)" value={inr(d.revenue)} />
-      <Kpi label="Gross Profit" value={inr(d.gross_profit)} />
-      <Kpi label="Net Profit" value={inr(d.net_profit)} cls={np>=0?"pos":"neg"} />
-      <Kpi label="Cash & Bank" value={inr(d.cash_and_bank)} />
-      <Kpi label="Receivables" value={inr(d.receivables)} />
-      <Kpi label="Payables" value={inr(d.payables)} />
-      <Kpi label="Inventory Value" value={inr(d.inventory_value)} />
+    <div className="stats">
+      <Stat tone="" icon="₹" label="Revenue (YTD)" value={inr(d.revenue)} delta={dl.revenue} />
+      <Stat tone="green" icon="📈" label="Gross Profit" value={inr(d.gross_profit)} delta={dl.gross_profit} />
+      <Stat tone="violet" icon="％" label="Net Profit" value={inr(d.net_profit)} delta={dl.net_profit} />
+      <Stat tone="teal" icon="🏦" label="Cash & Bank" value={inr(d.cash_and_bank)} />
+      <Stat tone="amber" icon="📥" label="Receivables" value={inr(d.receivables)} />
+      <Stat tone="rose" icon="📤" label="Payables" value={inr(d.payables)} />
+      <Stat tone="" icon="📦" label="Inventory Value" value={inr(d.inventory_value)} />
     </div>
     <Panel title="Sales trend (last 6 months)">
       {R ? <div className="chartbox"><R.ResponsiveContainer>
@@ -105,11 +120,11 @@ function SalesTable({rows}){ return (<table><thead><tr><th>Month</th><th classNa
 function FactoryDash(){
   const [d,err]=useData("/api/dashboard/factory");
   if(err) return <Panel>{err}</Panel>; if(!d) return <Panel>Loading…</Panel>;
-  return (<div className="cards">
-    <Kpi label="Knitting output (kg)" value={inr2(d.knitting_output_kg)} />
-    <Kpi label="Dyeing output (kg)" value={inr2(d.dyeing_output_kg)} />
-    <Kpi label="Active batches" value={d.active_batches} />
-    <Kpi label="Chemical consumption" value={inr(d.chemical_consumption_cost)} />
+  return (<div className="stats">
+    <Stat tone="" icon="🧶" label="Knitting output (kg)" value={inr2(d.knitting_output_kg)} />
+    <Stat tone="violet" icon="🎨" label="Dyeing output (kg)" value={inr2(d.dyeing_output_kg)} />
+    <Stat tone="amber" icon="⚙️" label="Active batches" value={d.active_batches} />
+    <Stat tone="teal" icon="🧪" label="Chemical consumption" value={inr(d.chemical_consumption_cost)} />
   </div>);
 }
 
@@ -117,15 +132,14 @@ function AccountsDash(){
   const [d,err]=useData("/api/dashboard/accounts");
   if(err) return <Panel>{err}</Panel>; if(!d) return <Panel>Loading…</Panel>;
   return (<div>
-    <div className="cards">
-      <Kpi label="Today's receipts" value={inr(d.today_receipts)} />
-      <Kpi label="Today's payments" value={inr(d.today_payments)} />
-      <Kpi label="Debtors outstanding" value={inr(d.debtors_total)} />
-      <Kpi label="Creditors outstanding" value={inr(d.creditors_total)} />
-      <Kpi label="GST net payable" value={inr(d.gst_net_payable)} />
-      <div className="card"><div className="label">Trial balance</div>
-        <div className="value"><span className={"badge "+(d.trial_balance_balanced?"ok":"bad")}>
-          {d.trial_balance_balanced?"Balanced":"Out of balance"}</span></div></div>
+    <div className="stats">
+      <Stat tone="green" icon="📥" label="Today's receipts" value={inr(d.today_receipts)} />
+      <Stat tone="rose" icon="📤" label="Today's payments" value={inr(d.today_payments)} />
+      <Stat tone="amber" icon="👤" label="Debtors outstanding" value={inr(d.debtors_total)} />
+      <Stat tone="violet" icon="🏢" label="Creditors outstanding" value={inr(d.creditors_total)} />
+      <Stat tone="teal" icon="🧾" label="GST net payable" value={inr(d.gst_net_payable)} />
+      <Stat tone="" icon={d.trial_balance_balanced?"✅":"⚠️"} label="Trial balance"
+        value={<span className={"badge "+(d.trial_balance_balanced?"ok":"bad")}>{d.trial_balance_balanced?"Balanced":"Out of balance"}</span>} />
     </div>
     <Panel title="Bank balances">
       <table><thead><tr><th>Account</th><th className="num">Balance</th></tr></thead>
@@ -140,11 +154,11 @@ function ChemicalDash(){
   if(err) return <Panel>{err}</Panel>; if(!d) return <Panel>Loading…</Panel>;
   const bars=(d.top_consumption||[]).map(r=>({material:r.material, cost:Number(r.cost)}));
   return (<div>
-    <div className="cards">
-      <Kpi label="Dye cost" value={inr(d.dye_cost)} />
-      <Kpi label="Chemical cost" value={inr(d.chemical_cost)} />
-      <Kpi label="Total consumption" value={inr(d.total_consumption_cost)} />
-      <Kpi label="Dispensing errors" value={d.dispensing_errors} cls={d.dispensing_errors?"neg":""} />
+    <div className="stats">
+      <Stat tone="violet" icon="🎨" label="Dye cost" value={inr(d.dye_cost)} />
+      <Stat tone="teal" icon="🧪" label="Chemical cost" value={inr(d.chemical_cost)} />
+      <Stat tone="" icon="Σ" label="Total consumption" value={inr(d.total_consumption_cost)} />
+      <Stat tone={d.dispensing_errors?"rose":"green"} icon={d.dispensing_errors?"⚠️":"✅"} label="Dispensing errors" value={d.dispensing_errors} />
     </div>
     <Panel title="Top consumption by material">
       {R ? <div className="chartbox"><R.ResponsiveContainer>
@@ -1569,14 +1583,21 @@ const PAGES={
   masters:{t:"Master Data",c:MastersManager}, vouchers:{t:"Vouchers",c:Vouchers}, admin:{t:"Administration",c:Admin},
   reports:{t:"Reports",c:Reports},
 };
+const NAV_ICON={owner:"📊",factory:"🏭",accounts:"💼",chemical:"🧪",purchaseorders:"📝",purchase:"📥",
+  knitting:"🧶",batching:"🧺",pipeline:"🎯",salesorders:"🛒",sales:"🧾",dyeing:"🎨",vouchers:"📒",
+  inventoryops:"🔁",masters:"🗃️",customers:"👤",suppliers:"🏢",warehouses:"🏬",quality:"🔍",assets:"🏗️",
+  payroll:"💰",costing:"📐",devices:"🖨️",reports:"📈",approvals:"✔️",acctops:"🧮",admin:"⚙️"};
+function fyLabel(){ const d=new Date(); const y=d.getMonth()>=3?d.getFullYear():d.getFullYear()-1; return `FY ${y}–${(y+1)%100}`; }
+
 function App(){
   const [page,setPage]=useState("owner"); const [me,setMe]=useState(null);
   useEffect(()=>{ api("/api/auth/me").then(setMe).catch(()=>{}); },[]);
   const Cur=PAGES[page].c;
-  const navBtn=(id,label)=> <button className={page===id?"active":""} onClick={()=>setPage(id)}>{label}</button>;
+  const navBtn=(id,label)=> <button className={page===id?"active":""} onClick={()=>setPage(id)}>
+    <span className="nav-ico">{NAV_ICON[id]||"•"}</span>{label}</button>;
   return (<div className="app">
     <aside className="sidebar">
-      <div className="brand">Textile ERP<small>Knitting &amp; Dyeing</small></div>
+      <div className="brand">◆ Textile ERP<small>Knit · Dye · Finish · Grow</small></div>
       <nav className="nav">
         <div className="group">Dashboards</div>
         {navBtn("owner","Owner")}{navBtn("factory","Factory")}
@@ -1600,7 +1621,10 @@ function App(){
     </aside>
     <div className="main">
       <div className="topbar"><h1>{PAGES[page].t}</h1>
-        <div className="who">{me? (me.full_name||me.username) : ""} · {new Date().toLocaleDateString("en-IN")}</div></div>
+        <div className="who-wrap">
+          <span className="fychip">{fyLabel()}</span>
+          <div className="who">{me? (me.full_name||me.username) : ""} · {new Date().toLocaleDateString("en-IN")}</div>
+        </div></div>
       <div className="content"><Cur/></div>
     </div>
   </div>);

@@ -7,7 +7,8 @@ matches the report it drills into.
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
+from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -91,10 +92,27 @@ def _sales_trend(db, company_id, as_of, months=6):
     return out
 
 
+def _pct_change(cur, prev) -> float | None:
+    """Percentage change cur vs prev; None when there is no prior base."""
+    prev = Decimal(str(prev or 0))
+    if prev == 0:
+        return None
+    return float(quantize((Decimal(str(cur)) - prev) / abs(prev) * Decimal("100"), QTY_SCALE))
+
+
 def owner_dashboard(db: Session, company_id: uuid.UUID, as_of: date | None = None) -> dict:
     as_of = as_of or date.today()
     pnl = fs.profit_and_loss(db, company_id, _fy_start(as_of), as_of)
     inventory_value = sum((_acct_balance(db, company_id, c, as_of) for c in INVENTORY_ACCOUNTS), ZERO)
+
+    # Honest "vs last month": trailing 30 days vs the prior 30 days.
+    cur = fs.profit_and_loss(db, company_id, as_of - timedelta(days=29), as_of)
+    prev = fs.profit_and_loss(db, company_id, as_of - timedelta(days=59), as_of - timedelta(days=30))
+    deltas = {
+        "revenue": _pct_change(cur["revenue_total"], prev["revenue_total"]),
+        "gross_profit": _pct_change(cur["gross_profit"], prev["gross_profit"]),
+        "net_profit": _pct_change(cur["net_profit"], prev["net_profit"]),
+    }
     return {
         "as_of": as_of,
         "revenue": pnl["revenue_total"],
@@ -104,6 +122,7 @@ def owner_dashboard(db: Session, company_id: uuid.UUID, as_of: date | None = Non
         "receivables": _acct_balance(db, company_id, "1040", as_of),
         "payables": _acct_balance(db, company_id, "2010", as_of),
         "inventory_value": inventory_value,
+        "deltas": deltas,
         "sales_trend": _sales_trend(db, company_id, as_of),
     }
 

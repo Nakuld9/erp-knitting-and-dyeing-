@@ -82,6 +82,30 @@ function Kpi({
     className: "value " + (cls || "")
   }, value));
 }
+
+// Richer KPI card: coloured icon chip + value + optional % delta.
+function Stat({
+  icon,
+  label,
+  value,
+  delta,
+  tone
+}) {
+  const d = delta === undefined || delta === null ? null : Number(delta);
+  return /*#__PURE__*/React.createElement("div", {
+    className: "stat " + (tone || "")
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "stat-icon"
+  }, icon), /*#__PURE__*/React.createElement("div", {
+    className: "stat-body"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "stat-label"
+  }, label), /*#__PURE__*/React.createElement("div", {
+    className: "stat-value"
+  }, value), d !== null && /*#__PURE__*/React.createElement("div", {
+    className: "stat-delta " + (d >= 0 ? "up" : "down")
+  }, d >= 0 ? "▲" : "▼", " ", Math.abs(d).toFixed(1), "% vs last month")));
+}
 function Panel({
   title,
   children
@@ -213,28 +237,45 @@ function OwnerDash() {
   if (err) return /*#__PURE__*/React.createElement(Panel, null, err);
   if (!d) return /*#__PURE__*/React.createElement(Panel, null, "Loading\u2026");
   const np = Number(d.net_profit);
+  const dl = d.deltas || {};
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-    className: "cards"
-  }, /*#__PURE__*/React.createElement(Kpi, {
+    className: "stats"
+  }, /*#__PURE__*/React.createElement(Stat, {
+    tone: "",
+    icon: "\u20B9",
     label: "Revenue (YTD)",
-    value: inr(d.revenue)
-  }), /*#__PURE__*/React.createElement(Kpi, {
+    value: inr(d.revenue),
+    delta: dl.revenue
+  }), /*#__PURE__*/React.createElement(Stat, {
+    tone: "green",
+    icon: "\uD83D\uDCC8",
     label: "Gross Profit",
-    value: inr(d.gross_profit)
-  }), /*#__PURE__*/React.createElement(Kpi, {
+    value: inr(d.gross_profit),
+    delta: dl.gross_profit
+  }), /*#__PURE__*/React.createElement(Stat, {
+    tone: "violet",
+    icon: "\uFF05",
     label: "Net Profit",
     value: inr(d.net_profit),
-    cls: np >= 0 ? "pos" : "neg"
-  }), /*#__PURE__*/React.createElement(Kpi, {
+    delta: dl.net_profit
+  }), /*#__PURE__*/React.createElement(Stat, {
+    tone: "teal",
+    icon: "\uD83C\uDFE6",
     label: "Cash & Bank",
     value: inr(d.cash_and_bank)
-  }), /*#__PURE__*/React.createElement(Kpi, {
+  }), /*#__PURE__*/React.createElement(Stat, {
+    tone: "amber",
+    icon: "\uD83D\uDCE5",
     label: "Receivables",
     value: inr(d.receivables)
-  }), /*#__PURE__*/React.createElement(Kpi, {
+  }), /*#__PURE__*/React.createElement(Stat, {
+    tone: "rose",
+    icon: "\uD83D\uDCE4",
     label: "Payables",
     value: inr(d.payables)
-  }), /*#__PURE__*/React.createElement(Kpi, {
+  }), /*#__PURE__*/React.createElement(Stat, {
+    tone: "",
+    icon: "\uD83D\uDCE6",
     label: "Inventory Value",
     value: inr(d.inventory_value)
   })), /*#__PURE__*/React.createElement(Panel, {
@@ -291,17 +332,25 @@ function FactoryDash() {
   if (err) return /*#__PURE__*/React.createElement(Panel, null, err);
   if (!d) return /*#__PURE__*/React.createElement(Panel, null, "Loading\u2026");
   return /*#__PURE__*/React.createElement("div", {
-    className: "cards"
-  }, /*#__PURE__*/React.createElement(Kpi, {
+    className: "stats"
+  }, /*#__PURE__*/React.createElement(Stat, {
+    tone: "",
+    icon: "\uD83E\uDDF6",
     label: "Knitting output (kg)",
     value: inr2(d.knitting_output_kg)
-  }), /*#__PURE__*/React.createElement(Kpi, {
+  }), /*#__PURE__*/React.createElement(Stat, {
+    tone: "violet",
+    icon: "\uD83C\uDFA8",
     label: "Dyeing output (kg)",
     value: inr2(d.dyeing_output_kg)
-  }), /*#__PURE__*/React.createElement(Kpi, {
+  }), /*#__PURE__*/React.createElement(Stat, {
+    tone: "amber",
+    icon: "\u2699\uFE0F",
     label: "Active batches",
     value: d.active_batches
-  }), /*#__PURE__*/React.createElement(Kpi, {
+  }), /*#__PURE__*/React.createElement(Stat, {
+    tone: "teal",
+    icon: "\uD83E\uDDEA",
     label: "Chemical consumption",
     value: inr(d.chemical_consumption_cost)
   }));
@@ -311,31 +360,40 @@ function AccountsDash() {
   if (err) return /*#__PURE__*/React.createElement(Panel, null, err);
   if (!d) return /*#__PURE__*/React.createElement(Panel, null, "Loading\u2026");
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-    className: "cards"
-  }, /*#__PURE__*/React.createElement(Kpi, {
+    className: "stats"
+  }, /*#__PURE__*/React.createElement(Stat, {
+    tone: "green",
+    icon: "\uD83D\uDCE5",
     label: "Today's receipts",
     value: inr(d.today_receipts)
-  }), /*#__PURE__*/React.createElement(Kpi, {
+  }), /*#__PURE__*/React.createElement(Stat, {
+    tone: "rose",
+    icon: "\uD83D\uDCE4",
     label: "Today's payments",
     value: inr(d.today_payments)
-  }), /*#__PURE__*/React.createElement(Kpi, {
+  }), /*#__PURE__*/React.createElement(Stat, {
+    tone: "amber",
+    icon: "\uD83D\uDC64",
     label: "Debtors outstanding",
     value: inr(d.debtors_total)
-  }), /*#__PURE__*/React.createElement(Kpi, {
+  }), /*#__PURE__*/React.createElement(Stat, {
+    tone: "violet",
+    icon: "\uD83C\uDFE2",
     label: "Creditors outstanding",
     value: inr(d.creditors_total)
-  }), /*#__PURE__*/React.createElement(Kpi, {
+  }), /*#__PURE__*/React.createElement(Stat, {
+    tone: "teal",
+    icon: "\uD83E\uDDFE",
     label: "GST net payable",
     value: inr(d.gst_net_payable)
-  }), /*#__PURE__*/React.createElement("div", {
-    className: "card"
-  }, /*#__PURE__*/React.createElement("div", {
-    className: "label"
-  }, "Trial balance"), /*#__PURE__*/React.createElement("div", {
-    className: "value"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "badge " + (d.trial_balance_balanced ? "ok" : "bad")
-  }, d.trial_balance_balanced ? "Balanced" : "Out of balance")))), /*#__PURE__*/React.createElement(Panel, {
+  }), /*#__PURE__*/React.createElement(Stat, {
+    tone: "",
+    icon: d.trial_balance_balanced ? "✅" : "⚠️",
+    label: "Trial balance",
+    value: /*#__PURE__*/React.createElement("span", {
+      className: "badge " + (d.trial_balance_balanced ? "ok" : "bad")
+    }, d.trial_balance_balanced ? "Balanced" : "Out of balance")
+  })), /*#__PURE__*/React.createElement(Panel, {
     title: "Bank balances"
   }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Account"), /*#__PURE__*/React.createElement("th", {
     className: "num"
@@ -354,20 +412,27 @@ function ChemicalDash() {
     cost: Number(r.cost)
   }));
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-    className: "cards"
-  }, /*#__PURE__*/React.createElement(Kpi, {
+    className: "stats"
+  }, /*#__PURE__*/React.createElement(Stat, {
+    tone: "violet",
+    icon: "\uD83C\uDFA8",
     label: "Dye cost",
     value: inr(d.dye_cost)
-  }), /*#__PURE__*/React.createElement(Kpi, {
+  }), /*#__PURE__*/React.createElement(Stat, {
+    tone: "teal",
+    icon: "\uD83E\uDDEA",
     label: "Chemical cost",
     value: inr(d.chemical_cost)
-  }), /*#__PURE__*/React.createElement(Kpi, {
+  }), /*#__PURE__*/React.createElement(Stat, {
+    tone: "",
+    icon: "\u03A3",
     label: "Total consumption",
     value: inr(d.total_consumption_cost)
-  }), /*#__PURE__*/React.createElement(Kpi, {
+  }), /*#__PURE__*/React.createElement(Stat, {
+    tone: d.dispensing_errors ? "rose" : "green",
+    icon: d.dispensing_errors ? "⚠️" : "✅",
     label: "Dispensing errors",
-    value: d.dispensing_errors,
-    cls: d.dispensing_errors ? "neg" : ""
+    value: d.dispensing_errors
   })), /*#__PURE__*/React.createElement(Panel, {
     title: "Top consumption by material"
   }, R ? /*#__PURE__*/React.createElement("div", {
@@ -5165,6 +5230,40 @@ const PAGES = {
     c: Reports
   }
 };
+const NAV_ICON = {
+  owner: "📊",
+  factory: "🏭",
+  accounts: "💼",
+  chemical: "🧪",
+  purchaseorders: "📝",
+  purchase: "📥",
+  knitting: "🧶",
+  batching: "🧺",
+  pipeline: "🎯",
+  salesorders: "🛒",
+  sales: "🧾",
+  dyeing: "🎨",
+  vouchers: "📒",
+  inventoryops: "🔁",
+  masters: "🗃️",
+  customers: "👤",
+  suppliers: "🏢",
+  warehouses: "🏬",
+  quality: "🔍",
+  assets: "🏗️",
+  payroll: "💰",
+  costing: "📐",
+  devices: "🖨️",
+  reports: "📈",
+  approvals: "✔️",
+  acctops: "🧮",
+  admin: "⚙️"
+};
+function fyLabel() {
+  const d = new Date();
+  const y = d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1;
+  return `FY ${y}–${(y + 1) % 100}`;
+}
 function App() {
   const [page, setPage] = useState("owner");
   const [me, setMe] = useState(null);
@@ -5175,14 +5274,16 @@ function App() {
   const navBtn = (id, label) => /*#__PURE__*/React.createElement("button", {
     className: page === id ? "active" : "",
     onClick: () => setPage(id)
-  }, label);
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "nav-ico"
+  }, NAV_ICON[id] || "•"), label);
   return /*#__PURE__*/React.createElement("div", {
     className: "app"
   }, /*#__PURE__*/React.createElement("aside", {
     className: "sidebar"
   }, /*#__PURE__*/React.createElement("div", {
     className: "brand"
-  }, "Textile ERP", /*#__PURE__*/React.createElement("small", null, "Knitting & Dyeing")), /*#__PURE__*/React.createElement("nav", {
+  }, "\u25C6 Textile ERP", /*#__PURE__*/React.createElement("small", null, "Knit \xB7 Dye \xB7 Finish \xB7 Grow")), /*#__PURE__*/React.createElement("nav", {
     className: "nav"
   }, /*#__PURE__*/React.createElement("div", {
     className: "group"
@@ -5216,8 +5317,12 @@ function App() {
   }, /*#__PURE__*/React.createElement("div", {
     className: "topbar"
   }, /*#__PURE__*/React.createElement("h1", null, PAGES[page].t), /*#__PURE__*/React.createElement("div", {
+    className: "who-wrap"
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "fychip"
+  }, fyLabel()), /*#__PURE__*/React.createElement("div", {
     className: "who"
-  }, me ? me.full_name || me.username : "", " \xB7 ", new Date().toLocaleDateString("en-IN"))), /*#__PURE__*/React.createElement("div", {
+  }, me ? me.full_name || me.username : "", " \xB7 ", new Date().toLocaleDateString("en-IN")))), /*#__PURE__*/React.createElement("div", {
     className: "content"
   }, /*#__PURE__*/React.createElement(Cur, null))));
 }
