@@ -83,10 +83,19 @@ class GspAdapter:
             if not getattr(settings, field_name):
                 raise EInvoiceError(f"{field_name.upper()} is not configured")
 
+    def _base_headers(self) -> dict:
+        """Headers sent on every call. Most GSPs want a subscription/API key
+        here (header name is GSP-specific — see einvoice_subscription_header)."""
+        headers: dict = {}
+        if self.s.einvoice_subscription_key and self.s.einvoice_subscription_header:
+            headers[self.s.einvoice_subscription_header] = self.s.einvoice_subscription_key
+        return headers
+
     def _client(self):
         import httpx  # local import: only needed for the live path
         return httpx.Client(base_url=self.s.einvoice_base_url,
-                            timeout=self.s.einvoice_timeout_seconds)
+                            timeout=self.s.einvoice_timeout_seconds,
+                            headers=self._base_headers())
 
     def _auth_token(self, client) -> str:
         resp = client.post(self.s.einvoice_auth_path, json={
@@ -98,13 +107,16 @@ class GspAdapter:
         })
         resp.raise_for_status()
         body = resp.json()
-        token = body.get("token") or body.get("AuthToken") or body.get("access_token")
+        data = body.get("data", body)
+        token = (data.get("token") or data.get("AuthToken") or data.get("access_token")
+                 or data.get("Token"))
         if not token:
             raise EInvoiceError(f"GSP auth returned no token: {body}")
         return token
 
     def _auth_headers(self, token: str) -> dict:
-        return {"Authorization": f"Bearer {token}", "gstin": self.s.einvoice_gstin}
+        return {**self._base_headers(),
+                "Authorization": f"Bearer {token}", "gstin": self.s.einvoice_gstin}
 
     def generate_irn(self, payload: dict) -> EInvoiceResult:
         try:

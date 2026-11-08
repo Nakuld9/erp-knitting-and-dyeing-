@@ -61,6 +61,37 @@ payload, storage, idempotency, UI — stays the same.
 Start against the GSP's **sandbox** base URL, confirm an IRN comes back, then
 switch the base URL to production.
 
+### Webtel Electrosoft / Pinnacle Finserv (and similar GSPs)
+
+These GSPs' API specs are **issued to registered clients** (portal login /
+integration guide), not published, so the exact endpoint paths, auth style and
+field names must come from *your* GSP account. There are two shapes in the wild:
+
+1. **Simplified REST** — the GSP handles the NIC crypto server-side; you send
+   plain JSON with an API **subscription key** header and get a token. This is
+   what `GspAdapter` does. Set `EINVOICE_SUBSCRIPTION_KEY` and, if the header is
+   not `subscription-key`, `EINVOICE_SUBSCRIPTION_HEADER` (Webtel/TaxPro often
+   use a key/aspid-style header — confirm the exact name in your guide).
+2. **NIC-style encrypted handshake** — you RSA-encrypt an app-key with the IRP
+   public key, receive a session key (SEK), AES-256 encrypt the payload and
+   decrypt the response with the SEK. If your GSP passes this through, that
+   crypto is the one piece to add in `GspAdapter` (it needs a crypto library and
+   can only be validated against the GSP sandbox).
+
+**Ask your GSP (Webtel / Pinnacle) for their _API / ERP integration guide_ and
+_sandbox credentials_**, specifically:
+- Base URL (sandbox + production) and the auth / generate / cancel paths.
+- Auth style: token in JSON, or the RSA/AES/SEK handshake (and the public-key
+  `.pem` if so).
+- The subscription-key header name, and any `client_id` / `client_secret`.
+- The response field names for the IRN, Ack No, Ack Date and Signed QR.
+
+With those four answers the simplified-REST path is pure configuration; only the
+encrypted-handshake style needs the one code addition noted above. The
+credentials you already use in Busy are the same GSTIN API credentials — reuse
+them, but put them in the server environment, never in Busy-style config files
+in the repo.
+
 ## Data the IRP requires
 
 For a real IRN (the simulator does not enforce these):

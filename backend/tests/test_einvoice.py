@@ -11,8 +11,25 @@ from app.models.core import Company
 from app.models.einvoice import EInvoiceStatus
 from app.models.masters import Customer
 from app.services.einvoice import service as svc
+from app.services.einvoice.adapter import (
+    EInvoiceError,
+    EInvoiceSimulator,
+    GspAdapter,
+    get_adapter,
+)
 from app.services.einvoice.payload import EInvoicePayloadError, build_irn_payload
 from app.services.sales import post_sales_invoice
+
+
+class _Cfg:
+    """Minimal settings stand-in for adapter-selection tests (no network)."""
+    einvoice_gsp = "simulator"
+    einvoice_base_url = ""
+    einvoice_username = einvoice_password = einvoice_gstin = ""
+    einvoice_client_id = einvoice_client_secret = ""
+    einvoice_subscription_key = einvoice_subscription_header = ""
+    einvoice_auth_path = "/auth"; einvoice_irn_path = "/invoice"
+    einvoice_cancel_path = "/invoice/cancel"; einvoice_timeout_seconds = 5
 
 
 def _posted_invoice(db, demo, number="INV-EI-1", qty="250", rate="800"):
@@ -99,6 +116,30 @@ def test_cancel_einvoice(db, demo):
     # a cancelled IRN cannot be regenerated on the same invoice
     with pytest.raises(svc.EInvoiceServiceError):
         svc.generate_einvoice(db, inv.id)
+
+
+# ------------------------------ adapter choice ------------------------------
+
+def test_get_adapter_defaults_to_simulator():
+    assert isinstance(get_adapter(_Cfg()), EInvoiceSimulator)
+
+
+def test_gsp_mode_requires_configuration():
+    cfg = _Cfg()
+    cfg.einvoice_gsp = "gsp"                     # live mode, but nothing configured
+    with pytest.raises(EInvoiceError):
+        get_adapter(cfg)
+
+
+def test_gsp_subscription_key_header_is_sent():
+    cfg = _Cfg()
+    cfg.einvoice_gsp = "gsp"
+    cfg.einvoice_base_url = "https://api.gsp.example"
+    cfg.einvoice_username = "u"; cfg.einvoice_password = "p"; cfg.einvoice_gstin = "03ABCDE1234F1Z5"
+    cfg.einvoice_subscription_key = "KEY-123"; cfg.einvoice_subscription_header = "aspid"
+    adapter = get_adapter(cfg)
+    assert isinstance(adapter, GspAdapter)
+    assert adapter._base_headers() == {"aspid": "KEY-123"}
 
 
 # --------------------------------- API --------------------------------------

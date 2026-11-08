@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     einvoice_username: str = ""                # e-invoice portal API user for the GSTIN
     einvoice_password: str = ""
     einvoice_gstin: str = ""                   # the registered supplier GSTIN
+    # Many GSPs (Webtel, Pinnacle, MasterGST, TaxPro) require an API subscription
+    # key on every call, sent in a GSP-specific header. Set both when yours does.
+    einvoice_subscription_key: str = ""
+    einvoice_subscription_header: str = "subscription-key"
     einvoice_timeout_seconds: int = 20
 
     # --- Rounding ---
