@@ -619,8 +619,24 @@ function Dyeing(){
 function Costing(){
   const [cpk,errc]=useData("/api/costing/cost-per-kg");
   const custs=useList("/api/costing/customers"); const orders=useList("/api/costing/orders");
-  const machines=useList("/api/costing/machines");
-  const [cc]=useData("/api/reports/cost-centres");
+  const machines=useList("/api/costing/machines"); const accounts=useList("/api/accounts");
+  const [cc,setCc]=useState(null); const [pools,setPools]=useState([]);
+  const [pf,setPf]=useState({code:genNo("OH"),name:"Electricity",source_account_code:"5070",basis:"OUTPUT_KG"});
+  const [af,setAf]=useState({pool_id:"",month:today().slice(0,7),amount:"10000"});
+  const [pRes,setPRes]=useState(null); const [aRes,setARes]=useState(null); const [ohErr,setOhErr]=useState("");
+  const load=useCallback(()=>{ api("/api/reports/cost-centres").then(setCc).catch(()=>{});
+    api("/api/accounting/overhead/pools").then(setPools).catch(()=>{}); },[]);
+  useEffect(()=>{load()},[load]);
+  const expAccts=accounts.filter(a=>a.code&&(a.code[0]==="5"||a.code[0]==="6")&&a.allow_posting)
+    .map(a=>({id:a.code,name:a.code+" — "+a.name}));
+  const makePool=async e=>{ e.preventDefault(); setOhErr(""); setPRes(null);
+    try{ const r=await api("/api/accounting/overhead/pools",{method:"POST",body:pf});
+      setPRes(r); setPf({...pf,code:genNo("OH")}); load(); }catch(ex){ setOhErr(ex.message); } };
+  const runAlloc=async e=>{ e.preventDefault(); setOhErr(""); setARes(null);
+    if(!af.pool_id){ setOhErr("Pick a pool"); return; }
+    try{ setARes(await api("/api/accounting/overhead/allocate",{method:"POST",body:{
+        pool_id:af.pool_id, period_month:af.month+"-01", amount:af.amount||null}})); load(); }
+    catch(ex){ setOhErr(ex.message); } };
   const pct = v => (Number(v||0)).toFixed(1)+"%";
   return (<div>
     <div className="cards">
@@ -655,6 +671,31 @@ function Costing(){
       <table><thead><tr><th>Machine</th><th>Type</th><th className="num">Cost</th></tr></thead>
       <tbody>{machines.map((m,i)=><tr key={i}><td>{m.machine}</td><td>{m.machine_type}</td>
         <td className="num">{inr2(m.cost)}</td></tr>)}</tbody></table>}
+    </Panel>
+    <Panel title="Overhead allocation (absorb indirect cost into work centres)">
+      <div className="row" style={{gap:16,alignItems:"flex-start"}}>
+        <div style={{flex:1}}>
+          <form onSubmit={makePool}>
+            <div className="field"><label>Pool code</label><input value={pf.code} onChange={e=>setPf({...pf,code:e.target.value})}/></div>
+            <div className="field"><label>Name</label><input value={pf.name} onChange={e=>setPf({...pf,name:e.target.value})}/></div>
+            <div className="field"><label>Source (expense) account</label><Opts items={expAccts} value={pf.source_account_code} onChange={e=>setPf({...pf,source_account_code:e.target.value})}/></div>
+            <div className="field"><label>Basis</label><select value={pf.basis} onChange={e=>setPf({...pf,basis:e.target.value})}>
+              <option value="OUTPUT_KG">Output kg</option><option value="MACHINE_HOURS">Machine hours</option><option value="EQUAL">Equal split</option></select></div>
+            <div style={{marginTop:10}}><button className="btn">Create pool</button></div>
+          </form>
+          <Result r={pRes}/>
+        </div>
+        <div style={{flex:1}}>
+          <form onSubmit={runAlloc}>
+            <div className="field"><label>Pool</label><Opts items={pools.map(p=>({id:p.id,name:`${p.code} — ${p.name} (${p.basis})`}))} value={af.pool_id} onChange={e=>setAf({...af,pool_id:e.target.value})}/></div>
+            <div className="field"><label>Period (month)</label><input type="month" value={af.month} onChange={e=>setAf({...af,month:e.target.value})}/></div>
+            <div className="field"><label>Amount (blank = absorb account balance)</label><input value={af.amount} onChange={e=>setAf({...af,amount:e.target.value})}/></div>
+            <div style={{marginTop:10}}><button className="btn">Run allocation</button></div>
+          </form>
+          <Result r={aRes}/>
+        </div>
+      </div>
+      {ohErr && <div className="err">{ohErr}</div>}
     </Panel>
     <Panel title="Work-centre cost (from the ledger)">
       <div className="muted" style={{marginBottom:8,fontSize:12}}>Each machine is a work centre; production postings tag its cost centre, which rolls up to the department.</div>

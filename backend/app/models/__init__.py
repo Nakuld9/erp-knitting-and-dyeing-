@@ -95,6 +95,12 @@ from app.models.payroll import (  # noqa: F401
     PayrollStatus,
     SalaryStructure,
 )
+from app.models.overhead import (  # noqa: F401
+    AllocationBasis,
+    OverheadAllocationLine,
+    OverheadAllocationRun,
+    OverheadPool,
+)
 from app.models.approvals import (  # noqa: F401
     ApprovalAction,
     ApprovalEvent,

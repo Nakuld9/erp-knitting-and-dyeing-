@@ -57,6 +57,7 @@ DEFAULT_RULES: dict[str, dict[str, str]] = {
         "reversal_expense": "6190", "round_off": "4095", "round_off_counter": "1040",
     },
     "YEAR_END": {"retained_earnings": "3030"},
+    "OVERHEAD_ALLOCATION": {"wip": "1080"},
     "CUSTOMER_RECEIPT": {"bank": "1020", "receivable": "1040"},
     "SUPPLIER_PAYMENT": {"payable": "2010", "bank": "1020"},
     # Fixed assets. Capitalisation debits the asset's own account; the credit

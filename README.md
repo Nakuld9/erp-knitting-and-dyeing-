@@ -130,6 +130,12 @@ specified (pending-verification) Color Service dispensing integration.
   cost centre on the WIP/greige lines, so cost accumulates **per machine in the
   ledger** and rolls up to the department. A **cost-centre report** reads these
   balances back from the posted ledger.
+- **Overhead allocation** — configurable overhead **pools** (electricity, steam,
+  maintenance, depreciation …) are absorbed into the work centres by a chosen
+  **basis** (output kg / machine hours / equal split): an allocation run posts
+  Dr WIP (per work centre) / Cr the source expense account, so each machine's
+  cost centre shows its **fully-loaded** cost (direct + allocated). Idempotent
+  per pool and period; the amount is explicit or pulled from the account balance.
 - **Finishing & quality** (Stage 8) — finishing transactions (hydro/slitting/
   drying/stenter/compacting/raising/heat-setting) with shrinkage and roll
   finishing; **quality inspection** auto-graded from Delta E + shade match →
@@ -157,7 +163,7 @@ specified (pending-verification) Color Service dispensing integration.
 **Platform** — JWT auth + RBAC (15 roles), REST API, Alembic migrations,
 idempotent seed + demo data, Docker Compose.
 
-`160 passing tests` cover the accounting invariants, the nine worked posting
+`165 passing tests` cover the accounting invariants, the nine worked posting
 examples, correction dosing, RBAC, full-cycle trial balance, procurement,
 PO / SO lifecycle (receipt + dispatch roll-up, COGS on delivery), credit /
 debit notes, the greige→finished-goods transfer on finishing, knitting,
@@ -247,7 +253,7 @@ erp/
     │   │                     #   banking, dashboard
     │   └── seed/             # chart of accounts, RBAC, seeder, demo data
     ├── alembic/              # migrations (baseline from metadata)
-    └── tests/                # 160 tests: invariants, posting matrix, TB, procurement,
+    └── tests/                # 165 tests: invariants, posting matrix, TB, procurement,
                               #   knitting, dyeing+dispensing, traceability, statements,
                               #   gst, banking, exports, dashboards, quality, API
 ```

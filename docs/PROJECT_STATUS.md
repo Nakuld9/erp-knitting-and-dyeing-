@@ -1,7 +1,7 @@
 # Project status & pending list
 
 Audit of the implementation against the master specification (the 24-section
-brief). Updated **2026-11-08**. Test suite: **160 passing**
+brief). Updated **2026-11-08**. Test suite: **165 passing**
 (`cd backend && pytest`).
 
 Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ not built.
@@ -33,6 +33,7 @@ Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ no
 | **Valuation / stock ops** | FIFO + **FEFO** draw order, **weighted-average** valuation, **warehouse transfers**, **roll split / merge** (value-conserving) |
 | Costing | per-kg knit/dye/finish, shade/machine/order, std-vs-actual, customer profitability |
 | **Work centres** | machines are WORK cost centres under departments; production/dyeing postings tag the cost centre; cost-centre ledger report |
+| **Overhead allocation** | configurable pools absorbed into work centres by output-kg / machine-hours / equal basis; posts Dr WIP / Cr source expense; fully-loaded cost per work centre |
 | **Fixed assets** | register, SLM/WDV depreciation, disposal (gain/loss) |
 | **Payroll** | salary structures, PF/ESI/PT/TDS, payslips, balanced monthly PRV run |
 | **Approvals** | configurable maker-checker rules; supplier-payment approval gate (self-approval blocked, N approvals, posts on approval) |
@@ -53,6 +54,7 @@ Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ no
 - GST adjustment vouchers (ITC reversal / RCM / manual) + year-end closing
 - Roll split/merge, warehouse stock transfers, FEFO + weighted-average valuation
 - Machines as work centres: cost-centre-tagged production postings + cost-centre report
+- Overhead allocation: pools absorbed into work centres (fully-loaded cost)
 
 ---
 
@@ -74,9 +76,6 @@ Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ no
 ### Manufacturing / inventory
 7. **Physical-verification** / stock-count adjustment workflow
 8. **Sales-return restock** (sales credit note is financial-only today)
-9. **Overhead allocation** across cost centres (utilities/labour/depreciation
-   apportioned to work centres) — work centres now accumulate direct cost; the
-   configurable allocation step (§14) is still open
 
 ### Integration (needs vendor access)
 9. **Live Color Service adapter** (SOAP / OPC-UA / Modbus / DB) — only the simulator exists

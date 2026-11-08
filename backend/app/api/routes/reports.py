@@ -82,8 +82,10 @@ def cost_centres(
     user: User = Depends(require_permission("report.read")),
 ) -> dict:
     from app.services.accounting.cost_centres import cost_centre_report
-    to = date_to or date.today()
-    frm = date_from or _fy_start(to)
+    # Default to the whole fiscal year so period-end postings (e.g. month-end
+    # overhead allocations, year-end entries) are included.
+    frm = date_from or _fy_start(date.today())
+    to = date_to or date(frm.year + 1, 3, 31)
     return _stringify(cost_centre_report(db, user.company_id, frm, to))
 
 

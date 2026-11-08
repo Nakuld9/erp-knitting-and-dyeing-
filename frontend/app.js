@@ -1804,7 +1804,75 @@ function Costing() {
   const custs = useList("/api/costing/customers");
   const orders = useList("/api/costing/orders");
   const machines = useList("/api/costing/machines");
-  const [cc] = useData("/api/reports/cost-centres");
+  const accounts = useList("/api/accounts");
+  const [cc, setCc] = useState(null);
+  const [pools, setPools] = useState([]);
+  const [pf, setPf] = useState({
+    code: genNo("OH"),
+    name: "Electricity",
+    source_account_code: "5070",
+    basis: "OUTPUT_KG"
+  });
+  const [af, setAf] = useState({
+    pool_id: "",
+    month: today().slice(0, 7),
+    amount: "10000"
+  });
+  const [pRes, setPRes] = useState(null);
+  const [aRes, setARes] = useState(null);
+  const [ohErr, setOhErr] = useState("");
+  const load = useCallback(() => {
+    api("/api/reports/cost-centres").then(setCc).catch(() => {});
+    api("/api/accounting/overhead/pools").then(setPools).catch(() => {});
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+  const expAccts = accounts.filter(a => a.code && (a.code[0] === "5" || a.code[0] === "6") && a.allow_posting).map(a => ({
+    id: a.code,
+    name: a.code + " — " + a.name
+  }));
+  const makePool = async e => {
+    e.preventDefault();
+    setOhErr("");
+    setPRes(null);
+    try {
+      const r = await api("/api/accounting/overhead/pools", {
+        method: "POST",
+        body: pf
+      });
+      setPRes(r);
+      setPf({
+        ...pf,
+        code: genNo("OH")
+      });
+      load();
+    } catch (ex) {
+      setOhErr(ex.message);
+    }
+  };
+  const runAlloc = async e => {
+    e.preventDefault();
+    setOhErr("");
+    setARes(null);
+    if (!af.pool_id) {
+      setOhErr("Pick a pool");
+      return;
+    }
+    try {
+      setARes(await api("/api/accounting/overhead/allocate", {
+        method: "POST",
+        body: {
+          pool_id: af.pool_id,
+          period_month: af.month + "-01",
+          amount: af.amount || null
+        }
+      }));
+      load();
+    } catch (ex) {
+      setOhErr(ex.message);
+    }
+  };
   const pct = v => Number(v || 0).toFixed(1) + "%";
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "cards"
@@ -1889,6 +1957,112 @@ function Costing() {
   }, /*#__PURE__*/React.createElement("td", null, m.machine), /*#__PURE__*/React.createElement("td", null, m.machine_type), /*#__PURE__*/React.createElement("td", {
     className: "num"
   }, inr2(m.cost))))))), /*#__PURE__*/React.createElement(Panel, {
+    title: "Overhead allocation (absorb indirect cost into work centres)"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "row",
+    style: {
+      gap: 16,
+      alignItems: "flex-start"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("form", {
+    onSubmit: makePool
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Pool code"), /*#__PURE__*/React.createElement("input", {
+    value: pf.code,
+    onChange: e => setPf({
+      ...pf,
+      code: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Name"), /*#__PURE__*/React.createElement("input", {
+    value: pf.name,
+    onChange: e => setPf({
+      ...pf,
+      name: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Source (expense) account"), /*#__PURE__*/React.createElement(Opts, {
+    items: expAccts,
+    value: pf.source_account_code,
+    onChange: e => setPf({
+      ...pf,
+      source_account_code: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Basis"), /*#__PURE__*/React.createElement("select", {
+    value: pf.basis,
+    onChange: e => setPf({
+      ...pf,
+      basis: e.target.value
+    })
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "OUTPUT_KG"
+  }, "Output kg"), /*#__PURE__*/React.createElement("option", {
+    value: "MACHINE_HOURS"
+  }, "Machine hours"), /*#__PURE__*/React.createElement("option", {
+    value: "EQUAL"
+  }, "Equal split"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 10
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Create pool"))), /*#__PURE__*/React.createElement(Result, {
+    r: pRes
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("form", {
+    onSubmit: runAlloc
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Pool"), /*#__PURE__*/React.createElement(Opts, {
+    items: pools.map(p => ({
+      id: p.id,
+      name: `${p.code} — ${p.name} (${p.basis})`
+    })),
+    value: af.pool_id,
+    onChange: e => setAf({
+      ...af,
+      pool_id: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Period (month)"), /*#__PURE__*/React.createElement("input", {
+    type: "month",
+    value: af.month,
+    onChange: e => setAf({
+      ...af,
+      month: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Amount (blank = absorb account balance)"), /*#__PURE__*/React.createElement("input", {
+    value: af.amount,
+    onChange: e => setAf({
+      ...af,
+      amount: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 10
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Run allocation"))), /*#__PURE__*/React.createElement(Result, {
+    r: aRes
+  }))), ohErr && /*#__PURE__*/React.createElement("div", {
+    className: "err"
+  }, ohErr)), /*#__PURE__*/React.createElement(Panel, {
     title: "Work-centre cost (from the ledger)"
   }, /*#__PURE__*/React.createElement("div", {
     className: "muted",
