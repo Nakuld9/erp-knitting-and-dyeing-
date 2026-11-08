@@ -44,6 +44,44 @@ def itc_reversal(payload: ITCReversalIn, db: Session = Depends(get_db),
     return {"voucher_number": v.number, "total": str(v.total_debit)}
 
 
+@router.post("/gst-adjustments/itc-reclaim", status_code=status.HTTP_201_CREATED)
+def itc_reclaim(payload: ITCReversalIn, db: Session = Depends(get_db),
+                user: User = Depends(require_permission("voucher.post"))):
+    try:
+        v = gadj.post_itc_reclaim(db, company_id=user.company_id, vdate=payload.vdate,
+                                  reference=payload.reference, cgst=payload.cgst, sgst=payload.sgst,
+                                  igst=payload.igst, expense_account=payload.expense_account,
+                                  narration=payload.narration, created_by=user.id)
+        db.commit()
+    except gadj.GSTAdjustmentError as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    return {"voucher_number": v.number, "total": str(v.total_debit)}
+
+
+class RoundOffIn(BaseModel):
+    vdate: date
+    reference: str
+    amount: Decimal                       # signed: + gain, - cost
+    counter_account: str | None = None
+    narration: str | None = None
+
+
+@router.post("/gst-adjustments/round-off", status_code=status.HTTP_201_CREATED)
+def round_off(payload: RoundOffIn, db: Session = Depends(get_db),
+              user: User = Depends(require_permission("voucher.post"))):
+    try:
+        v = gadj.post_round_off(db, company_id=user.company_id, vdate=payload.vdate,
+                                reference=payload.reference, amount=payload.amount,
+                                counter_account=payload.counter_account,
+                                narration=payload.narration, created_by=user.id)
+        db.commit()
+    except gadj.GSTAdjustmentError as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    return {"voucher_number": v.number, "total": str(v.total_debit)}
+
+
 class RCMIn(BaseModel):
     vdate: date
     reference: str

@@ -1266,14 +1266,20 @@ function Approvals(){
 // ---- GST adjustments & year-end close -------------------------------------
 function AccountingOps(){
   const [g,setG]=useState({kind:"itc-reversal",reference:genNo("GA"),cgst:"900",sgst:"900",igst:"0"});
+  const [ro,setRo]=useState({reference:genNo("RO"),amount:"0.40"});
   const [fy,setFy]=useState("2026-2027");
-  const [gRes,setGRes]=useState(null); const [yRes,setYRes]=useState(null);
-  const [gErr,setGErr]=useState(""); const [yErr,setYErr]=useState("");
+  const [gRes,setGRes]=useState(null); const [roRes,setRoRes]=useState(null); const [yRes,setYRes]=useState(null);
+  const [gErr,setGErr]=useState(""); const [roErr,setRoErr]=useState(""); const [yErr,setYErr]=useState("");
   const postGst=async e=>{ e.preventDefault(); setGErr(""); setGRes(null);
     try{ const r=await api(`/api/accounting/gst-adjustments/${g.kind}`,{method:"POST",body:{
         vdate:today(), reference:g.reference, cgst:g.cgst||"0", sgst:g.sgst||"0", igst:g.igst||"0"}});
       setGRes(r); setG({...g,reference:genNo("GA")}); }
     catch(ex){ setGErr(ex.message); } };
+  const postRound=async e=>{ e.preventDefault(); setRoErr(""); setRoRes(null);
+    try{ const r=await api("/api/accounting/gst-adjustments/round-off",{method:"POST",body:{
+        vdate:today(), reference:ro.reference, amount:ro.amount}});
+      setRoRes(r); setRo({...ro,reference:genNo("RO")}); }
+    catch(ex){ setRoErr(ex.message); } };
   const closeYear=async e=>{ e.preventDefault(); setYErr(""); setYRes(null);
     if(!confirm(`Close the books for ${fy}? Income and expense accounts will be moved to retained earnings and every period in the year will be locked.`)) return;
     try{ setYRes(await api("/api/accounting/year-end/close",{method:"POST",body:{fiscal_year:fy}})); }
@@ -1284,6 +1290,7 @@ function AccountingOps(){
         <div className="row mb">
           <div className="field"><label>Type</label><select value={g.kind} onChange={e=>setG({...g,kind:e.target.value})}>
             <option value="itc-reversal">ITC reversal</option>
+            <option value="itc-reclaim">ITC reclaim</option>
             <option value="rcm">Reverse charge (RCM)</option></select></div>
           <div className="field"><label>Reference</label><input value={g.reference} onChange={e=>setG({...g,reference:e.target.value})}/></div>
         </div>
@@ -1294,10 +1301,24 @@ function AccountingOps(){
           <div className="field" style={{alignSelf:"end"}}><button className="btn">Post adjustment</button></div>
         </div>
         <div className="muted" style={{marginTop:8,fontSize:12}}>
-          {g.kind==="itc-reversal" ? "Dr Reversal expense · Cr Input CGST/SGST/IGST" : "Dr Input CGST/SGST/IGST · Cr Output CGST/SGST/IGST (net-nil to P&L)"}</div>
+          {g.kind==="itc-reversal" ? "Dr Reversal expense · Cr Input CGST/SGST/IGST"
+            : g.kind==="itc-reclaim" ? "Dr Input CGST/SGST/IGST · Cr Reversal expense (mirror of reversal)"
+            : "Dr Input CGST/SGST/IGST · Cr Output CGST/SGST/IGST (net-nil to P&L)"}</div>
         {gErr && <div className="err">{gErr}</div>}
       </form>
       <Result r={gRes}/>
+    </Panel>
+    <Panel title="GST round off">
+      <form onSubmit={postRound}>
+        <div className="row">
+          <div className="field"><label>Reference</label><input value={ro.reference} onChange={e=>setRo({...ro,reference:e.target.value})}/></div>
+          <div className="field"><label>Amount (± ₹)</label><input value={ro.amount} onChange={e=>setRo({...ro,amount:e.target.value})}/></div>
+          <div className="field" style={{alignSelf:"end"}}><button className="btn">Post round off</button></div>
+        </div>
+        <div className="muted" style={{marginTop:8,fontSize:12}}>Positive → Dr receivable · Cr Rounding Off (gain); negative → Dr Rounding Off · Cr receivable (cost).</div>
+        {roErr && <div className="err">{roErr}</div>}
+      </form>
+      <Result r={roRes}/>
     </Panel>
     <Panel title="Year-end close">
       <form onSubmit={closeYear}>

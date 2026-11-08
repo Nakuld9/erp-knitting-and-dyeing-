@@ -32,6 +32,46 @@ def test_itc_reversal_is_idempotent(db, company):
     assert v1.id == v2.id
 
 
+def test_itc_reclaim_mirrors_reversal(db, company):
+    v = gadj.post_itc_reclaim(db, company_id=company.id, vdate=date(2026, 11, 7),
+                              reference="RC1", cgst="500", sgst="500")
+    db.commit()
+    # Dr input CGST 500 + input SGST 500; Cr reversal expense 1000.
+    assert v.total_debit == v.total_credit == Decimal("1000.00")
+    assert len(v.lines) == 3
+    # The reclaim debits the input-tax accounts (mirror of the reversal credit).
+    debit_accts = {ln.account_id for ln in v.lines if ln.debit > 0}
+    assert len(debit_accts) == 2
+
+
+def test_itc_reclaim_is_idempotent(db, company):
+    v1 = gadj.post_itc_reclaim(db, company_id=company.id, vdate=date(2026, 11, 7),
+                               reference="RC2", igst="300"); db.commit()
+    v2 = gadj.post_itc_reclaim(db, company_id=company.id, vdate=date(2026, 11, 7),
+                               reference="RC2", igst="300"); db.commit()
+    assert v1.id == v2.id
+
+
+def test_round_off_positive_and_negative(db, company):
+    # +0.40 gain: Dr counter (receivable) / Cr Rounding Off.
+    vp = gadj.post_round_off(db, company_id=company.id, vdate=date(2026, 11, 7),
+                             reference="RO+", amount="0.40"); db.commit()
+    assert vp.total_debit == vp.total_credit == Decimal("0.40")
+    # -0.30 cost: Dr Rounding Off / Cr counter.
+    vn = gadj.post_round_off(db, company_id=company.id, vdate=date(2026, 11, 7),
+                             reference="RO-", amount="-0.30"); db.commit()
+    assert vn.total_debit == vn.total_credit == Decimal("0.30")
+
+
+def test_round_off_rejects_zero(db, company):
+    try:
+        gadj.post_round_off(db, company_id=company.id, vdate=date(2026, 11, 7),
+                            reference="RO0", amount="0")
+        assert False, "expected GSTAdjustmentError"
+    except gadj.GSTAdjustmentError:
+        db.rollback()
+
+
 def test_rcm_books_output_and_input(db, company):
     v = gadj.post_rcm(db, company_id=company.id, vdate=date(2026, 11, 7),
                       reference="RCM1", cgst="900", sgst="900")

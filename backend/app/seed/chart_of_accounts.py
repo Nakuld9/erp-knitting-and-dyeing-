@@ -85,6 +85,7 @@ COA: list[tuple[str, str, AccountType, bool, str | None, set[str]]] = [
     ("4050", "Other Operating Income", I, False, "4000", set()),
     ("4060", "Scrap Sales", I, False, "4000", set()),
     ("4090", "Other Income", I, False, "4000", set()),
+    ("4095", "Rounding Off", I, False, "4000", set()),
     # ---------------- DIRECT EXPENSES / COGS ----------------
     ("5000", "Direct Expenses & COGS", X, True, None, set()),
     ("5010", "Yarn Consumption", X, False, "5000", set()),

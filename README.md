@@ -56,8 +56,10 @@ specified (pending-verification) Color Service dispensing integration.
   Wired to **supplier payments**: a payment at/above the threshold is held until
   the required approvals arrive, then posts; below it, it posts immediately.
 - **GST adjustment vouchers** — **ITC reversal** (Dr reversal expense / Cr input
-  tax) and **reverse-charge (RCM)** self-assessment (books output liability +
-  input credit), plus a manual two-account adjustment; all balanced, idempotent.
+  tax), **ITC reclaim** (the mirror — re-take credit earlier reversed),
+  **reverse-charge (RCM)** self-assessment (books output liability + input
+  credit), **round-off** (the rounding difference against a Rounding Off
+  account), plus a manual two-account adjustment; all balanced, idempotent.
 - **Year-end closing** — posts a closing voucher that zeroes income & expense
   accounts into **Retained Earnings** and locks every period in the year
   (idempotent); the P&L then nets to zero and the profit carries forward.
@@ -142,13 +144,13 @@ specified (pending-verification) Color Service dispensing integration.
 **Platform** — JWT auth + RBAC (15 roles), REST API, Alembic migrations,
 idempotent seed + demo data, Docker Compose.
 
-`144 passing tests` cover the accounting invariants, the nine worked posting
+`148 passing tests` cover the accounting invariants, the nine worked posting
 examples, correction dosing, RBAC, full-cycle trial balance, procurement,
 PO / SO lifecycle (receipt + dispatch roll-up, COGS on delivery), credit /
 debit notes, the greige→finished-goods transfer on finishing, knitting,
 roll auto-numbering + lineage, fixed assets (SLM/WDV depreciation + disposal),
 payroll (PF/ESI/PT/TDS + balanced run), maker-checker approvals, GST
-adjustments (ITC reversal / RCM), year-end closing, recipe scaling, the full
+adjustments (ITC reversal / reclaim / RCM / round-off), year-end closing, recipe scaling, the full
 dispensing cycle, end-to-end traceability, the financial statements (P&L /
 Balance Sheet / Cash Flow / ageing), GST (registers / GSTR-1 / GSTR-3B /
 reconciliation), and the REST flow. See the acceptance-test map below.
@@ -232,7 +234,7 @@ erp/
     │   │                     #   banking, dashboard
     │   └── seed/             # chart of accounts, RBAC, seeder, demo data
     ├── alembic/              # migrations (baseline from metadata)
-    └── tests/                # 144 tests: invariants, posting matrix, TB, procurement,
+    └── tests/                # 148 tests: invariants, posting matrix, TB, procurement,
                               #   knitting, dyeing+dispensing, traceability, statements,
                               #   gst, banking, exports, dashboards, quality, API
 ```

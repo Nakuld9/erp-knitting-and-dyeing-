@@ -1,7 +1,7 @@
 # Project status & pending list
 
 Audit of the implementation against the master specification (the 24-section
-brief). Updated **2026-11-08**. Test suite: **144 passing**
+brief). Updated **2026-11-08**. Test suite: **148 passing**
 (`cd backend && pytest`).
 
 Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ not built.
@@ -17,7 +17,7 @@ Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ no
 | General ledger | GL + customer/supplier/bank sub-ledgers, drill-down to source |
 | Trial balance | automatic, debit=credit validation, period/branch scoped |
 | Financial statements | P&L, Balance Sheet, Cash Flow, Debtors & Creditors ageing |
-| GST | CGST/SGST/IGST, configurable rates, purchase/sales registers, GSTR-1, GSTR-3B, book-vs-register reconciliation, **adjustment vouchers (ITC reversal / RCM / manual)** |
+| GST | CGST/SGST/IGST, configurable rates, purchase/sales registers, GSTR-1, GSTR-3B, book-vs-register reconciliation, **adjustment vouchers (ITC reversal / reclaim / RCM / round-off / manual)** |
 | **Year-end close** | closing voucher zeroes income/expense into retained earnings + locks the year's periods (idempotent) |
 | Banking | receipts/payments/contra, CSV statement import, reconciliation |
 | Procurement | chemical/dye GRN → FIFO stock + GST purchase voucher |

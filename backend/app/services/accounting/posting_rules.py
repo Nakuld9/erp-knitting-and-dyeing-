@@ -54,7 +54,7 @@ DEFAULT_RULES: dict[str, dict[str, str]] = {
     "GST_ADJUSTMENT": {
         "input_cgst": "1121", "input_sgst": "1122", "input_igst": "1123",
         "output_cgst": "2041", "output_sgst": "2042", "output_igst": "2043",
-        "reversal_expense": "6190",
+        "reversal_expense": "6190", "round_off": "4095", "round_off_counter": "1040",
     },
     "YEAR_END": {"retained_earnings": "3030"},
     "CUSTOMER_RECEIPT": {"bank": "1020", "receivable": "1040"},

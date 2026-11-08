@@ -4052,10 +4052,16 @@ function AccountingOps() {
     sgst: "900",
     igst: "0"
   });
+  const [ro, setRo] = useState({
+    reference: genNo("RO"),
+    amount: "0.40"
+  });
   const [fy, setFy] = useState("2026-2027");
   const [gRes, setGRes] = useState(null);
+  const [roRes, setRoRes] = useState(null);
   const [yRes, setYRes] = useState(null);
   const [gErr, setGErr] = useState("");
+  const [roErr, setRoErr] = useState("");
   const [yErr, setYErr] = useState("");
   const postGst = async e => {
     e.preventDefault();
@@ -4079,6 +4085,28 @@ function AccountingOps() {
       });
     } catch (ex) {
       setGErr(ex.message);
+    }
+  };
+  const postRound = async e => {
+    e.preventDefault();
+    setRoErr("");
+    setRoRes(null);
+    try {
+      const r = await api("/api/accounting/gst-adjustments/round-off", {
+        method: "POST",
+        body: {
+          vdate: today(),
+          reference: ro.reference,
+          amount: ro.amount
+        }
+      });
+      setRoRes(r);
+      setRo({
+        ...ro,
+        reference: genNo("RO")
+      });
+    } catch (ex) {
+      setRoErr(ex.message);
     }
   };
   const closeYear = async e => {
@@ -4114,6 +4142,8 @@ function AccountingOps() {
   }, /*#__PURE__*/React.createElement("option", {
     value: "itc-reversal"
   }, "ITC reversal"), /*#__PURE__*/React.createElement("option", {
+    value: "itc-reclaim"
+  }, "ITC reclaim"), /*#__PURE__*/React.createElement("option", {
     value: "rcm"
   }, "Reverse charge (RCM)"))), /*#__PURE__*/React.createElement("div", {
     className: "field"
@@ -4162,10 +4192,49 @@ function AccountingOps() {
       marginTop: 8,
       fontSize: 12
     }
-  }, g.kind === "itc-reversal" ? "Dr Reversal expense · Cr Input CGST/SGST/IGST" : "Dr Input CGST/SGST/IGST · Cr Output CGST/SGST/IGST (net-nil to P&L)"), gErr && /*#__PURE__*/React.createElement("div", {
+  }, g.kind === "itc-reversal" ? "Dr Reversal expense · Cr Input CGST/SGST/IGST" : g.kind === "itc-reclaim" ? "Dr Input CGST/SGST/IGST · Cr Reversal expense (mirror of reversal)" : "Dr Input CGST/SGST/IGST · Cr Output CGST/SGST/IGST (net-nil to P&L)"), gErr && /*#__PURE__*/React.createElement("div", {
     className: "err"
   }, gErr)), /*#__PURE__*/React.createElement(Result, {
     r: gRes
+  })), /*#__PURE__*/React.createElement(Panel, {
+    title: "GST round off"
+  }, /*#__PURE__*/React.createElement("form", {
+    onSubmit: postRound
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "row"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Reference"), /*#__PURE__*/React.createElement("input", {
+    value: ro.reference,
+    onChange: e => setRo({
+      ...ro,
+      reference: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Amount (\xB1 \u20B9)"), /*#__PURE__*/React.createElement("input", {
+    value: ro.amount,
+    onChange: e => setRo({
+      ...ro,
+      amount: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field",
+    style: {
+      alignSelf: "end"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Post round off"))), /*#__PURE__*/React.createElement("div", {
+    className: "muted",
+    style: {
+      marginTop: 8,
+      fontSize: 12
+    }
+  }, "Positive \u2192 Dr receivable \xB7 Cr Rounding Off (gain); negative \u2192 Dr Rounding Off \xB7 Cr receivable (cost)."), roErr && /*#__PURE__*/React.createElement("div", {
+    className: "err"
+  }, roErr)), /*#__PURE__*/React.createElement(Result, {
+    r: roRes
   })), /*#__PURE__*/React.createElement(Panel, {
     title: "Year-end close"
   }, /*#__PURE__*/React.createElement("form", {
