@@ -42,13 +42,18 @@ def record_production(
     )
     yarn_cost = result["total_cost"]
 
+    # The machine is a work centre: its cost-centre tags the WIP/greige lines so
+    # production cost accumulates per machine in the ledger.
+    from app.services import work_centres
+    cc_id = work_centres.machine_cost_centre_id(db, kp.company_id, kp.machine_id)
+
     # 2) Accounting: yarn -> WIP, then WIP -> greige inventory.
     issue_voucher = pe.post_voucher(db, pe.PostingRequest(
         company_id=kp.company_id, voucher_type_code="PJ", voucher_date=kp.production_date,
         posting_reference=issue_ref, narration=f"Yarn issue for knitting {kp.number}",
         source_module="knitting", source_id=str(kp.id), created_by=created_by,
         lines=[
-            pe.PostingLine(resolve_account(db, kp.company_id, "YARN_ISSUE", "wip"), debit=yarn_cost),
+            pe.PostingLine(resolve_account(db, kp.company_id, "YARN_ISSUE", "wip"), debit=yarn_cost, cost_centre_id=cc_id),
             pe.PostingLine(resolve_account(db, kp.company_id, "YARN_ISSUE", "inventory"), credit=yarn_cost),
         ],
     ))
@@ -58,8 +63,8 @@ def record_production(
         posting_reference=produce_ref, narration=f"Greige production {kp.number}",
         source_module="knitting", source_id=str(kp.id), created_by=created_by,
         lines=[
-            pe.PostingLine(resolve_account(db, kp.company_id, "KNITTING_PRODUCTION", "greige"), debit=yarn_cost),
-            pe.PostingLine(resolve_account(db, kp.company_id, "KNITTING_PRODUCTION", "wip"), credit=yarn_cost),
+            pe.PostingLine(resolve_account(db, kp.company_id, "KNITTING_PRODUCTION", "greige"), debit=yarn_cost, cost_centre_id=cc_id),
+            pe.PostingLine(resolve_account(db, kp.company_id, "KNITTING_PRODUCTION", "wip"), credit=yarn_cost, cost_centre_id=cc_id),
         ],
     ))
 

@@ -110,6 +110,11 @@ def ingest_results(
     summary = {"processed": 0, "skipped": 0, "failed": 0,
                "total_cost": quantize(0, MONEY_SCALE), "transactions": []}
 
+    # The dyeing machine is a work centre: tag the WIP line so dye/chemical cost
+    # accumulates per machine in the ledger.
+    from app.services import work_centres
+    cc_id = work_centres.machine_cost_centre_id(db, company_id, bath.machine_id)
+
     for r in results:
         evt = db.execute(
             select(IntegrationEvent).where(
@@ -192,7 +197,7 @@ def ingest_results(
             source_module="dispensing", source_id=str(txn.id), created_by=created_by,
             lines=[
                 pe.PostingLine(resolve_account(db, company_id, event_type, "wip"), debit=cost,
-                               narration=f"{r.material_code} to WIP"),
+                               cost_centre_id=cc_id, narration=f"{r.material_code} to WIP"),
                 pe.PostingLine(resolve_account(db, company_id, event_type, "inventory"), credit=cost,
                                narration=f"{r.material_code} consumed"),
             ],

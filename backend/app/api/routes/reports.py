@@ -74,6 +74,19 @@ def profit_and_loss(
     return _stringify(fs.profit_and_loss(db, user.company_id, frm, to))
 
 
+@router.get("/cost-centres")
+def cost_centres(
+    date_from: date | None = None,
+    date_to: date | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("report.read")),
+) -> dict:
+    from app.services.accounting.cost_centres import cost_centre_report
+    to = date_to or date.today()
+    frm = date_from or _fy_start(to)
+    return _stringify(cost_centre_report(db, user.company_id, frm, to))
+
+
 @router.get("/balance-sheet")
 def balance_sheet(
     as_of: date | None = None,

@@ -25,7 +25,17 @@ from app.models.accounting import (
     VoucherType,
 )
 from app.models.core import Company, Permission, Role, User
-from app.models.masters import UnitOfMeasure
+from app.models.masters import CostCentre, CostCentreType, UnitOfMeasure
+
+# Departmental cost centres (brief module 14). Machines (work centres) sit under
+# these by machine type.
+DEPARTMENT_CENTRES = [
+    ("KNIT", "Knitting"), ("DYE", "Dyeing"), ("FINISH", "Finishing"),
+    ("CHEMSTORE", "Chemical Store"), ("UTIL", "Utilities"), ("MAINT", "Maintenance"),
+    ("ADMIN", "Administration"), ("PACK", "Packing"),
+]
+# machine_type -> department cost-centre code
+DEPT_FOR_MACHINE_TYPE = {"KNITTING": "KNIT", "DYEING": "DYE", "FINISHING": "FINISH"}
 from app.seed.chart_of_accounts import COA, VOUCHER_TYPES
 from app.seed.rbac import PERMISSIONS, ROLES
 from app.services.accounting.posting_rules import seed_default_posting_rules
@@ -51,6 +61,13 @@ def _get_or_create(db: Session, model, defaults=None, **keys):
     db.add(obj)
     db.flush()
     return obj, True
+
+
+def seed_cost_centres(db: Session, company: Company) -> None:
+    for code, name in DEPARTMENT_CENTRES:
+        _get_or_create(db, CostCentre, {"name": name, "centre_type": CostCentreType.COST},
+                       company_id=company.id, code=code)
+    db.flush()
 
 
 def seed_permissions_and_roles(db: Session) -> dict[str, Role]:
@@ -190,6 +207,7 @@ def run_seed(db: Session, *, fy_start_year: int | None = None) -> dict:
     seed_chart_of_accounts(db, company)
     seed_default_posting_rules(db, company.id)
     seed_periods(db, company, fy_start_year)
+    seed_cost_centres(db, company)
     seed_uoms(db)
     admin = seed_admin(db, company, roles)
     db.commit()

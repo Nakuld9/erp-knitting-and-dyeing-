@@ -31,8 +31,9 @@ class MachineType(str, enum.Enum):
 
 
 class CostCentreType(str, enum.Enum):
-    COST = "COST"
-    PROFIT = "PROFIT"
+    COST = "COST"       # a department / overhead cost centre
+    PROFIT = "PROFIT"   # a profit centre
+    WORK = "WORK"       # a production work centre (a machine), under a department
 
 
 # --- units / tax / costing --------------------------------------------------

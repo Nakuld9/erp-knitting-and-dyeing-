@@ -1804,6 +1804,7 @@ function Costing() {
   const custs = useList("/api/costing/customers");
   const orders = useList("/api/costing/orders");
   const machines = useList("/api/costing/machines");
+  const [cc] = useData("/api/reports/cost-centres");
   const pct = v => Number(v || 0).toFixed(1) + "%";
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "cards"
@@ -1887,7 +1888,45 @@ function Costing() {
     key: i
   }, /*#__PURE__*/React.createElement("td", null, m.machine), /*#__PURE__*/React.createElement("td", null, m.machine_type), /*#__PURE__*/React.createElement("td", {
     className: "num"
-  }, inr2(m.cost))))))));
+  }, inr2(m.cost))))))), /*#__PURE__*/React.createElement(Panel, {
+    title: "Work-centre cost (from the ledger)"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "muted",
+    style: {
+      marginBottom: 8,
+      fontSize: 12
+    }
+  }, "Each machine is a work centre; production postings tag its cost centre, which rolls up to the department."), !cc || cc.centres.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "No cost-centre postings yet.") : /*#__PURE__*/React.createElement("div", {
+    className: "row",
+    style: {
+      gap: 16,
+      alignItems: "flex-start"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Work centre"), /*#__PURE__*/React.createElement("th", null, "Type"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Net cost"))), /*#__PURE__*/React.createElement("tbody", null, cc.centres.map((c, i) => /*#__PURE__*/React.createElement("tr", {
+    key: i
+  }, /*#__PURE__*/React.createElement("td", null, c.code, " \u2014 ", c.name), /*#__PURE__*/React.createElement("td", null, c.type), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(c.net_cost))))))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Department"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Net cost"))), /*#__PURE__*/React.createElement("tbody", null, cc.departments.map((d, i) => /*#__PURE__*/React.createElement("tr", {
+    key: i
+  }, /*#__PURE__*/React.createElement("td", null, d.code, " \u2014 ", d.name), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(d.net_cost))))), /*#__PURE__*/React.createElement("tfoot", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Total"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, inr2(cc.total_net_cost)))))))));
 }
 
 // ---- devices & labels -----------------------------------------------------

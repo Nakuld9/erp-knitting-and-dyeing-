@@ -620,6 +620,7 @@ function Costing(){
   const [cpk,errc]=useData("/api/costing/cost-per-kg");
   const custs=useList("/api/costing/customers"); const orders=useList("/api/costing/orders");
   const machines=useList("/api/costing/machines");
+  const [cc]=useData("/api/reports/cost-centres");
   const pct = v => (Number(v||0)).toFixed(1)+"%";
   return (<div>
     <div className="cards">
@@ -654,6 +655,23 @@ function Costing(){
       <table><thead><tr><th>Machine</th><th>Type</th><th className="num">Cost</th></tr></thead>
       <tbody>{machines.map((m,i)=><tr key={i}><td>{m.machine}</td><td>{m.machine_type}</td>
         <td className="num">{inr2(m.cost)}</td></tr>)}</tbody></table>}
+    </Panel>
+    <Panel title="Work-centre cost (from the ledger)">
+      <div className="muted" style={{marginBottom:8,fontSize:12}}>Each machine is a work centre; production postings tag its cost centre, which rolls up to the department.</div>
+      {(!cc || cc.centres.length===0) ? <div className="muted">No cost-centre postings yet.</div> :
+      <div className="row" style={{gap:16,alignItems:"flex-start"}}>
+        <div style={{flex:1}}>
+          <table><thead><tr><th>Work centre</th><th>Type</th><th className="num">Net cost</th></tr></thead>
+          <tbody>{cc.centres.map((c,i)=><tr key={i}><td>{c.code} — {c.name}</td><td>{c.type}</td>
+            <td className="num">{inr2(c.net_cost)}</td></tr>)}</tbody></table>
+        </div>
+        <div style={{flex:1}}>
+          <table><thead><tr><th>Department</th><th className="num">Net cost</th></tr></thead>
+          <tbody>{cc.departments.map((d,i)=><tr key={i}><td>{d.code} — {d.name}</td>
+            <td className="num">{inr2(d.net_cost)}</td></tr>)}</tbody>
+          <tfoot><tr><th>Total</th><th className="num">{inr2(cc.total_net_cost)}</th></tr></tfoot></table>
+        </div>
+      </div>}
     </Panel>
   </div>);
 }

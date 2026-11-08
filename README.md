@@ -125,6 +125,11 @@ specified (pending-verification) Color Service dispensing integration.
   **order- and customer-wise profitability** (revenue − actual cost → gross
   profit + margin), machine- and shade-wise cost, and cost-per-kg (knitted /
   dyed) — all from actual posted consumption and revenue.
+- **Work centres** — each machine is a work centre (a WORK cost centre under its
+  department); issuing yarn and producing fabric (and dyeing) tags the machine's
+  cost centre on the WIP/greige lines, so cost accumulates **per machine in the
+  ledger** and rolls up to the department. A **cost-centre report** reads these
+  balances back from the posted ledger.
 - **Finishing & quality** (Stage 8) — finishing transactions (hydro/slitting/
   drying/stenter/compacting/raising/heat-setting) with shrinkage and roll
   finishing; **quality inspection** auto-graded from Delta E + shade match →
@@ -152,7 +157,7 @@ specified (pending-verification) Color Service dispensing integration.
 **Platform** — JWT auth + RBAC (15 roles), REST API, Alembic migrations,
 idempotent seed + demo data, Docker Compose.
 
-`156 passing tests` cover the accounting invariants, the nine worked posting
+`160 passing tests` cover the accounting invariants, the nine worked posting
 examples, correction dosing, RBAC, full-cycle trial balance, procurement,
 PO / SO lifecycle (receipt + dispatch roll-up, COGS on delivery), credit /
 debit notes, the greige→finished-goods transfer on finishing, knitting,
@@ -242,7 +247,7 @@ erp/
     │   │                     #   banking, dashboard
     │   └── seed/             # chart of accounts, RBAC, seeder, demo data
     ├── alembic/              # migrations (baseline from metadata)
-    └── tests/                # 156 tests: invariants, posting matrix, TB, procurement,
+    └── tests/                # 160 tests: invariants, posting matrix, TB, procurement,
                               #   knitting, dyeing+dispensing, traceability, statements,
                               #   gst, banking, exports, dashboards, quality, API
 ```
