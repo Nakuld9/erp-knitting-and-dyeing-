@@ -23,6 +23,7 @@ from app.api.routes import (
     operations,
     orders,
     payroll,
+    presales,
     quality,
     reports,
     rolls,
@@ -48,6 +49,7 @@ app.include_router(reports.router)
 app.include_router(operations.router)
 app.include_router(orders.router)
 app.include_router(payroll.router)
+app.include_router(presales.router)
 app.include_router(banking.router)
 app.include_router(dashboard.router)
 app.include_router(quality.router)

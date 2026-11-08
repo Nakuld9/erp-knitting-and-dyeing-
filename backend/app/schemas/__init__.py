@@ -60,6 +60,7 @@ class PartyOut(ORMModel):
     name: str
     gstin: str | None = None
     state_code: str | None = None
+    credit_limit: Decimal | None = None
 
 
 class WarehouseCreate(BaseModel):

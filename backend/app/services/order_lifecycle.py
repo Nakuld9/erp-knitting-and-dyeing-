@@ -137,9 +137,39 @@ def create_sales_order(
     return so
 
 
+def so_gross_value(db: Session, so: SalesOrder) -> Decimal:
+    """Order value including GST, for credit-limit checks."""
+    from app.models.core import Company
+    from app.models.masters import Customer, TaxCode
+    from app.services.tax import compute_gst
+    company = db.get(Company, so.company_id)
+    customer = db.get(Customer, so.customer_id)
+    intra = (company.state_code == customer.state_code) if (company and customer
+             and company.state_code and customer.state_code) else True
+    gross = quantize(Decimal("0"), MONEY_SCALE)
+    for ln in so.lines:
+        amount = quantize(Decimal(str(ln.qty_kg)) * Decimal(str(ln.rate)), MONEY_SCALE)
+        tc = db.get(TaxCode, ln.tax_code_id) if ln.tax_code_id else None
+        g = compute_gst(tc, amount, intra_state=intra)
+        gross = quantize(gross + amount + g["cgst"] + g["sgst"] + g["igst"], MONEY_SCALE)
+    return gross
+
+
 def confirm_sales_order(db: Session, so: SalesOrder) -> SalesOrder:
     if so.status != DocStatus.DRAFT:
         raise LifecycleError(f"Sales order {so.number} is {so.status}, not DRAFT")
+    # Credit control: block if confirming would push the customer past their limit.
+    from app.models.masters import Customer
+    from app.services.accounting import statements
+    customer = db.get(Customer, so.customer_id)
+    limit = quantize(Decimal(str(customer.credit_limit or 0)), MONEY_SCALE) if customer else MZERO
+    if limit > 0:
+        outstanding = statements.customer_outstanding(db, so.company_id, so.customer_id)
+        exposure = quantize(outstanding + so_gross_value(db, so), MONEY_SCALE)
+        if exposure > limit:
+            raise LifecycleError(
+                f"Credit limit exceeded for {customer.name}: outstanding {outstanding} + "
+                f"order {so_gross_value(db, so)} = {exposure} > limit {limit}")
     so.status = DocStatus.CONFIRMED
     db.flush()
     return so

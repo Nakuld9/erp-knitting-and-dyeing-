@@ -1,7 +1,7 @@
 # Project status & pending list
 
 Audit of the implementation against the master specification (the 24-section
-brief). Updated **2026-11-08**. Test suite: **165 passing**
+brief). Updated **2026-11-08**. Test suite: **171 passing**
 (`cd backend && pytest`).
 
 Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ not built.
@@ -21,6 +21,7 @@ Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ no
 | **Year-end close** | closing voucher zeroes income/expense into retained earnings + locks the year's periods (idempotent) |
 | Banking | receipts/payments/contra, CSV statement import, reconciliation |
 | Procurement | chemical/dye GRN → FIFO stock + GST purchase voucher |
+| **Sales pipeline** | enquiries → quotations → convert to SO; credit-limit control on SO confirm; customer/supplier statements |
 | **PO / SO lifecycle** | PO place/confirm → GRN roll-up (PARTIAL/COMPLETED); SO place/confirm → delivery challan → **COGS**; invoice |
 | **Credit / debit notes** | sales credit note (receivable + output GST reversal); purchase debit note (goods return, FIFO relief + ITC reversal); both in GST registers |
 | Knitting | machine/shift/operator/yarn-lot, greige rolls, WIP/greige postings |
@@ -55,6 +56,7 @@ Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ no
 - Roll split/merge, warehouse stock transfers, FEFO + weighted-average valuation
 - Machines as work centres: cost-centre-tagged production postings + cost-centre report
 - Overhead allocation: pools absorbed into work centres (fully-loaded cost)
+- Sales pipeline: enquiries/quotations + convert-to-SO, credit limits, party statements
 
 ---
 
@@ -68,14 +70,9 @@ Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ no
    gates supplier payments; extend the same rules to vouchers, POs and journals.
 3. **Notifications** & **attachments** (document uploads)
 
-### Sales / commercial
-4. **Enquiries & Quotations** (pre-sales pipeline)
-5. **Credit-limit enforcement** on sales orders
-6. **Customer / supplier statements** (formatted; ageing already exists)
-
 ### Manufacturing / inventory
-7. **Physical-verification** / stock-count adjustment workflow
-8. **Sales-return restock** (sales credit note is financial-only today)
+4. **Physical-verification** / stock-count adjustment workflow
+5. **Sales-return restock** (sales credit note is financial-only today)
 
 ### Integration (needs vendor access)
 9. **Live Color Service adapter** (SOAP / OPC-UA / Modbus / DB) — only the simulator exists
@@ -96,9 +93,8 @@ Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ no
 - All ledger, inventory, GST, costing and traceability tests (1–4, 7–17, 19–20) pass, including **Test 12** (WIP→FG) now that finishing posts the greige→FG transfer.
 
 ## Suggested priority order for remaining work
-1. Enquiries/quotations + credit limits + party statements
-2. Funds Flow / Trading / Manufacturing accounts
-3. Physical-verification workflow + sales-return restock
-4. Extend approvals to vouchers/POs/journals + notifications/attachments
-5. Live external integrations (when vendor credentials/hardware are available)
-6. Operational docs, backups, monitoring
+1. Funds Flow / Trading / Manufacturing accounts
+2. Physical-verification workflow + sales-return restock
+3. Extend approvals to vouchers/POs/journals + notifications/attachments
+4. Live external integrations (when vendor credentials/hardware are available)
+5. Operational docs, backups, monitoring

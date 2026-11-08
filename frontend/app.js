@@ -697,14 +697,17 @@ function PartyPage({
   kind
 }) {
   // kind: "customers" | "suppliers"
+  const isCust = kind === "customers";
   const [rows, setRows] = useState(null);
   const [err, setErr] = useState("");
-  const [f, setF] = useState({
+  const blank = {
     code: "",
     name: "",
     gstin: "",
-    state_code: ""
-  });
+    state_code: "",
+    credit_limit: "0"
+  };
+  const [f, setF] = useState(blank);
   const load = useCallback(() => api(`/api/masters/${kind}`).then(setRows).catch(e => setErr(e.message)), [kind]);
   useEffect(() => {
     load();
@@ -712,23 +715,25 @@ function PartyPage({
   const add = async e => {
     e.preventDefault();
     setErr("");
+    const body = {
+      code: f.code,
+      name: f.name,
+      gstin: f.gstin,
+      state_code: f.state_code
+    };
+    if (isCust) body.credit_limit = f.credit_limit || "0";
     try {
       await api(`/api/masters/${kind}`, {
         method: "POST",
-        body: f
+        body
       });
-      setF({
-        code: "",
-        name: "",
-        gstin: "",
-        state_code: ""
-      });
+      setF(blank);
       load();
     } catch (ex) {
       setErr(ex.message);
     }
   };
-  const title = kind === "customers" ? "customer" : "supplier";
+  const title = isCust ? "customer" : "supplier";
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Panel, {
     title: "Add " + title
   }, /*#__PURE__*/React.createElement("form", {
@@ -775,15 +780,319 @@ function PartyPage({
     style: {
       width: 70
     }
+  })), isCust && /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Credit limit (\u20B9)"), /*#__PURE__*/React.createElement("input", {
+    value: f.credit_limit,
+    onChange: e => setF({
+      ...f,
+      credit_limit: e.target.value
+    }),
+    placeholder: "0 = unlimited",
+    style: {
+      width: 120
+    }
   })), /*#__PURE__*/React.createElement("button", {
     className: "btn"
   }, "Add")), err && /*#__PURE__*/React.createElement("div", {
     className: "err"
   }, err)), /*#__PURE__*/React.createElement(Panel, {
     title: title.charAt(0).toUpperCase() + title.slice(1) + "s"
-  }, !rows ? "Loading…" : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Code"), /*#__PURE__*/React.createElement("th", null, "Name"), /*#__PURE__*/React.createElement("th", null, "GSTIN"), /*#__PURE__*/React.createElement("th", null, "State"))), /*#__PURE__*/React.createElement("tbody", null, rows.map(r => /*#__PURE__*/React.createElement("tr", {
+  }, !rows ? "Loading…" : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Code"), /*#__PURE__*/React.createElement("th", null, "Name"), /*#__PURE__*/React.createElement("th", null, "GSTIN"), /*#__PURE__*/React.createElement("th", null, "State"), isCust && /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Credit limit"))), /*#__PURE__*/React.createElement("tbody", null, rows.map(r => /*#__PURE__*/React.createElement("tr", {
     key: r.id
-  }, /*#__PURE__*/React.createElement("td", null, r.code), /*#__PURE__*/React.createElement("td", null, r.name), /*#__PURE__*/React.createElement("td", null, r.gstin || "-"), /*#__PURE__*/React.createElement("td", null, r.state_code || "-")))))));
+  }, /*#__PURE__*/React.createElement("td", null, r.code), /*#__PURE__*/React.createElement("td", null, r.name), /*#__PURE__*/React.createElement("td", null, r.gstin || "-"), /*#__PURE__*/React.createElement("td", null, r.state_code || "-"), isCust && /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, Number(r.credit_limit) > 0 ? inr2(r.credit_limit) : "—")))))));
+}
+
+// ---- pre-sales: enquiries, quotations, statements -------------------------
+function SalesPipeline() {
+  const customers = useList("/api/masters/customers");
+  const fabrics = useList("/api/masters/fabric-types");
+  const taxes = useList("/api/masters/tax-codes");
+  const [enqs, setEnqs] = useState([]);
+  const [quotes, setQuotes] = useState([]);
+  const [ef, setEf] = useState({
+    customer_id: "",
+    number: genNo("ENQ"),
+    description: ""
+  });
+  const [qf, setQf] = useState({
+    customer_id: "",
+    number: genNo("QT"),
+    fabric_type_id: "",
+    qty_kg: "100",
+    rate: "300",
+    tax_code_id: ""
+  });
+  const [stmtCust, setStmtCust] = useState("");
+  const [stmt, setStmt] = useState(null);
+  const [eRes, setERes] = useState(null);
+  const [qRes, setQRes] = useState(null);
+  const [err, setErr] = useState("");
+  const load = useCallback(() => {
+    api("/api/sales/enquiries").then(setEnqs).catch(() => {});
+    api("/api/sales/quotations").then(setQuotes).catch(() => {});
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+  const go = async fn => {
+    setErr("");
+    try {
+      await fn();
+      load();
+    } catch (ex) {
+      setErr(ex.message);
+    }
+  };
+  const addEnq = e => {
+    e.preventDefault();
+    setERes(null);
+    go(async () => {
+      setERes(await api("/api/sales/enquiries", {
+        method: "POST",
+        body: {
+          customer_id: ef.customer_id,
+          number: ef.number,
+          enquiry_date: today(),
+          description: ef.description || null
+        }
+      }));
+      setEf({
+        ...ef,
+        number: genNo("ENQ"),
+        description: ""
+      });
+    });
+  };
+  const addQuote = e => {
+    e.preventDefault();
+    setQRes(null);
+    go(async () => {
+      setQRes(await api("/api/sales/quotations", {
+        method: "POST",
+        body: {
+          customer_id: qf.customer_id,
+          number: qf.number,
+          quote_date: today(),
+          lines: [{
+            fabric_type_id: qf.fabric_type_id || null,
+            qty_kg: qf.qty_kg,
+            rate: qf.rate,
+            tax_code_id: qf.tax_code_id || null
+          }]
+        }
+      }));
+      setQf({
+        ...qf,
+        number: genNo("QT")
+      });
+    });
+  };
+  const convert = id => go(async () => {
+    await api(`/api/sales/quotations/${id}/convert`, {
+      method: "POST",
+      body: {
+        number: genNo("SO"),
+        order_date: today()
+      }
+    });
+  });
+  const loadStmt = async id => {
+    setStmtCust(id);
+    setStmt(null);
+    if (!id) return;
+    try {
+      setStmt(await api(`/api/reports/customer-statement?customer_id=${id}`));
+    } catch (ex) {
+      setErr(ex.message);
+    }
+  };
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "row",
+    style: {
+      gap: 16,
+      alignItems: "flex-start"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement(Panel, {
+    title: "New enquiry"
+  }, /*#__PURE__*/React.createElement("form", {
+    onSubmit: addEnq
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Customer"), /*#__PURE__*/React.createElement(Opts, {
+    items: customers,
+    value: ef.customer_id,
+    onChange: e => setEf({
+      ...ef,
+      customer_id: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Number"), /*#__PURE__*/React.createElement("input", {
+    value: ef.number,
+    onChange: e => setEf({
+      ...ef,
+      number: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Requirement"), /*#__PURE__*/React.createElement("input", {
+    value: ef.description,
+    onChange: e => setEf({
+      ...ef,
+      description: e.target.value
+    }),
+    placeholder: "e.g. 500 kg navy single jersey"
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 10
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Log enquiry"))), /*#__PURE__*/React.createElement(Result, {
+    r: eRes
+  }))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 2
+    }
+  }, /*#__PURE__*/React.createElement(Panel, {
+    title: "New quotation"
+  }, /*#__PURE__*/React.createElement("form", {
+    onSubmit: addQuote
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "row mb"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Customer"), /*#__PURE__*/React.createElement(Opts, {
+    items: customers,
+    value: qf.customer_id,
+    onChange: e => setQf({
+      ...qf,
+      customer_id: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Number"), /*#__PURE__*/React.createElement("input", {
+    value: qf.number,
+    onChange: e => setQf({
+      ...qf,
+      number: e.target.value
+    })
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "row"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Fabric"), /*#__PURE__*/React.createElement(Opts, {
+    items: fabrics,
+    value: qf.fabric_type_id,
+    onChange: e => setQf({
+      ...qf,
+      fabric_type_id: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Qty (kg)"), /*#__PURE__*/React.createElement("input", {
+    value: qf.qty_kg,
+    onChange: e => setQf({
+      ...qf,
+      qty_kg: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Rate"), /*#__PURE__*/React.createElement("input", {
+    value: qf.rate,
+    onChange: e => setQf({
+      ...qf,
+      rate: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Tax"), /*#__PURE__*/React.createElement(Opts, {
+    items: taxes,
+    value: qf.tax_code_id,
+    onChange: e => setQf({
+      ...qf,
+      tax_code_id: e.target.value
+    }),
+    placeholder: "\u2014"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field",
+    style: {
+      alignSelf: "end"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Create quote")))), /*#__PURE__*/React.createElement(Result, {
+    r: qRes
+  })))), /*#__PURE__*/React.createElement(Panel, {
+    title: "Quotations"
+  }, quotes.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "None yet.") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Number"), /*#__PURE__*/React.createElement("th", null, "Date"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Value"), /*#__PURE__*/React.createElement("th", null, "Status"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, quotes.map(q => /*#__PURE__*/React.createElement("tr", {
+    key: q.id
+  }, /*#__PURE__*/React.createElement("td", null, q.number), /*#__PURE__*/React.createElement("td", null, q.date), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(q.value)), /*#__PURE__*/React.createElement("td", null, stBadge(q.status)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, q.status !== "COMPLETED" && q.status !== "CANCELLED" && /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    onClick: () => convert(q.id)
+  }, "Convert to SO"), q.status === "COMPLETED" && /*#__PURE__*/React.createElement("span", {
+    className: "muted"
+  }, "\u2192 SO created"))))))), /*#__PURE__*/React.createElement(Panel, {
+    title: "Enquiries"
+  }, enqs.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "None yet.") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Number"), /*#__PURE__*/React.createElement("th", null, "Date"), /*#__PURE__*/React.createElement("th", null, "Requirement"), /*#__PURE__*/React.createElement("th", null, "Status"))), /*#__PURE__*/React.createElement("tbody", null, enqs.map(x => /*#__PURE__*/React.createElement("tr", {
+    key: x.id
+  }, /*#__PURE__*/React.createElement("td", null, x.number), /*#__PURE__*/React.createElement("td", null, x.date), /*#__PURE__*/React.createElement("td", null, x.description || "—"), /*#__PURE__*/React.createElement("td", null, stBadge(x.status))))))), /*#__PURE__*/React.createElement(Panel, {
+    title: "Customer statement"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "row mb"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field",
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("label", null, "Customer"), /*#__PURE__*/React.createElement(Opts, {
+    items: customers,
+    value: stmtCust,
+    onChange: e => loadStmt(e.target.value)
+  }))), stmt && /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Date"), /*#__PURE__*/React.createElement("th", null, "Voucher"), /*#__PURE__*/React.createElement("th", null, "Narration"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Debit"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Credit"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Balance"))), /*#__PURE__*/React.createElement("tbody", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+    colSpan: "5"
+  }, /*#__PURE__*/React.createElement("b", null, "Opening balance")), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, /*#__PURE__*/React.createElement("b", null, inr2(stmt.opening)))), stmt.rows.map((r, i) => /*#__PURE__*/React.createElement("tr", {
+    key: i
+  }, /*#__PURE__*/React.createElement("td", null, r.date), /*#__PURE__*/React.createElement("td", null, r.voucher), /*#__PURE__*/React.createElement("td", null, r.narration || "—"), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, Number(r.debit) ? inr2(r.debit) : ""), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, Number(r.credit) ? inr2(r.credit) : ""), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(r.balance))))), /*#__PURE__*/React.createElement("tfoot", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    colSpan: "5"
+  }, "Closing balance"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, inr2(stmt.closing)))))), err && /*#__PURE__*/React.createElement(Panel, null, /*#__PURE__*/React.createElement("div", {
+    className: "err"
+  }, err)));
 }
 
 // ---- transactions: purchase (GRN) -----------------------------------------
@@ -4779,6 +5088,10 @@ const PAGES = {
     t: "Inventory Ops (transfer / split / merge)",
     c: InventoryOps
   },
+  pipeline: {
+    t: "Sales Pipeline (enquiry → quote → SO)",
+    c: SalesPipeline
+  },
   salesorders: {
     t: "Sales Orders & Dispatch",
     c: SalesOrders
@@ -4875,7 +5188,7 @@ function App() {
     className: "group"
   }, "Dashboards"), navBtn("owner", "Owner"), navBtn("factory", "Factory"), navBtn("accounts", "Accounts"), navBtn("chemical", "Chemical"), /*#__PURE__*/React.createElement("div", {
     className: "group"
-  }, "Transactions"), navBtn("purchaseorders", "Purchase Orders"), navBtn("purchase", "Purchase (GRN)"), navBtn("knitting", "Knitting"), navBtn("batching", "Batching"), navBtn("salesorders", "Sales Orders"), navBtn("sales", "Sales Invoice"), navBtn("dyeing", "Dyeing & Dispensing"), navBtn("vouchers", "Vouchers"), navBtn("inventoryops", "Inventory Ops"), /*#__PURE__*/React.createElement("div", {
+  }, "Transactions"), navBtn("purchaseorders", "Purchase Orders"), navBtn("purchase", "Purchase (GRN)"), navBtn("knitting", "Knitting"), navBtn("batching", "Batching"), navBtn("pipeline", "Sales Pipeline"), navBtn("salesorders", "Sales Orders"), navBtn("sales", "Sales Invoice"), navBtn("dyeing", "Dyeing & Dispensing"), navBtn("vouchers", "Vouchers"), navBtn("inventoryops", "Inventory Ops"), /*#__PURE__*/React.createElement("div", {
     className: "group"
   }, "Masters"), navBtn("masters", "Master Data"), navBtn("customers", "Customers"), navBtn("suppliers", "Suppliers"), navBtn("warehouses", "Warehouses"), /*#__PURE__*/React.createElement("div", {
     className: "group"

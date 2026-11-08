@@ -74,6 +74,34 @@ def profit_and_loss(
     return _stringify(fs.profit_and_loss(db, user.company_id, frm, to))
 
 
+@router.get("/customer-statement")
+def customer_statement(
+    customer_id: uuid.UUID,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("report.read")),
+) -> dict:
+    from app.services.accounting import statements
+    to = date_to or date.today()
+    frm = date_from or _fy_start(to)
+    return _stringify(statements.customer_statement(db, user.company_id, customer_id, frm, to))
+
+
+@router.get("/supplier-statement")
+def supplier_statement(
+    supplier_id: uuid.UUID,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("report.read")),
+) -> dict:
+    from app.services.accounting import statements
+    to = date_to or date.today()
+    frm = date_from or _fy_start(to)
+    return _stringify(statements.supplier_statement(db, user.company_id, supplier_id, frm, to))
+
+
 @router.get("/cost-centres")
 def cost_centres(
     date_from: date | None = None,

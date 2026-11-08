@@ -291,15 +291,19 @@ function Quality(){
 
 // ---- masters: parties -----------------------------------------------------
 function PartyPage({kind}){  // kind: "customers" | "suppliers"
+  const isCust = kind==="customers";
   const [rows,setRows]=useState(null); const [err,setErr]=useState("");
-  const [f,setF]=useState({code:"",name:"",gstin:"",state_code:""});
+  const blank={code:"",name:"",gstin:"",state_code:"",credit_limit:"0"};
+  const [f,setF]=useState(blank);
   const load=useCallback(()=>api(`/api/masters/${kind}`).then(setRows).catch(e=>setErr(e.message)),[kind]);
   useEffect(()=>{load()},[load]);
   const add=async e=>{ e.preventDefault(); setErr("");
-    try{ await api(`/api/masters/${kind}`,{method:"POST",body:f});
-      setF({code:"",name:"",gstin:"",state_code:""}); load(); }
+    const body={code:f.code,name:f.name,gstin:f.gstin,state_code:f.state_code};
+    if(isCust) body.credit_limit=f.credit_limit||"0";
+    try{ await api(`/api/masters/${kind}`,{method:"POST",body});
+      setF(blank); load(); }
     catch(ex){ setErr(ex.message); } };
-  const title = kind==="customers"?"customer":"supplier";
+  const title = isCust?"customer":"supplier";
   return (<div>
     <Panel title={"Add "+title}>
       <form className="row" onSubmit={add}>
@@ -311,14 +315,95 @@ function PartyPage({kind}){  // kind: "customers" | "suppliers"
           onChange={e=>setF({...f,gstin:e.target.value})} placeholder="03ABCDE1234F1Z5"/></div>
         <div className="field"><label>State code</label><input value={f.state_code}
           onChange={e=>setF({...f,state_code:e.target.value})} placeholder="03" style={{width:70}}/></div>
+        {isCust && <div className="field"><label>Credit limit (₹)</label><input value={f.credit_limit}
+          onChange={e=>setF({...f,credit_limit:e.target.value})} placeholder="0 = unlimited" style={{width:120}}/></div>}
         <button className="btn">Add</button>
       </form>{err && <div className="err">{err}</div>}
     </Panel>
     <Panel title={title.charAt(0).toUpperCase()+title.slice(1)+"s"}>
-      {!rows?"Loading…":<table><thead><tr><th>Code</th><th>Name</th><th>GSTIN</th><th>State</th></tr></thead>
+      {!rows?"Loading…":<table><thead><tr><th>Code</th><th>Name</th><th>GSTIN</th><th>State</th>{isCust && <th className="num">Credit limit</th>}</tr></thead>
       <tbody>{rows.map(r=><tr key={r.id}><td>{r.code}</td><td>{r.name}</td><td>{r.gstin||"-"}</td>
-        <td>{r.state_code||"-"}</td></tr>)}</tbody></table>}
+        <td>{r.state_code||"-"}</td>{isCust && <td className="num">{Number(r.credit_limit)>0?inr2(r.credit_limit):"—"}</td>}</tr>)}</tbody></table>}
     </Panel>
+  </div>);
+}
+
+// ---- pre-sales: enquiries, quotations, statements -------------------------
+function SalesPipeline(){
+  const customers=useList("/api/masters/customers"); const fabrics=useList("/api/masters/fabric-types");
+  const taxes=useList("/api/masters/tax-codes");
+  const [enqs,setEnqs]=useState([]); const [quotes,setQuotes]=useState([]);
+  const [ef,setEf]=useState({customer_id:"",number:genNo("ENQ"),description:""});
+  const [qf,setQf]=useState({customer_id:"",number:genNo("QT"),fabric_type_id:"",qty_kg:"100",rate:"300",tax_code_id:""});
+  const [stmtCust,setStmtCust]=useState(""); const [stmt,setStmt]=useState(null);
+  const [eRes,setERes]=useState(null); const [qRes,setQRes]=useState(null); const [err,setErr]=useState("");
+  const load=useCallback(()=>{ api("/api/sales/enquiries").then(setEnqs).catch(()=>{});
+    api("/api/sales/quotations").then(setQuotes).catch(()=>{}); },[]);
+  useEffect(()=>{load()},[load]);
+  const go=async fn=>{ setErr(""); try{ await fn(); load(); }catch(ex){ setErr(ex.message); } };
+  const addEnq=e=>{ e.preventDefault(); setERes(null); go(async()=>{
+    setERes(await api("/api/sales/enquiries",{method:"POST",body:{customer_id:ef.customer_id,number:ef.number,
+      enquiry_date:today(),description:ef.description||null}})); setEf({...ef,number:genNo("ENQ"),description:""}); }); };
+  const addQuote=e=>{ e.preventDefault(); setQRes(null); go(async()=>{
+    setQRes(await api("/api/sales/quotations",{method:"POST",body:{customer_id:qf.customer_id,number:qf.number,
+      quote_date:today(), lines:[{fabric_type_id:qf.fabric_type_id||null,qty_kg:qf.qty_kg,rate:qf.rate,tax_code_id:qf.tax_code_id||null}]}}));
+    setQf({...qf,number:genNo("QT")}); }); };
+  const convert=id=>go(async()=>{ await api(`/api/sales/quotations/${id}/convert`,{method:"POST",
+    body:{number:genNo("SO"),order_date:today()}}); });
+  const loadStmt=async id=>{ setStmtCust(id); setStmt(null); if(!id) return;
+    try{ setStmt(await api(`/api/reports/customer-statement?customer_id=${id}`)); }catch(ex){ setErr(ex.message); } };
+  return (<div>
+    <div className="row" style={{gap:16,alignItems:"flex-start"}}>
+      <div style={{flex:1}}><Panel title="New enquiry">
+        <form onSubmit={addEnq}>
+          <div className="field"><label>Customer</label><Opts items={customers} value={ef.customer_id} onChange={e=>setEf({...ef,customer_id:e.target.value})}/></div>
+          <div className="field"><label>Number</label><input value={ef.number} onChange={e=>setEf({...ef,number:e.target.value})}/></div>
+          <div className="field"><label>Requirement</label><input value={ef.description} onChange={e=>setEf({...ef,description:e.target.value})} placeholder="e.g. 500 kg navy single jersey"/></div>
+          <div style={{marginTop:10}}><button className="btn">Log enquiry</button></div>
+        </form><Result r={eRes}/>
+      </Panel></div>
+      <div style={{flex:2}}><Panel title="New quotation">
+        <form onSubmit={addQuote}>
+          <div className="row mb">
+            <div className="field"><label>Customer</label><Opts items={customers} value={qf.customer_id} onChange={e=>setQf({...qf,customer_id:e.target.value})}/></div>
+            <div className="field"><label>Number</label><input value={qf.number} onChange={e=>setQf({...qf,number:e.target.value})}/></div>
+          </div>
+          <div className="row">
+            <div className="field"><label>Fabric</label><Opts items={fabrics} value={qf.fabric_type_id} onChange={e=>setQf({...qf,fabric_type_id:e.target.value})}/></div>
+            <div className="field"><label>Qty (kg)</label><input value={qf.qty_kg} onChange={e=>setQf({...qf,qty_kg:e.target.value})}/></div>
+            <div className="field"><label>Rate</label><input value={qf.rate} onChange={e=>setQf({...qf,rate:e.target.value})}/></div>
+            <div className="field"><label>Tax</label><Opts items={taxes} value={qf.tax_code_id} onChange={e=>setQf({...qf,tax_code_id:e.target.value})} placeholder="—"/></div>
+            <div className="field" style={{alignSelf:"end"}}><button className="btn">Create quote</button></div>
+          </div>
+        </form><Result r={qRes}/>
+      </Panel></div>
+    </div>
+    <Panel title="Quotations">
+      {quotes.length===0?<div className="muted">None yet.</div>:
+      <table><thead><tr><th>Number</th><th>Date</th><th className="num">Value</th><th>Status</th><th></th></tr></thead>
+      <tbody>{quotes.map(q=><tr key={q.id}><td>{q.number}</td><td>{q.date}</td><td className="num">{inr2(q.value)}</td>
+        <td>{stBadge(q.status)}</td><td className="num">{q.status!=="COMPLETED" && q.status!=="CANCELLED" &&
+          <button className="btn" onClick={()=>convert(q.id)}>Convert to SO</button>}
+          {q.status==="COMPLETED" && <span className="muted">→ SO created</span>}</td></tr>)}</tbody></table>}
+    </Panel>
+    <Panel title="Enquiries">
+      {enqs.length===0?<div className="muted">None yet.</div>:
+      <table><thead><tr><th>Number</th><th>Date</th><th>Requirement</th><th>Status</th></tr></thead>
+      <tbody>{enqs.map(x=><tr key={x.id}><td>{x.number}</td><td>{x.date}</td><td>{x.description||"—"}</td><td>{stBadge(x.status)}</td></tr>)}</tbody></table>}
+    </Panel>
+    <Panel title="Customer statement">
+      <div className="row mb"><div className="field" style={{flex:1}}><label>Customer</label>
+        <Opts items={customers} value={stmtCust} onChange={e=>loadStmt(e.target.value)}/></div></div>
+      {stmt && <table><thead><tr><th>Date</th><th>Voucher</th><th>Narration</th><th className="num">Debit</th>
+        <th className="num">Credit</th><th className="num">Balance</th></tr></thead>
+      <tbody>
+        <tr><td colSpan="5"><b>Opening balance</b></td><td className="num"><b>{inr2(stmt.opening)}</b></td></tr>
+        {stmt.rows.map((r,i)=><tr key={i}><td>{r.date}</td><td>{r.voucher}</td><td>{r.narration||"—"}</td>
+          <td className="num">{Number(r.debit)?inr2(r.debit):""}</td><td className="num">{Number(r.credit)?inr2(r.credit):""}</td>
+          <td className="num">{inr2(r.balance)}</td></tr>)}</tbody>
+      <tfoot><tr><th colSpan="5">Closing balance</th><th className="num">{inr2(stmt.closing)}</th></tr></tfoot></table>}
+    </Panel>
+    {err && <Panel><div className="err">{err}</div></Panel>}
   </div>);
 }
 
@@ -1470,6 +1555,7 @@ const PAGES={
   purchase:{t:"Purchase (GRN)",c:Purchase}, knitting:{t:"Knitting Production",c:Knitting},
   batching:{t:"Batching",c:Batching},
   inventoryops:{t:"Inventory Ops (transfer / split / merge)",c:InventoryOps},
+  pipeline:{t:"Sales Pipeline (enquiry → quote → SO)",c:SalesPipeline},
   salesorders:{t:"Sales Orders & Dispatch",c:SalesOrders},
   sales:{t:"Sales Invoice",c:Sales}, dyeing:{t:"Dyeing & Dispensing",c:Dyeing},
   customers:{t:"Customers",c:()=> <PartyPage kind="customers"/>},
@@ -1497,7 +1583,7 @@ function App(){
         {navBtn("accounts","Accounts")}{navBtn("chemical","Chemical")}
         <div className="group">Transactions</div>
         {navBtn("purchaseorders","Purchase Orders")}{navBtn("purchase","Purchase (GRN)")}{navBtn("knitting","Knitting")}
-        {navBtn("batching","Batching")}{navBtn("salesorders","Sales Orders")}{navBtn("sales","Sales Invoice")}{navBtn("dyeing","Dyeing & Dispensing")}{navBtn("vouchers","Vouchers")}
+        {navBtn("batching","Batching")}{navBtn("pipeline","Sales Pipeline")}{navBtn("salesorders","Sales Orders")}{navBtn("sales","Sales Invoice")}{navBtn("dyeing","Dyeing & Dispensing")}{navBtn("vouchers","Vouchers")}
         {navBtn("inventoryops","Inventory Ops")}
         <div className="group">Masters</div>
         {navBtn("masters","Master Data")}{navBtn("customers","Customers")}{navBtn("suppliers","Suppliers")}{navBtn("warehouses","Warehouses")}

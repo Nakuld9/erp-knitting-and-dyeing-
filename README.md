@@ -86,11 +86,18 @@ specified (pending-verification) Color Service dispensing integration.
 - **Purchase orders** — place and confirm a PO; GRNs matched to its lines roll
   the order up to PARTIAL / COMPLETED on received quantity (received qty is
   summed from the matched receipts, so status never drifts).
+- **Sales pipeline** — **enquiries** → **quotations** → convert an accepted quote
+  into a sales order; **credit-limit control** blocks confirming an SO that would
+  push a customer's exposure (outstanding receivable + order value incl. GST)
+  past their limit (0 = unlimited).
 - **Sales orders & dispatch** — place and confirm an SO; a **delivery challan**
   dispatches finished rolls, taking fabric out of stock (FIFO, at actual
   sub-ledger cost) and booking a balanced **COGS** voucher; the SO rolls to
   PARTIAL / COMPLETED on delivered quantity, and a roll can't be dispatched
   twice. The revenue invoice follows the dispatch.
+- **Party statements** — customer / supplier statement of account from the
+  posted ledger (opening balance, each transaction with a running balance,
+  closing balance).
 - **Credit / debit notes** — a **sales credit note** reverses the receivable and
   output GST (price adjustment / short shipment); a **purchase debit note**
   returns chemicals (relieves FIFO stock), reducing the payable and input GST.
@@ -163,7 +170,7 @@ specified (pending-verification) Color Service dispensing integration.
 **Platform** — JWT auth + RBAC (15 roles), REST API, Alembic migrations,
 idempotent seed + demo data, Docker Compose.
 
-`165 passing tests` cover the accounting invariants, the nine worked posting
+`171 passing tests` cover the accounting invariants, the nine worked posting
 examples, correction dosing, RBAC, full-cycle trial balance, procurement,
 PO / SO lifecycle (receipt + dispatch roll-up, COGS on delivery), credit /
 debit notes, the greige→finished-goods transfer on finishing, knitting,
@@ -253,7 +260,7 @@ erp/
     │   │                     #   banking, dashboard
     │   └── seed/             # chart of accounts, RBAC, seeder, demo data
     ├── alembic/              # migrations (baseline from metadata)
-    └── tests/                # 165 tests: invariants, posting matrix, TB, procurement,
+    └── tests/                # 171 tests: invariants, posting matrix, TB, procurement,
                               #   knitting, dyeing+dispensing, traceability, statements,
                               #   gst, banking, exports, dashboards, quality, API
 ```
