@@ -1,7 +1,7 @@
 # Project status & pending list
 
 Audit of the implementation against the master specification (the 24-section
-brief). Updated **2026-11-08**. Test suite: **179 passing**
+brief). Updated **2026-11-08**. Test suite: **184 passing**
 (`cd backend && pytest`).
 
 Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ not built.
@@ -37,7 +37,8 @@ Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ no
 | **Overhead allocation** | configurable pools absorbed into work centres by output-kg / machine-hours / equal basis; posts Dr WIP / Cr source expense; fully-loaded cost per work centre |
 | **Fixed assets** | register, SLM/WDV depreciation, disposal (gain/loss) |
 | **Payroll** | salary structures, PF/ESI/PT/TDS, payslips, balanced monthly PRV run |
-| **Approvals** | configurable maker-checker rules; supplier-payment approval gate (self-approval blocked, N approvals, posts on approval) |
+| **Approvals** | configurable maker-checker rules; supplier-payment **and purchase-order** approval gates via a generic executor (self-approval blocked, N approvals, confirms/posts the document on approval) |
+| **Notifications & attachments** | in-app notification feed (broadcast on approval requests, unread badge) + document attachments (base64 upload, size-guarded, list & download) |
 | Quality/finishing | inspections, complaints, finishing processes |
 | Hardware | weighing-scale + knitting-machine integration (simulated), efficiency |
 | Dashboards | Owner / Factory / Accounts / Chemical |
@@ -59,25 +60,26 @@ Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ no
 - Sales pipeline: enquiries/quotations + convert-to-SO, credit limits, party statements
 - Manufacturing / Trading / Funds-Flow statements (completes the 10-statement set)
 - Physical stock count (inventory adjustment) + sales-return restock
+- Approvals extended to purchase orders via a generic executor (dispatch by doc type); in-app notifications + document attachments (upload/list/download)
 
 ---
 
 ## ❌ Pending
 
 ### Workflow / controls
-1. **Approval coverage beyond payments** — the maker-checker engine is built and
-   gates supplier payments; extend the same rules to vouchers, POs and journals.
-2. **Notifications** & **attachments** (document uploads)
+1. **Approval coverage for journals** — the maker-checker engine now gates supplier
+   payments **and purchase orders** through a generic executor; the remaining
+   extension is routing arbitrary vouchers / journals through the same rules.
 
 ### Integration (needs vendor access)
-3. **Live Color Service adapter** (SOAP / OPC-UA / Modbus / DB) — only the simulator exists
-4. **E-invoice / e-way bill** — marked "readiness", not implemented
-5. **Bank-feed** integration (CSV import done; live feeds not)
+2. **Live Color Service adapter** (SOAP / OPC-UA / Modbus / DB) — only the simulator exists
+3. **E-invoice / e-way bill** — marked "readiness", not implemented
+4. **Bank-feed** integration (CSV import done; live feeds not)
 
 ### Deliverables / ops
-6. Admin & user manuals beyond `docs/USER_GUIDE.md`; installation / backup guides (API docs = FastAPI `/docs`)
-7. Automated backups + error-logging / monitoring infrastructure
-8. Frontend is the self-contained SPA, **not** the Next.js/TS/Tailwind/shadcn stack in the spec (functionally complete, different stack)
+5. Admin & user manuals beyond `docs/USER_GUIDE.md`; installation / backup guides (API docs = FastAPI `/docs`)
+6. Automated backups + error-logging / monitoring infrastructure
+7. Frontend is the self-contained SPA, **not** the Next.js/TS/Tailwind/shadcn stack in the spec (functionally complete, different stack)
 
 ---
 

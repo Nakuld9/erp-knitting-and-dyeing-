@@ -64,6 +64,11 @@ def create_request(db: Session, *, company_id: uuid.UUID, doc_type: str, title: 
     req.events.append(ApprovalEvent(action=ApprovalAction.SUBMIT, actor_id=requested_by,
                                     note="Submitted for approval", created_by=requested_by))
     db.flush()
+    # Notify approvers that something is waiting (broadcast to the company).
+    from app.services import notifications
+    notifications.notify(db, company_id=company_id, kind="APPROVAL",
+                         title="Approval needed", message=title,
+                         link_doc_type="APPROVAL", link_doc_id=req.id)
     return req
 
 

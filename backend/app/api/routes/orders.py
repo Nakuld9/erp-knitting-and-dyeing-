@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.deps import require_permission
-from app.models.commercial import DeliveryNote, PurchaseOrder, SalesOrder
+from app.models.commercial import DeliveryNote, DocStatus, PurchaseOrder, SalesOrder
 from app.models.core import User
 from app.services import order_lifecycle as ol
 
@@ -78,6 +78,32 @@ def confirm_po(po_id: uuid.UUID, db: Session = Depends(get_db),
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
     db.commit()
     return _po_out(db, po)
+
+
+@router.post("/procurement/purchase-orders/{po_id}/submit-approval")
+def submit_po_approval(po_id: uuid.UUID, db: Session = Depends(get_db),
+                       user: User = Depends(require_permission("purchase.manage"))):
+    """Route a PO through maker-checker: at/above the configured threshold it is
+    held for approval (confirmed on approval); otherwise it confirms at once."""
+    from app.services import approvals
+    po = db.get(PurchaseOrder, po_id)
+    if po is None or po.company_id != user.company_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Purchase order not found")
+    if po.status != DocStatus.DRAFT:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, f"PO is {po.status}, not DRAFT")
+    gross = sum((Decimal(str(ln.qty)) * Decimal(str(ln.rate)) for ln in po.lines), Decimal("0"))
+    rule = approvals.rule_for(db, user.company_id, "PURCHASE_ORDER", gross)
+    if rule is None:
+        ol.confirm_purchase_order(db, po)
+        db.commit()
+        return {"status": po.status, "approval_required": False}
+    title = f"Purchase order {po.number}: ₹{gross.quantize(Decimal('0.01')):,}"
+    req = approvals.create_request(db, company_id=user.company_id, doc_type="PURCHASE_ORDER",
+                                   doc_id=po.id, title=title,
+                                   amount=gross, requested_by=user.id, rule=rule)
+    db.commit()
+    return {"status": po.status, "approval_required": True,
+            "approval_request_id": str(req.id), "approvals_required": req.approvals_required}
 
 
 @router.get("/procurement/purchase-orders")

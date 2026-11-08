@@ -1196,6 +1196,11 @@ function PurchaseOrders(){
     catch(ex){ setErr(ex.message); } };
   const confirm=async id=>{ try{ await api(`/api/procurement/purchase-orders/${id}/confirm`,{method:"POST"}); load(); }
     catch(ex){ setErr(ex.message); } };
+  const submitApproval=async id=>{ setErr(""); setRes(null);
+    try{ const r=await api(`/api/procurement/purchase-orders/${id}/submit-approval`,{method:"POST"});
+      setRes(r.approval_required ? {status:r.status, approval:"Routed for approval ("+r.approvals_required+" needed)"}
+                                 : {status:r.status, note:"Below threshold — confirmed directly"}); load(); }
+    catch(ex){ setErr(ex.message); } };
   const view=async id=>{ if(open&&open.id===id){ setOpen(null); return; }
     try{ setOpen(await api(`/api/procurement/purchase-orders/${id}`)); }catch(ex){ setErr(ex.message); } };
   const createDN=async e=>{ e.preventDefault(); setDnErr(""); setDnRes(null);
@@ -1229,6 +1234,7 @@ function PurchaseOrders(){
       <tbody>{pos.map(p=>[
         <tr key={p.id}><td>{p.number}</td><td>{p.order_date}</td><td className="num">{p.lines}</td><td>{stBadge(p.status)}</td>
           <td className="num"><button className="btn sec" onClick={()=>view(p.id)}>View</button>{" "}
+            {p.status==="DRAFT" && <button className="btn sec" onClick={()=>submitApproval(p.id)}>Submit for approval</button>}{" "}
             {p.status==="DRAFT" && <button className="btn" onClick={()=>confirm(p.id)}>Confirm</button>}</td></tr>,
         open&&open.id===p.id ? <tr key={p.id+"x"}><td colSpan="5">
           <table><thead><tr><th>#</th><th>Item</th><th className="num">Ordered</th><th className="num">Received</th></tr></thead>
@@ -1749,6 +1755,22 @@ function InventoryOps(){
   </div>);
 }
 
+function Notifications({onChange}){
+  const [rows,setRows]=useState([]);
+  const load=useCallback(()=>api("/api/notifications").then(setRows).catch(()=>{}),[]);
+  useEffect(()=>{load()},[load]);
+  const readAll=async()=>{ try{ await api("/api/notifications/mark-read",{method:"POST",body:{}}); load(); onChange&&onChange(); }catch(e){} };
+  const kindCls={APPROVAL:"info",ALERT:"bad",INFO:""};
+  return (<Panel title="Notifications">
+    <div className="row mb"><button className="btn sec" onClick={readAll}>Mark all read</button></div>
+    {rows.length===0?<div className="muted">Nothing here yet.</div>:
+      rows.map(n=><div className="act" key={n.id} style={{opacity:n.is_read?.55:1}}>
+        <span className="tt">{n.created_at?n.created_at.slice(5,10):""}</span>
+        <span style={{flex:1}}><b>{n.title}</b>{n.message?" — "+n.message:""}</span>
+        <span className={"badge "+(kindCls[n.kind]||"")}>{n.kind}</span></div>)}
+  </Panel>);
+}
+
 const PAGES={
   owner:{t:"Owner Dashboard",c:OwnerDash}, factory:{t:"Factory Dashboard",c:FactoryDash},
   accounts:{t:"Accounts Dashboard",c:AccountsDash}, chemical:{t:"Chemical Dashboard",c:ChemicalDash},
@@ -1765,6 +1787,7 @@ const PAGES={
   assets:{t:"Fixed Assets & Depreciation",c:FixedAssets},
   payroll:{t:"Payroll",c:Payroll},
   approvals:{t:"Approvals (maker-checker)",c:Approvals},
+  notifications:{t:"Notifications",c:Notifications},
   acctops:{t:"GST Adjustments & Year-End",c:AccountingOps},
   costing:{t:"Costing & Profitability",c:Costing}, devices:{t:"Devices & Labels",c:Devices},
   masters:{t:"Master Data",c:MastersManager}, vouchers:{t:"Vouchers",c:Vouchers}, admin:{t:"Administration",c:Admin},
@@ -1773,12 +1796,15 @@ const PAGES={
 const NAV_ICON={owner:"📊",factory:"🏭",accounts:"💼",chemical:"🧪",purchaseorders:"📝",purchase:"📥",
   knitting:"🧶",batching:"🧺",pipeline:"🎯",salesorders:"🛒",sales:"🧾",dyeing:"🎨",vouchers:"📒",
   inventoryops:"🔁",masters:"🗃️",customers:"👤",suppliers:"🏢",warehouses:"🏬",quality:"🔍",assets:"🏗️",
-  payroll:"💰",costing:"📐",devices:"🖨️",reports:"📈",approvals:"✔️",acctops:"🧮",admin:"⚙️"};
+  payroll:"💰",costing:"📐",devices:"🖨️",reports:"📈",approvals:"✔️",notifications:"🔔",acctops:"🧮",admin:"⚙️"};
 function fyLabel(){ const d=new Date(); const y=d.getMonth()>=3?d.getFullYear():d.getFullYear()-1; return `FY ${y}–${(y+1)%100}`; }
 
 function App(){
   const [page,setPage]=useState("owner"); const [me,setMe]=useState(null);
-  useEffect(()=>{ api("/api/auth/me").then(setMe).catch(()=>{}); },[]);
+  const [notif,setNotif]=useState(0);
+  const loadNotif=useCallback(()=>api("/api/notifications/unread-count").then(r=>setNotif(r.count||0)).catch(()=>{}),[]);
+  useEffect(()=>{ api("/api/auth/me").then(setMe).catch(()=>{}); loadNotif();
+    const t=setInterval(loadNotif,30000); return ()=>clearInterval(t); },[loadNotif]);
   const Cur=PAGES[page].c;
   const navBtn=(id,label)=> <button className={page===id?"active":""} onClick={()=>setPage(id)}>
     <span className="nav-ico">{NAV_ICON[id]||"•"}</span>{label}</button>;
@@ -1809,10 +1835,12 @@ function App(){
     <div className="main">
       <div className="topbar"><h1>{PAGES[page].t}</h1>
         <div className="who-wrap">
+          <button className="bell" title="Notifications" onClick={()=>{setPage("notifications"); loadNotif();}}>
+            🔔{notif>0 && <span className="bell-dot">{notif>99?"99+":notif}</span>}</button>
           <span className="fychip">{fyLabel()}</span>
           <div className="who">{me? (me.full_name||me.username) : ""} · {new Date().toLocaleDateString("en-IN")}</div>
         </div></div>
-      <div className="content"><Cur/></div>
+      <div className="content">{page==="notifications"? <Notifications onChange={loadNotif}/> : <Cur/>}</div>
     </div>
   </div>);
 }

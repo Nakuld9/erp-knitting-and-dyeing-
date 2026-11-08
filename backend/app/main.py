@@ -17,6 +17,7 @@ from app.api.routes import (
     costing,
     dashboard,
     hardware,
+    inbox,
     inventory_ops,
     knitting,
     masters,
@@ -58,6 +59,7 @@ app.include_router(knitting.router)
 app.include_router(hardware.router)
 app.include_router(rolls.router)
 app.include_router(inventory_ops.router)
+app.include_router(inbox.router)
 app.include_router(admin.router)
 app.include_router(assets.router)
 app.include_router(approvals.router)

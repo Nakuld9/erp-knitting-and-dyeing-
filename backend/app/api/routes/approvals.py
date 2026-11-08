@@ -120,17 +120,17 @@ def approve_request(request_id: uuid.UUID, payload: DecisionIn, db: Session = De
     req = db.get(ApprovalRequest, request_id)
     if req is None or req.company_id != user.company_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Request not found")
+    from app.services import approval_exec
     try:
         res = svc.approve(db, req, approver_id=user.id, note=payload.note)
-        voucher_number = None
-        if res["completed"] and req.doc_type == payments.DOC_TYPE:
-            voucher = payments.post_approved_payment(db, req, created_by=user.id)
-            voucher_number = voucher.number if voucher else None
+        executed = None
+        if res["completed"]:
+            executed = approval_exec.execute_approved(db, req, created_by=user.id)
         db.commit()
     except svc.ApprovalError as exc:
         db.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
-    return {**res, "voucher_number": voucher_number}
+    return {**res, "executed_ref": executed}
 
 
 @router.post("/requests/{request_id}/reject")
@@ -139,10 +139,10 @@ def reject_request(request_id: uuid.UUID, payload: DecisionIn, db: Session = Dep
     req = db.get(ApprovalRequest, request_id)
     if req is None or req.company_id != user.company_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Request not found")
+    from app.services import approval_exec
     try:
         res = svc.reject(db, req, approver_id=user.id, note=payload.note)
-        if req.doc_type == payments.DOC_TYPE:
-            payments.reject_payment(db, req)
+        approval_exec.on_rejected(db, req)
         db.commit()
     except svc.ApprovalError as exc:
         db.rollback()

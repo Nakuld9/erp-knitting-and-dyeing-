@@ -3553,6 +3553,25 @@ function PurchaseOrders() {
       setErr(ex.message);
     }
   };
+  const submitApproval = async id => {
+    setErr("");
+    setRes(null);
+    try {
+      const r = await api(`/api/procurement/purchase-orders/${id}/submit-approval`, {
+        method: "POST"
+      });
+      setRes(r.approval_required ? {
+        status: r.status,
+        approval: "Routed for approval (" + r.approvals_required + " needed)"
+      } : {
+        status: r.status,
+        note: "Below threshold — confirmed directly"
+      });
+      load();
+    } catch (ex) {
+      setErr(ex.message);
+    }
+  };
   const view = async id => {
     if (open && open.id === id) {
       setOpen(null);
@@ -3688,6 +3707,9 @@ function PurchaseOrders() {
     className: "btn sec",
     onClick: () => view(p.id)
   }, "View"), " ", p.status === "DRAFT" && /*#__PURE__*/React.createElement("button", {
+    className: "btn sec",
+    onClick: () => submitApproval(p.id)
+  }, "Submit for approval"), " ", p.status === "DRAFT" && /*#__PURE__*/React.createElement("button", {
     className: "btn",
     onClick: () => confirm(p.id)
   }, "Confirm"))), open && open.id === p.id ? /*#__PURE__*/React.createElement("tr", {
@@ -5609,6 +5631,54 @@ function InventoryOps() {
     className: "err"
   }, err)));
 }
+function Notifications({
+  onChange
+}) {
+  const [rows, setRows] = useState([]);
+  const load = useCallback(() => api("/api/notifications").then(setRows).catch(() => {}), []);
+  useEffect(() => {
+    load();
+  }, [load]);
+  const readAll = async () => {
+    try {
+      await api("/api/notifications/mark-read", {
+        method: "POST",
+        body: {}
+      });
+      load();
+      onChange && onChange();
+    } catch (e) {}
+  };
+  const kindCls = {
+    APPROVAL: "info",
+    ALERT: "bad",
+    INFO: ""
+  };
+  return /*#__PURE__*/React.createElement(Panel, {
+    title: "Notifications"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "row mb"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn sec",
+    onClick: readAll
+  }, "Mark all read")), rows.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "Nothing here yet.") : rows.map(n => /*#__PURE__*/React.createElement("div", {
+    className: "act",
+    key: n.id,
+    style: {
+      opacity: n.is_read ? .55 : 1
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "tt"
+  }, n.created_at ? n.created_at.slice(5, 10) : ""), /*#__PURE__*/React.createElement("span", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("b", null, n.title), n.message ? " — " + n.message : ""), /*#__PURE__*/React.createElement("span", {
+    className: "badge " + (kindCls[n.kind] || "")
+  }, n.kind))));
+}
 const PAGES = {
   owner: {
     t: "Owner Dashboard",
@@ -5694,6 +5764,10 @@ const PAGES = {
     t: "Approvals (maker-checker)",
     c: Approvals
   },
+  notifications: {
+    t: "Notifications",
+    c: Notifications
+  },
   acctops: {
     t: "GST Adjustments & Year-End",
     c: AccountingOps
@@ -5749,6 +5823,7 @@ const NAV_ICON = {
   devices: "🖨️",
   reports: "📈",
   approvals: "✔️",
+  notifications: "🔔",
   acctops: "🧮",
   admin: "⚙️"
 };
@@ -5760,9 +5835,14 @@ function fyLabel() {
 function App() {
   const [page, setPage] = useState("owner");
   const [me, setMe] = useState(null);
+  const [notif, setNotif] = useState(0);
+  const loadNotif = useCallback(() => api("/api/notifications/unread-count").then(r => setNotif(r.count || 0)).catch(() => {}), []);
   useEffect(() => {
     api("/api/auth/me").then(setMe).catch(() => {});
-  }, []);
+    loadNotif();
+    const t = setInterval(loadNotif, 30000);
+    return () => clearInterval(t);
+  }, [loadNotif]);
   const Cur = PAGES[page].c;
   const navBtn = (id, label) => /*#__PURE__*/React.createElement("button", {
     className: page === id ? "active" : "",
@@ -5811,13 +5891,24 @@ function App() {
     className: "topbar"
   }, /*#__PURE__*/React.createElement("h1", null, PAGES[page].t), /*#__PURE__*/React.createElement("div", {
     className: "who-wrap"
-  }, /*#__PURE__*/React.createElement("span", {
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "bell",
+    title: "Notifications",
+    onClick: () => {
+      setPage("notifications");
+      loadNotif();
+    }
+  }, "\uD83D\uDD14", notif > 0 && /*#__PURE__*/React.createElement("span", {
+    className: "bell-dot"
+  }, notif > 99 ? "99+" : notif)), /*#__PURE__*/React.createElement("span", {
     className: "fychip"
   }, fyLabel()), /*#__PURE__*/React.createElement("div", {
     className: "who"
   }, me ? me.full_name || me.username : "", " \xB7 ", new Date().toLocaleDateString("en-IN")))), /*#__PURE__*/React.createElement("div", {
     className: "content"
-  }, /*#__PURE__*/React.createElement(Cur, null))));
+  }, page === "notifications" ? /*#__PURE__*/React.createElement(Notifications, {
+    onChange: loadNotif
+  }) : /*#__PURE__*/React.createElement(Cur, null))));
 }
 function Root() {
   const [authed, setAuthed] = useState(!!getToken());
