@@ -4266,6 +4266,269 @@ function AccountingOps() {
     r: yRes
   })));
 }
+
+// ---- inventory ops: transfers + roll split/merge --------------------------
+function InventoryOps() {
+  const chemicals = useList("/api/masters/chemicals");
+  const warehouses = useList("/api/masters/warehouses");
+  const [rolls, setRolls] = useState([]);
+  const [transfers, setTransfers] = useState([]);
+  const [tf, setTf] = useState({
+    item_id: "",
+    from_warehouse_id: "",
+    to_warehouse_id: "",
+    qty: "100",
+    method: "FIFO"
+  });
+  const [sp, setSp] = useState({
+    roll_id: "",
+    a: "100",
+    b: "150"
+  });
+  const [mSel, setMSel] = useState({});
+  const [tRes, setTRes] = useState(null);
+  const [spRes, setSpRes] = useState(null);
+  const [mRes, setMRes] = useState(null);
+  const [err, setErr] = useState("");
+  const load = useCallback(() => {
+    api("/api/rolls?undelivered=true").then(setRolls).catch(() => {});
+    api("/api/inventory/transfers").then(setTransfers).catch(() => {});
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+  const go = async fn => {
+    setErr("");
+    try {
+      await fn();
+      load();
+    } catch (ex) {
+      setErr(ex.message);
+    }
+  };
+  const transfer = e => {
+    e.preventDefault();
+    setTRes(null);
+    go(async () => {
+      setTRes(await api("/api/inventory/transfers", {
+        method: "POST",
+        body: {
+          item_type: "CHEMICAL",
+          item_id: tf.item_id,
+          from_warehouse_id: tf.from_warehouse_id,
+          to_warehouse_id: tf.to_warehouse_id,
+          qty: tf.qty,
+          method: tf.method
+        }
+      }));
+    });
+  };
+  const split = e => {
+    e.preventDefault();
+    setSpRes(null);
+    go(async () => {
+      const parts = [{
+        weight_kg: sp.a
+      }];
+      if (Number(sp.b) > 0) parts.push({
+        weight_kg: sp.b
+      });
+      const r = await api(`/api/inventory/rolls/${sp.roll_id}/split`, {
+        method: "POST",
+        body: {
+          parts
+        }
+      });
+      setSpRes({
+        parent_remaining_kg: r.parent_remaining_kg,
+        parent_status: r.parent_status,
+        children: (r.children || []).map(c => `${c.roll_no} (${c.weight_kg} kg)`).join(", ")
+      });
+      setSp({
+        ...sp,
+        roll_id: ""
+      });
+    });
+  };
+  const mergeSel = Object.keys(mSel).filter(k => mSel[k]);
+  const merge = e => {
+    e.preventDefault();
+    setMRes(null);
+    if (mergeSel.length < 2) {
+      setErr("Select at least two rolls to merge");
+      return;
+    }
+    go(async () => {
+      setMRes(await api("/api/inventory/rolls/merge", {
+        method: "POST",
+        body: {
+          roll_ids: mergeSel
+        }
+      }));
+      setMSel({});
+    });
+  };
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Panel, {
+    title: "Stock transfer (between warehouses)"
+  }, /*#__PURE__*/React.createElement("form", {
+    onSubmit: transfer
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "row"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Chemical"), /*#__PURE__*/React.createElement(Opts, {
+    items: chemicals,
+    value: tf.item_id,
+    onChange: e => setTf({
+      ...tf,
+      item_id: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "From"), /*#__PURE__*/React.createElement(Opts, {
+    items: warehouses,
+    value: tf.from_warehouse_id,
+    onChange: e => setTf({
+      ...tf,
+      from_warehouse_id: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "To"), /*#__PURE__*/React.createElement(Opts, {
+    items: warehouses,
+    value: tf.to_warehouse_id,
+    onChange: e => setTf({
+      ...tf,
+      to_warehouse_id: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Qty"), /*#__PURE__*/React.createElement("input", {
+    value: tf.qty,
+    onChange: e => setTf({
+      ...tf,
+      qty: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Method"), /*#__PURE__*/React.createElement("select", {
+    value: tf.method,
+    onChange: e => setTf({
+      ...tf,
+      method: e.target.value
+    })
+  }, /*#__PURE__*/React.createElement("option", null, "FIFO"), /*#__PURE__*/React.createElement("option", null, "FEFO"))), /*#__PURE__*/React.createElement("div", {
+    className: "field",
+    style: {
+      alignSelf: "end"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Transfer")))), /*#__PURE__*/React.createElement(Result, {
+    r: tRes
+  }), transfers.length > 0 && /*#__PURE__*/React.createElement("table", {
+    style: {
+      marginTop: 12
+    }
+  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Number"), /*#__PURE__*/React.createElement("th", null, "Date"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Qty"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Value"))), /*#__PURE__*/React.createElement("tbody", null, transfers.map(t => /*#__PURE__*/React.createElement("tr", {
+    key: t.id
+  }, /*#__PURE__*/React.createElement("td", null, t.number), /*#__PURE__*/React.createElement("td", null, t.date), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(t.qty)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(t.cost_value))))))), /*#__PURE__*/React.createElement(Panel, {
+    title: "Split a fabric roll"
+  }, /*#__PURE__*/React.createElement("form", {
+    onSubmit: split
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "row"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field",
+    style: {
+      flex: 2
+    }
+  }, /*#__PURE__*/React.createElement("label", null, "Roll"), /*#__PURE__*/React.createElement(Opts, {
+    items: rolls.map(r => ({
+      id: r.id,
+      name: `${r.roll_no} (${r.weight_kg} kg)`
+    })),
+    value: sp.roll_id,
+    onChange: e => setSp({
+      ...sp,
+      roll_id: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Part 1 (kg)"), /*#__PURE__*/React.createElement("input", {
+    value: sp.a,
+    onChange: e => setSp({
+      ...sp,
+      a: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Part 2 (kg)"), /*#__PURE__*/React.createElement("input", {
+    value: sp.b,
+    onChange: e => setSp({
+      ...sp,
+      b: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field",
+    style: {
+      alignSelf: "end"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Split roll"))), /*#__PURE__*/React.createElement("div", {
+    className: "muted",
+    style: {
+      marginTop: 8,
+      fontSize: 12
+    }
+  }, "Parts can't exceed the roll weight; the parent keeps any remainder (or is closed when fully split).")), /*#__PURE__*/React.createElement(Result, {
+    r: spRes
+  })), /*#__PURE__*/React.createElement(Panel, {
+    title: "Merge fabric rolls"
+  }, /*#__PURE__*/React.createElement("form", {
+    onSubmit: merge
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    style: {
+      width: 40
+    }
+  }), /*#__PURE__*/React.createElement("th", null, "Roll no."), /*#__PURE__*/React.createElement("th", null, "Fabric"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Weight (kg)"))), /*#__PURE__*/React.createElement("tbody", null, rolls.length === 0 ? /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+    colSpan: "4",
+    className: "muted"
+  }, "No active undelivered rolls.")) : rolls.map(r => /*#__PURE__*/React.createElement("tr", {
+    key: r.id
+  }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: !!mSel[r.id],
+    onChange: () => setMSel(s => ({
+      ...s,
+      [r.id]: !s[r.id]
+    }))
+  })), /*#__PURE__*/React.createElement("td", null, r.roll_no), /*#__PURE__*/React.createElement("td", null, r.fabric || "—"), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(r.weight_kg)))))), /*#__PURE__*/React.createElement("div", {
+    className: "row",
+    style: {
+      marginTop: 12
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Merge (", mergeSel.length, " rolls)"))), /*#__PURE__*/React.createElement(Result, {
+    r: mRes
+  }), err && /*#__PURE__*/React.createElement("div", {
+    className: "err"
+  }, err)));
+}
 const PAGES = {
   owner: {
     t: "Owner Dashboard",
@@ -4298,6 +4561,10 @@ const PAGES = {
   batching: {
     t: "Batching",
     c: Batching
+  },
+  inventoryops: {
+    t: "Inventory Ops (transfer / split / merge)",
+    c: InventoryOps
   },
   salesorders: {
     t: "Sales Orders & Dispatch",
@@ -4395,7 +4662,7 @@ function App() {
     className: "group"
   }, "Dashboards"), navBtn("owner", "Owner"), navBtn("factory", "Factory"), navBtn("accounts", "Accounts"), navBtn("chemical", "Chemical"), /*#__PURE__*/React.createElement("div", {
     className: "group"
-  }, "Transactions"), navBtn("purchaseorders", "Purchase Orders"), navBtn("purchase", "Purchase (GRN)"), navBtn("knitting", "Knitting"), navBtn("batching", "Batching"), navBtn("salesorders", "Sales Orders"), navBtn("sales", "Sales Invoice"), navBtn("dyeing", "Dyeing & Dispensing"), navBtn("vouchers", "Vouchers"), /*#__PURE__*/React.createElement("div", {
+  }, "Transactions"), navBtn("purchaseorders", "Purchase Orders"), navBtn("purchase", "Purchase (GRN)"), navBtn("knitting", "Knitting"), navBtn("batching", "Batching"), navBtn("salesorders", "Sales Orders"), navBtn("sales", "Sales Invoice"), navBtn("dyeing", "Dyeing & Dispensing"), navBtn("vouchers", "Vouchers"), navBtn("inventoryops", "Inventory Ops"), /*#__PURE__*/React.createElement("div", {
     className: "group"
   }, "Masters"), navBtn("masters", "Master Data"), navBtn("customers", "Customers"), navBtn("suppliers", "Suppliers"), navBtn("warehouses", "Warehouses"), /*#__PURE__*/React.createElement("div", {
     className: "group"

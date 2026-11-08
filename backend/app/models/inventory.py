@@ -13,7 +13,9 @@ import enum
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, ForeignKey, String, Uuid
+from datetime import date
+
+from sqlalchemy import Date, DateTime, ForeignKey, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.types import Money, Quantity
@@ -54,8 +56,25 @@ class StockLayer(AuditMixin, Base):
     # out), so the sub-ledger ties to the GL to the paisa despite rounding.
     value_remaining: Mapped[object] = mapped_column(Money, default=0)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=_now, index=True)
+    # Earliest-expiry-first consumption (FEFO) orders by this; null = no expiry.
+    expiry_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
     source_module: Mapped[str | None] = mapped_column(String(40), nullable=True)
     source_id: Mapped[str | None] = mapped_column(String(80), nullable=True)
+
+
+class StockTransfer(AuditMixin, Base):
+    """A stock move between two warehouses (same item, GL-neutral)."""
+    __tablename__ = "stock_transfers"
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"), index=True)
+    number: Mapped[str] = mapped_column(String(40), index=True)
+    transfer_date: Mapped[date] = mapped_column(Date)
+    item_type: Mapped[ItemType] = mapped_column(String(12))
+    item_id: Mapped[uuid.UUID] = mapped_column(Uuid, index=True)
+    from_warehouse_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("warehouses.id"))
+    to_warehouse_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("warehouses.id"))
+    qty: Mapped[object] = mapped_column(Quantity, default=0)
+    cost_value: Mapped[object] = mapped_column(Money, default=0)
 
 
 class InventoryTransaction(AuditMixin, Base):

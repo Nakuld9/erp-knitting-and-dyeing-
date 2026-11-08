@@ -68,6 +68,14 @@ specified (pending-verification) Color Service dispensing integration.
 - **Procurement** — chemical/dye GRN → FIFO stock layer + GST purchase voucher.
 - **FIFO perpetual inventory** — costed receipts/consumption; stock sub-ledger
   reconciles with the GL control accounts.
+- **Valuation methods** — **FIFO** and **FEFO** (earliest-expiry-first) draw
+  orders, plus a **weighted-average** valuation basis; lot expiry flows from the
+  GRN onto the cost layer.
+- **Stock transfers** — move an item between warehouses at the drawn cost
+  (GL-neutral); recorded as a stock-transfer document.
+- **Roll split / merge** — carve a roll into children (each inheriting lineage
+  and its share of the stock at cost) or merge several active rolls into one;
+  both conserve stock value and reorganise only the sub-ledger (no voucher).
 - **Lot tracking** — chemicals/dyes **and yarn** are received as priced lots
   (own lot master + FIFO stock per lot + accounting); knitting can draw from a
   specific yarn lot, so greige rolls are traceable to the exact yarn lot.
@@ -144,7 +152,7 @@ specified (pending-verification) Color Service dispensing integration.
 **Platform** — JWT auth + RBAC (15 roles), REST API, Alembic migrations,
 idempotent seed + demo data, Docker Compose.
 
-`148 passing tests` cover the accounting invariants, the nine worked posting
+`156 passing tests` cover the accounting invariants, the nine worked posting
 examples, correction dosing, RBAC, full-cycle trial balance, procurement,
 PO / SO lifecycle (receipt + dispatch roll-up, COGS on delivery), credit /
 debit notes, the greige→finished-goods transfer on finishing, knitting,
@@ -234,7 +242,7 @@ erp/
     │   │                     #   banking, dashboard
     │   └── seed/             # chart of accounts, RBAC, seeder, demo data
     ├── alembic/              # migrations (baseline from metadata)
-    └── tests/                # 148 tests: invariants, posting matrix, TB, procurement,
+    └── tests/                # 156 tests: invariants, posting matrix, TB, procurement,
                               #   knitting, dyeing+dispensing, traceability, statements,
                               #   gst, banking, exports, dashboards, quality, API
 ```

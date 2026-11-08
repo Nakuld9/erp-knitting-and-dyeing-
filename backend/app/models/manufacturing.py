@@ -84,6 +84,8 @@ class FabricRoll(AuditMixin, Base):
     width_cm: Mapped[object | None] = mapped_column(Quantity, nullable=True)
     warehouse_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("warehouses.id"), nullable=True)
     quality_status: Mapped[str] = mapped_column(String(20), default="OK")
+    # lifecycle: ACTIVE, or SPLIT / MERGED once superseded by child/merged rolls.
+    status: Mapped[str] = mapped_column(String(10), default="ACTIVE", index=True)
     # roll lineage (split/merge): points to the parent roll it came from.
     parent_roll_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("fabric_rolls.id"), nullable=True)
 

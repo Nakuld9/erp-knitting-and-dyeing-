@@ -1,7 +1,7 @@
 # Project status & pending list
 
 Audit of the implementation against the master specification (the 24-section
-brief). Updated **2026-11-08**. Test suite: **148 passing**
+brief). Updated **2026-11-08**. Test suite: **156 passing**
 (`cd backend && pytest`).
 
 Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ not built.
@@ -30,6 +30,7 @@ Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ no
 | Batching + dyeing | dye batches/baths, roll traceability, approved-recipe scaling |
 | Color Service | dose-order builder, **simulator** adapter, bath-wise consumption register, correction dosing, idempotent ingest |
 | Chemical inventory | FIFO perpetual, value-based layers, GL reconciliation |
+| **Valuation / stock ops** | FIFO + **FEFO** draw order, **weighted-average** valuation, **warehouse transfers**, **roll split / merge** (value-conserving) |
 | Costing | per-kg knit/dye/finish, shade/machine/order, std-vs-actual, customer profitability |
 | **Fixed assets** | register, SLM/WDV depreciation, disposal (gain/loss) |
 | **Payroll** | salary structures, PF/ESI/PT/TDS, payslips, balanced monthly PRV run |
@@ -49,6 +50,7 @@ Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ no
 - Payroll (structures, statutory deductions, balanced run)
 - Maker-checker approval workflows (supplier-payment gate)
 - GST adjustment vouchers (ITC reversal / RCM / manual) + year-end closing
+- Roll split/merge, warehouse stock transfers, FEFO + weighted-average valuation
 
 ---
 
@@ -58,30 +60,28 @@ Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ no
 1. **Funds Flow**, **Trading Account**, **Manufacturing Account** (3 of the 10 statements)
 
 ### Workflow / controls
-4. **Approval coverage beyond payments** — the maker-checker engine is built and
+2. **Approval coverage beyond payments** — the maker-checker engine is built and
    gates supplier payments; extend the same rules to vouchers, POs and journals.
-5. **Notifications** & **attachments** (document uploads)
+3. **Notifications** & **attachments** (document uploads)
 
 ### Sales / commercial
-6. **Enquiries & Quotations** (pre-sales pipeline)
-7. **Credit-limit enforcement** on sales orders
-8. **Customer / supplier statements** (formatted; ageing already exists)
+4. **Enquiries & Quotations** (pre-sales pipeline)
+5. **Credit-limit enforcement** on sales orders
+6. **Customer / supplier statements** (formatted; ageing already exists)
 
 ### Manufacturing / inventory
-9. **Roll split / merge** operations (`parent_roll_id` field exists; operations don't)
-10. **FEFO & weighted-average** valuation + **chemical expiry** tracking (only FIFO today)
-11. **Stock transfers** between warehouses + **physical-verification** adjustment workflow
-12. **Sales-return restock** (sales credit note is financial-only today)
+7. **Physical-verification** / stock-count adjustment workflow
+8. **Sales-return restock** (sales credit note is financial-only today)
 
 ### Integration (needs vendor access)
-13. **Live Color Service adapter** (SOAP / OPC-UA / Modbus / DB) — only the simulator exists
-14. **E-invoice / e-way bill** — marked "readiness", not implemented
-15. **Bank-feed** integration (CSV import done; live feeds not)
+9. **Live Color Service adapter** (SOAP / OPC-UA / Modbus / DB) — only the simulator exists
+10. **E-invoice / e-way bill** — marked "readiness", not implemented
+11. **Bank-feed** integration (CSV import done; live feeds not)
 
 ### Deliverables / ops
-16. Admin & user manuals beyond `docs/USER_GUIDE.md`; installation / backup guides (API docs = FastAPI `/docs`)
-17. Automated backups + error-logging / monitoring infrastructure
-18. Frontend is the self-contained SPA, **not** the Next.js/TS/Tailwind/shadcn stack in the spec (functionally complete, different stack)
+12. Admin & user manuals beyond `docs/USER_GUIDE.md`; installation / backup guides (API docs = FastAPI `/docs`)
+13. Automated backups + error-logging / monitoring infrastructure
+14. Frontend is the self-contained SPA, **not** the Next.js/TS/Tailwind/shadcn stack in the spec (functionally complete, different stack)
 
 ---
 
@@ -92,9 +92,9 @@ Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ no
 - All ledger, inventory, GST, costing and traceability tests (1–4, 7–17, 19–20) pass, including **Test 12** (WIP→FG) now that finishing posts the greige→FG transfer.
 
 ## Suggested priority order for remaining work
-1. Roll split/merge, stock transfers, FEFO/weighted-average
-2. Enquiries/quotations + credit limits + party statements
-3. Funds Flow / Trading / Manufacturing accounts
+1. Enquiries/quotations + credit limits + party statements
+2. Funds Flow / Trading / Manufacturing accounts
+3. Physical-verification workflow + sales-return restock
 4. Extend approvals to vouchers/POs/journals + notifications/attachments
 5. Live external integrations (when vendor credentials/hardware are available)
 6. Operational docs, backups, monitoring

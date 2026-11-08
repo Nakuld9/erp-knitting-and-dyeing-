@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
+from datetime import date
 from decimal import Decimal
 
 from sqlalchemy.orm import Session
@@ -38,6 +39,7 @@ def post_chemical_grn(db: Session, grn: GoodsReceiptNote, *, created_by: uuid.UU
     debits_by_account: dict[str, Decimal] = defaultdict(lambda: quantize(0, MONEY_SCALE))
     cgst = sgst = igst = quantize(0, MONEY_SCALE)
 
+    from app.models.masters import ChemicalLot
     for line in grn.lines:
         chem = db.get(Chemical, line.chemical_id)
         line_taxable = quantize(Decimal(str(line.qty)) * Decimal(str(line.unit_cost)), MONEY_SCALE)
@@ -46,10 +48,19 @@ def post_chemical_grn(db: Session, grn: GoodsReceiptNote, *, created_by: uuid.UU
         )
         debits_by_account[inv_acct] += line_taxable
 
+        # Carry the lot's expiry onto the stock layer so FEFO can order by it.
+        expiry = None
+        if line.chemical_lot_id:
+            lot = db.get(ChemicalLot, line.chemical_lot_id)
+            if lot and lot.expiry_date:
+                try:
+                    expiry = date.fromisoformat(str(lot.expiry_date)[:10])
+                except ValueError:
+                    expiry = None
         inventory.receive(
             db, company_id=grn.company_id, item_type=ItemType.CHEMICAL, item_id=line.chemical_id,
             qty=line.qty, unit_cost=line.unit_cost, lot_id=line.chemical_lot_id,
-            warehouse_id=line.warehouse_id, event_type="GRN",
+            warehouse_id=line.warehouse_id, expiry_date=expiry, event_type="GRN",
             source_module="grn", source_id=str(grn.id), posting_reference=ref,
         )
 

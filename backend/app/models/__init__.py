@@ -52,6 +52,7 @@ from app.models.inventory import (  # noqa: F401
     ItemType,
     MoveDirection,
     StockLayer,
+    StockTransfer,
 )
 from app.models.commercial import (  # noqa: F401
     DocStatus,

@@ -26,6 +26,9 @@ def list_rolls(kind: str | None = None, unbatched: bool = False, undelivered: bo
         stmt = stmt.where(FabricRoll.dye_batch_id.is_(None))
     if undelivered:
         stmt = stmt.where(FabricRoll.delivery_note_id.is_(None))
+    # Pickers only offer live rolls — exclude ones superseded by split/merge.
+    if unbatched or undelivered:
+        stmt = stmt.where(FabricRoll.status == "ACTIVE")
     from app.models.masters import FabricType, Machine, YarnMaster
     rows = db.execute(stmt.order_by(FabricRoll.created_at.desc())).scalars().all()
     out = []
@@ -40,6 +43,7 @@ def list_rolls(kind: str | None = None, unbatched: bool = False, undelivered: bo
                     "fabric": fabric.name if fabric else None,
                     "dye_batch_id": str(r.dye_batch_id) if r.dye_batch_id else None,
                     "delivered": r.delivery_note_id is not None,
+                    "status": r.status,
                     "barcode": r.barcode or r.roll_no})
     return out
 

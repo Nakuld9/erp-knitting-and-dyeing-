@@ -1334,12 +1334,83 @@ function AccountingOps(){
   </div>);
 }
 
+// ---- inventory ops: transfers + roll split/merge --------------------------
+function InventoryOps(){
+  const chemicals=useList("/api/masters/chemicals"); const warehouses=useList("/api/masters/warehouses");
+  const [rolls,setRolls]=useState([]); const [transfers,setTransfers]=useState([]);
+  const [tf,setTf]=useState({item_id:"",from_warehouse_id:"",to_warehouse_id:"",qty:"100",method:"FIFO"});
+  const [sp,setSp]=useState({roll_id:"",a:"100",b:"150"});
+  const [mSel,setMSel]=useState({});
+  const [tRes,setTRes]=useState(null); const [spRes,setSpRes]=useState(null); const [mRes,setMRes]=useState(null);
+  const [err,setErr]=useState("");
+  const load=useCallback(()=>{ api("/api/rolls?undelivered=true").then(setRolls).catch(()=>{});
+    api("/api/inventory/transfers").then(setTransfers).catch(()=>{}); },[]);
+  useEffect(()=>{load()},[load]);
+  const go=async(fn)=>{ setErr(""); try{ await fn(); load(); }catch(ex){ setErr(ex.message); } };
+  const transfer=e=>{ e.preventDefault(); setTRes(null); go(async()=>{
+    setTRes(await api("/api/inventory/transfers",{method:"POST",body:{item_type:"CHEMICAL",
+      item_id:tf.item_id, from_warehouse_id:tf.from_warehouse_id, to_warehouse_id:tf.to_warehouse_id,
+      qty:tf.qty, method:tf.method}})); }); };
+  const split=e=>{ e.preventDefault(); setSpRes(null); go(async()=>{
+    const parts=[{weight_kg:sp.a}]; if(Number(sp.b)>0) parts.push({weight_kg:sp.b});
+    const r=await api(`/api/inventory/rolls/${sp.roll_id}/split`,{method:"POST",body:{parts}});
+    setSpRes({parent_remaining_kg:r.parent_remaining_kg, parent_status:r.parent_status,
+      children:(r.children||[]).map(c=>`${c.roll_no} (${c.weight_kg} kg)`).join(", ")});
+    setSp({...sp,roll_id:""}); }); };
+  const mergeSel=Object.keys(mSel).filter(k=>mSel[k]);
+  const merge=e=>{ e.preventDefault(); setMRes(null);
+    if(mergeSel.length<2){ setErr("Select at least two rolls to merge"); return; }
+    go(async()=>{ setMRes(await api("/api/inventory/rolls/merge",{method:"POST",body:{roll_ids:mergeSel}}));
+      setMSel({}); }); };
+  return (<div>
+    <Panel title="Stock transfer (between warehouses)">
+      <form onSubmit={transfer}>
+        <div className="row">
+          <div className="field"><label>Chemical</label><Opts items={chemicals} value={tf.item_id} onChange={e=>setTf({...tf,item_id:e.target.value})}/></div>
+          <div className="field"><label>From</label><Opts items={warehouses} value={tf.from_warehouse_id} onChange={e=>setTf({...tf,from_warehouse_id:e.target.value})}/></div>
+          <div className="field"><label>To</label><Opts items={warehouses} value={tf.to_warehouse_id} onChange={e=>setTf({...tf,to_warehouse_id:e.target.value})}/></div>
+          <div className="field"><label>Qty</label><input value={tf.qty} onChange={e=>setTf({...tf,qty:e.target.value})}/></div>
+          <div className="field"><label>Method</label><select value={tf.method} onChange={e=>setTf({...tf,method:e.target.value})}><option>FIFO</option><option>FEFO</option></select></div>
+          <div className="field" style={{alignSelf:"end"}}><button className="btn">Transfer</button></div>
+        </div>
+      </form>
+      <Result r={tRes}/>
+      {transfers.length>0 && <table style={{marginTop:12}}><thead><tr><th>Number</th><th>Date</th><th className="num">Qty</th><th className="num">Value</th></tr></thead>
+        <tbody>{transfers.map(t=><tr key={t.id}><td>{t.number}</td><td>{t.date}</td><td className="num">{inr2(t.qty)}</td><td className="num">{inr2(t.cost_value)}</td></tr>)}</tbody></table>}
+    </Panel>
+    <Panel title="Split a fabric roll">
+      <form onSubmit={split}>
+        <div className="row">
+          <div className="field" style={{flex:2}}><label>Roll</label><Opts items={rolls.map(r=>({id:r.id,name:`${r.roll_no} (${r.weight_kg} kg)`}))} value={sp.roll_id} onChange={e=>setSp({...sp,roll_id:e.target.value})}/></div>
+          <div className="field"><label>Part 1 (kg)</label><input value={sp.a} onChange={e=>setSp({...sp,a:e.target.value})}/></div>
+          <div className="field"><label>Part 2 (kg)</label><input value={sp.b} onChange={e=>setSp({...sp,b:e.target.value})}/></div>
+          <div className="field" style={{alignSelf:"end"}}><button className="btn">Split roll</button></div>
+        </div>
+        <div className="muted" style={{marginTop:8,fontSize:12}}>Parts can't exceed the roll weight; the parent keeps any remainder (or is closed when fully split).</div>
+      </form>
+      <Result r={spRes}/>
+    </Panel>
+    <Panel title="Merge fabric rolls">
+      <form onSubmit={merge}>
+        <table><thead><tr><th style={{width:40}}></th><th>Roll no.</th><th>Fabric</th><th className="num">Weight (kg)</th></tr></thead>
+        <tbody>{rolls.length===0?<tr><td colSpan="4" className="muted">No active undelivered rolls.</td></tr>
+          : rolls.map(r=><tr key={r.id}><td><input type="checkbox" checked={!!mSel[r.id]} onChange={()=>setMSel(s=>({...s,[r.id]:!s[r.id]}))}/></td>
+            <td>{r.roll_no}</td><td>{r.fabric||"—"}</td><td className="num">{inr2(r.weight_kg)}</td></tr>)}</tbody></table>
+        <div className="row" style={{marginTop:12}}><button className="btn">Merge ({mergeSel.length} rolls)</button></div>
+      </form>
+      <Result r={mRes}/>
+      {err && <div className="err">{err}</div>}
+    </Panel>
+  </div>);
+}
+
 const PAGES={
   owner:{t:"Owner Dashboard",c:OwnerDash}, factory:{t:"Factory Dashboard",c:FactoryDash},
   accounts:{t:"Accounts Dashboard",c:AccountsDash}, chemical:{t:"Chemical Dashboard",c:ChemicalDash},
   purchaseorders:{t:"Purchase Orders",c:PurchaseOrders},
   purchase:{t:"Purchase (GRN)",c:Purchase}, knitting:{t:"Knitting Production",c:Knitting},
   batching:{t:"Batching",c:Batching},
+  inventoryops:{t:"Inventory Ops (transfer / split / merge)",c:InventoryOps},
   salesorders:{t:"Sales Orders & Dispatch",c:SalesOrders},
   sales:{t:"Sales Invoice",c:Sales}, dyeing:{t:"Dyeing & Dispensing",c:Dyeing},
   customers:{t:"Customers",c:()=> <PartyPage kind="customers"/>},
@@ -1368,6 +1439,7 @@ function App(){
         <div className="group">Transactions</div>
         {navBtn("purchaseorders","Purchase Orders")}{navBtn("purchase","Purchase (GRN)")}{navBtn("knitting","Knitting")}
         {navBtn("batching","Batching")}{navBtn("salesorders","Sales Orders")}{navBtn("sales","Sales Invoice")}{navBtn("dyeing","Dyeing & Dispensing")}{navBtn("vouchers","Vouchers")}
+        {navBtn("inventoryops","Inventory Ops")}
         <div className="group">Masters</div>
         {navBtn("masters","Master Data")}{navBtn("customers","Customers")}{navBtn("suppliers","Suppliers")}{navBtn("warehouses","Warehouses")}
         <div className="group">Quality</div>{navBtn("quality","Quality")}
