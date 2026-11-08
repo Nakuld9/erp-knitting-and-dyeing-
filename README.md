@@ -53,6 +53,14 @@ specified (pending-verification) Color Service dispensing integration.
   postings.
 - **Recipe scaling** — %OWF / grams-per-kg (250 kg × 1.4% = 3.5 kg), approved
   versions only.
+- **Purchase orders** — place and confirm a PO; GRNs matched to its lines roll
+  the order up to PARTIAL / COMPLETED on received quantity (received qty is
+  summed from the matched receipts, so status never drifts).
+- **Sales orders & dispatch** — place and confirm an SO; a **delivery challan**
+  dispatches finished rolls, taking fabric out of stock (FIFO, at actual
+  sub-ledger cost) and booking a balanced **COGS** voucher; the SO rolls to
+  PARTIAL / COMPLETED on delivered quantity, and a roll can't be dispatched
+  twice. The revenue invoice follows the dispatch.
 - **Batching** — assign greige rolls to a dye batch (the dyeing lot); the batch
   fabric weight is summed from the selected rolls, a roll can't be double-batched,
   and each roll is stamped with its batch for traceability.
@@ -107,10 +115,11 @@ specified (pending-verification) Color Service dispensing integration.
 **Platform** — JWT auth + RBAC (15 roles), REST API, Alembic migrations,
 idempotent seed + demo data, Docker Compose.
 
-`104 passing tests` cover the accounting invariants, the nine worked posting
+`110 passing tests` cover the accounting invariants, the nine worked posting
 examples, correction dosing, RBAC, full-cycle trial balance, procurement,
-knitting, roll auto-numbering + lineage, recipe scaling, the full dispensing
-cycle, end-to-end traceability, the financial statements (P&L / Balance Sheet /
+PO / SO lifecycle (receipt + dispatch roll-up, COGS on delivery), knitting,
+roll auto-numbering + lineage, recipe scaling, the full dispensing cycle,
+end-to-end traceability, the financial statements (P&L / Balance Sheet /
 Cash Flow / ageing), GST (registers / GSTR-1 / GSTR-3B / reconciliation), and
 the REST flow. See the acceptance-test map below.
 
@@ -193,7 +202,7 @@ erp/
     │   │                     #   banking, dashboard
     │   └── seed/             # chart of accounts, RBAC, seeder, demo data
     ├── alembic/              # migrations (baseline from metadata)
-    └── tests/                # 104 tests: invariants, posting matrix, TB, procurement,
+    └── tests/                # 110 tests: invariants, posting matrix, TB, procurement,
                               #   knitting, dyeing+dispensing, traceability, statements,
                               #   gst, banking, exports, dashboards, quality, API
 ```
@@ -203,7 +212,7 @@ erp/
 | Stage | Scope | Status |
 |---|---|---|
 | 1 | Architecture, schema foundation, auth, master data | **Done** |
-| 2 | Sales, purchase, knitting, fabric inventory | **Done** (GRN, knitting, greige rolls, sales invoice) |
+| 2 | Sales, purchase, knitting, fabric inventory | **Done** (PO/SO lifecycle, GRN→PO roll-up, knitting, greige rolls, dispatch+COGS, sales invoice) |
 | 3 | Batching, recipes, lab dips, dyeing | **Done** (batches/baths, recipe scaling; lab-dip model) |
 | 4 | Color Service integration + bath-wise consumption | **Done via simulator** (live adapter pending vendor) |
 | 5 | Chemical inventory + inventory accounting | **Done** (FIFO valuation + GL reconciliation) |

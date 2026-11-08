@@ -112,6 +112,10 @@ class GRNLine(AuditMixin, Base):
     chemical_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("chemicals.id"), index=True)
     chemical_lot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("chemical_lots.id"), nullable=True)
     warehouse_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("warehouses.id"), nullable=True)
+    # Matched to the ordered PO line, so receipts roll up against the order.
+    purchase_order_line_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("purchase_order_lines.id"), nullable=True, index=True
+    )
     qty: Mapped[object] = mapped_column(Quantity, default=0)
     unit_cost: Mapped[object] = mapped_column(Money, default=0)
     tax_code_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("tax_codes.id"), nullable=True)
@@ -153,3 +157,41 @@ class SalesInvoiceLine(AuditMixin, Base):
     tax_code_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("tax_codes.id"), nullable=True)
 
     invoice: Mapped[SalesInvoice] = relationship(back_populates="lines")
+
+
+# --- delivery note (dispatch challan) ---------------------------------------
+
+class DeliveryNote(AuditMixin, Base):
+    """Dispatch of finished rolls against a sales order.
+
+    Posting a delivery note takes the fabric out of stock (FIFO, at actual
+    sub-ledger cost) and books Cost of Goods Sold; the revenue invoice is a
+    separate document that follows the dispatch.
+    """
+    __tablename__ = "delivery_notes"
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"), index=True)
+    customer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("customers.id"), index=True)
+    sales_order_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sales_orders.id"), nullable=True, index=True)
+    number: Mapped[str] = mapped_column(String(40), index=True)
+    delivery_date: Mapped[date] = mapped_column(Date)
+    status: Mapped[DocStatus] = mapped_column(String(12), default=DocStatus.DRAFT)
+    total_qty_kg: Mapped[object] = mapped_column(Quantity, default=0)
+    cogs_value: Mapped[object] = mapped_column(Money, default=0)
+    posting_reference: Mapped[str | None] = mapped_column(String(120), index=True)
+
+    lines: Mapped[list["DeliveryNoteLine"]] = relationship(
+        back_populates="delivery", cascade="all, delete-orphan"
+    )
+
+
+class DeliveryNoteLine(AuditMixin, Base):
+    __tablename__ = "delivery_note_lines"
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    delivery_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("delivery_notes.id", ondelete="CASCADE"), index=True)
+    line_no: Mapped[int] = mapped_column(Integer, default=1)
+    fabric_roll_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("fabric_rolls.id"), index=True)
+    qty_kg: Mapped[object] = mapped_column(Quantity, default=0)
+    cogs_value: Mapped[object] = mapped_column(Money, default=0)
+
+    delivery: Mapped[DeliveryNote] = relationship(back_populates="lines")

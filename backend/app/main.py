@@ -17,6 +17,7 @@ from app.api.routes import (
     knitting,
     masters,
     operations,
+    orders,
     quality,
     reports,
     rolls,
@@ -40,6 +41,7 @@ app.include_router(accounts.router)
 app.include_router(vouchers.router)
 app.include_router(reports.router)
 app.include_router(operations.router)
+app.include_router(orders.router)
 app.include_router(banking.router)
 app.include_router(dashboard.router)
 app.include_router(quality.router)

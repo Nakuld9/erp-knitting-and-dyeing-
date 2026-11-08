@@ -877,11 +877,146 @@ function Admin(){
 
 
 // ---- shell ----------------------------------------------------------------
+// ---- transactions: purchase orders (PO -> GRN roll-up) ---------------------
+const stBadge = s => <span className={"badge "+(s==="COMPLETED"?"ok":s==="CANCELLED"?"err":"")}>{s}</span>;
+const today = () => new Date().toISOString().slice(0,10);
+
+function PurchaseOrders(){
+  const suppliers=useList("/api/masters/suppliers"); const chemicals=useList("/api/masters/chemicals");
+  const taxes=useList("/api/masters/tax-codes");
+  const [pos,setPos]=useState([]); const [open,setOpen]=useState(null);
+  const [f,setF]=useState({supplier_id:"",number:genNo("PO"),order_date:today(),
+    chemical_id:"",qty:"100",rate:"1200",tax_code_id:""});
+  const [res,setRes]=useState(null); const [err,setErr]=useState("");
+  const load=useCallback(()=>{ api("/api/procurement/purchase-orders").then(setPos).catch(()=>{}); },[]);
+  useEffect(()=>{load()},[load]);
+  const create=async e=>{ e.preventDefault(); setErr(""); setRes(null);
+    try{ const r=await api("/api/procurement/purchase-orders",{method:"POST",body:{
+        supplier_id:f.supplier_id, number:f.number, order_date:f.order_date,
+        lines:[{chemical_id:f.chemical_id||null, qty:f.qty, rate:f.rate, tax_code_id:f.tax_code_id||null}]}});
+      setRes({po:r.number, status:r.status}); setF({...f,number:genNo("PO")}); load(); }
+    catch(ex){ setErr(ex.message); } };
+  const confirm=async id=>{ try{ await api(`/api/procurement/purchase-orders/${id}/confirm`,{method:"POST"}); load(); }
+    catch(ex){ setErr(ex.message); } };
+  const view=async id=>{ if(open&&open.id===id){ setOpen(null); return; }
+    try{ setOpen(await api(`/api/procurement/purchase-orders/${id}`)); }catch(ex){ setErr(ex.message); } };
+  return (<div>
+    <Panel title="Raise a purchase order">
+      <form onSubmit={create}>
+        <div className="row mb">
+          <div className="field"><label>Supplier</label><Opts items={suppliers} value={f.supplier_id} onChange={e=>setF({...f,supplier_id:e.target.value})}/></div>
+          <div className="field"><label>PO number</label><input value={f.number} onChange={e=>setF({...f,number:e.target.value})}/></div>
+          <div className="field"><label>Order date</label><input type="date" value={f.order_date} onChange={e=>setF({...f,order_date:e.target.value})}/></div>
+        </div>
+        <div className="row">
+          <div className="field"><label>Chemical</label><Opts items={chemicals} value={f.chemical_id} onChange={e=>setF({...f,chemical_id:e.target.value})}/></div>
+          <div className="field"><label>Qty</label><input value={f.qty} onChange={e=>setF({...f,qty:e.target.value})}/></div>
+          <div className="field"><label>Rate</label><input value={f.rate} onChange={e=>setF({...f,rate:e.target.value})}/></div>
+          <div className="field"><label>Tax</label><Opts items={taxes} value={f.tax_code_id} onChange={e=>setF({...f,tax_code_id:e.target.value})} placeholder="—"/></div>
+          <div className="field" style={{alignSelf:"end"}}><button className="btn">Create PO</button></div>
+        </div>
+        {err && <div className="err">{err}</div>}
+      </form>
+      <Result r={res}/>
+    </Panel>
+    <Panel title="Purchase orders">
+      {pos.length===0?<div className="muted">None yet. GRNs raised against a confirmed PO roll it to PARTIAL / COMPLETED.</div>:
+      <table><thead><tr><th>Number</th><th>Date</th><th className="num">Lines</th><th>Status</th><th></th></tr></thead>
+      <tbody>{pos.map(p=>[
+        <tr key={p.id}><td>{p.number}</td><td>{p.order_date}</td><td className="num">{p.lines}</td><td>{stBadge(p.status)}</td>
+          <td className="num"><button className="btn sec" onClick={()=>view(p.id)}>View</button>{" "}
+            {p.status==="DRAFT" && <button className="btn" onClick={()=>confirm(p.id)}>Confirm</button>}</td></tr>,
+        open&&open.id===p.id ? <tr key={p.id+"x"}><td colSpan="5">
+          <table><thead><tr><th>#</th><th>Item</th><th className="num">Ordered</th><th className="num">Received</th></tr></thead>
+          <tbody>{open.lines.map(l=><tr key={l.id}><td>{l.line_no}</td><td>{l.description||l.chemical_id||"—"}</td>
+            <td className="num">{inr2(l.qty)}</td><td className="num">{inr2(l.received_qty)}</td></tr>)}</tbody></table>
+        </td></tr> : null
+      ])}</tbody></table>}
+    </Panel>
+  </div>);
+}
+
+// ---- transactions: sales orders + dispatch (SO -> delivery -> COGS) --------
+function SalesOrders(){
+  const customers=useList("/api/masters/customers"); const fabrics=useList("/api/masters/fabric-types");
+  const taxes=useList("/api/masters/tax-codes");
+  const [sos,setSos]=useState([]); const [rolls,setRolls]=useState([]); const [sel,setSel]=useState({});
+  const [f,setF]=useState({customer_id:"",number:genNo("SO"),order_date:today(),
+    fabric_type_id:"",qty_kg:"250",rate:"300",tax_code_id:""});
+  const [dsp,setDsp]=useState({customer_id:"",sales_order_id:""});
+  const [res,setRes]=useState(null); const [dres,setDres]=useState(null); const [err,setErr]=useState("");
+  const load=useCallback(()=>{ api("/api/sales/orders").then(setSos).catch(()=>{});
+    api("/api/rolls?undelivered=true").then(setRolls).catch(()=>{}); },[]);
+  useEffect(()=>{load()},[load]);
+  const chosen=rolls.filter(r=>sel[r.id]); const totalKg=chosen.reduce((s,r)=>s+Number(r.weight_kg||0),0);
+  const create=async e=>{ e.preventDefault(); setErr(""); setRes(null);
+    try{ const r=await api("/api/sales/orders",{method:"POST",body:{
+        customer_id:f.customer_id, number:f.number, order_date:f.order_date,
+        lines:[{fabric_type_id:f.fabric_type_id||null, qty_kg:f.qty_kg, rate:f.rate, tax_code_id:f.tax_code_id||null}]}});
+      setRes({so:r.number, status:r.status, ordered_kg:r.ordered_kg}); setF({...f,number:genNo("SO")}); load(); }
+    catch(ex){ setErr(ex.message); } };
+  const confirm=async id=>{ try{ await api(`/api/sales/orders/${id}/confirm`,{method:"POST"}); load(); }
+    catch(ex){ setErr(ex.message); } };
+  const dispatch=async e=>{ e.preventDefault(); setErr(""); setDres(null);
+    if(chosen.length===0){ setErr("Select at least one undelivered roll"); return; }
+    if(!dsp.customer_id){ setErr("Pick the customer to dispatch to"); return; }
+    try{ const r=await api("/api/sales/deliveries",{method:"POST",body:{
+        customer_id:dsp.customer_id, sales_order_id:dsp.sales_order_id||null,
+        delivery_date:today(), roll_ids:chosen.map(r=>r.id)}});
+      setDres(r); setSel({}); load(); }
+    catch(ex){ setErr(ex.message); } };
+  return (<div>
+    <Panel title="Create a sales order">
+      <form onSubmit={create}>
+        <div className="row mb">
+          <div className="field"><label>Customer</label><Opts items={customers} value={f.customer_id} onChange={e=>setF({...f,customer_id:e.target.value})}/></div>
+          <div className="field"><label>SO number</label><input value={f.number} onChange={e=>setF({...f,number:e.target.value})}/></div>
+          <div className="field"><label>Order date</label><input type="date" value={f.order_date} onChange={e=>setF({...f,order_date:e.target.value})}/></div>
+        </div>
+        <div className="row">
+          <div className="field"><label>Fabric</label><Opts items={fabrics} value={f.fabric_type_id} onChange={e=>setF({...f,fabric_type_id:e.target.value})}/></div>
+          <div className="field"><label>Qty (kg)</label><input value={f.qty_kg} onChange={e=>setF({...f,qty_kg:e.target.value})}/></div>
+          <div className="field"><label>Rate</label><input value={f.rate} onChange={e=>setF({...f,rate:e.target.value})}/></div>
+          <div className="field"><label>Tax</label><Opts items={taxes} value={f.tax_code_id} onChange={e=>setF({...f,tax_code_id:e.target.value})} placeholder="—"/></div>
+          <div className="field" style={{alignSelf:"end"}}><button className="btn">Create SO</button></div>
+        </div>
+        {err && <div className="err">{err}</div>}
+      </form>
+      <Result r={res}/>
+    </Panel>
+    <Panel title="Sales orders">
+      {sos.length===0?<div className="muted">None yet.</div>:
+      <table><thead><tr><th>Number</th><th>Date</th><th className="num">Ordered kg</th><th className="num">Delivered kg</th><th>Status</th><th></th></tr></thead>
+      <tbody>{sos.map(s=><tr key={s.id}><td>{s.number}</td><td>{s.order_date}</td>
+        <td className="num">{s.ordered_kg?inr2(s.ordered_kg):"—"}</td><td className="num">{s.delivered_kg?inr2(s.delivered_kg):"—"}</td>
+        <td>{stBadge(s.status)}</td>
+        <td className="num">{s.status==="DRAFT" && <button className="btn" onClick={()=>confirm(s.id)}>Confirm</button>}</td></tr>)}</tbody></table>}
+    </Panel>
+    <Panel title="Dispatch finished rolls (delivery challan → COGS)">
+      <form onSubmit={dispatch}>
+        <div className="row mb">
+          <div className="field"><label>Customer</label><Opts items={customers} value={dsp.customer_id} onChange={e=>setDsp({...dsp,customer_id:e.target.value})}/></div>
+          <div className="field"><label>Against sales order</label><Opts items={sos.map(s=>({id:s.id,name:s.number}))} value={dsp.sales_order_id} onChange={e=>setDsp({...dsp,sales_order_id:e.target.value})} placeholder="—"/></div>
+          <div className="field"><label>Selected</label><div style={{padding:"9px 0",fontWeight:700}}>{chosen.length} rolls · {inr2(totalKg)} kg</div></div>
+        </div>
+        <table><thead><tr><th style={{width:40}}></th><th>Roll no.</th><th>Fabric</th><th className="num">Weight (kg)</th></tr></thead>
+        <tbody>{rolls.length===0 ? <tr><td colSpan="4" className="muted">No undelivered rolls — record a knitting production first.</td></tr>
+          : rolls.map(r=><tr key={r.id}><td><input type="checkbox" checked={!!sel[r.id]} onChange={()=>setSel(s=>({...s,[r.id]:!s[r.id]}))}/></td>
+            <td>{r.roll_no}</td><td>{r.fabric||"—"}</td><td className="num">{inr2(r.weight_kg)}</td></tr>)}</tbody></table>
+        <div className="row" style={{marginTop:12}}><button className="btn">Dispatch ({chosen.length} rolls)</button></div>
+      </form>
+      <Result r={dres}/>
+    </Panel>
+  </div>);
+}
+
 const PAGES={
   owner:{t:"Owner Dashboard",c:OwnerDash}, factory:{t:"Factory Dashboard",c:FactoryDash},
   accounts:{t:"Accounts Dashboard",c:AccountsDash}, chemical:{t:"Chemical Dashboard",c:ChemicalDash},
+  purchaseorders:{t:"Purchase Orders",c:PurchaseOrders},
   purchase:{t:"Purchase (GRN)",c:Purchase}, knitting:{t:"Knitting Production",c:Knitting},
   batching:{t:"Batching",c:Batching},
+  salesorders:{t:"Sales Orders & Dispatch",c:SalesOrders},
   sales:{t:"Sales Invoice",c:Sales}, dyeing:{t:"Dyeing & Dispensing",c:Dyeing},
   customers:{t:"Customers",c:()=> <PartyPage kind="customers"/>},
   suppliers:{t:"Suppliers",c:()=> <PartyPage kind="suppliers"/>},
@@ -903,8 +1038,8 @@ function App(){
         {navBtn("owner","Owner")}{navBtn("factory","Factory")}
         {navBtn("accounts","Accounts")}{navBtn("chemical","Chemical")}
         <div className="group">Transactions</div>
-        {navBtn("purchase","Purchase (GRN)")}{navBtn("knitting","Knitting")}
-        {navBtn("batching","Batching")}{navBtn("sales","Sales Invoice")}{navBtn("dyeing","Dyeing & Dispensing")}{navBtn("vouchers","Vouchers")}
+        {navBtn("purchaseorders","Purchase Orders")}{navBtn("purchase","Purchase (GRN)")}{navBtn("knitting","Knitting")}
+        {navBtn("batching","Batching")}{navBtn("salesorders","Sales Orders")}{navBtn("sales","Sales Invoice")}{navBtn("dyeing","Dyeing & Dispensing")}{navBtn("vouchers","Vouchers")}
         <div className="group">Masters</div>
         {navBtn("masters","Master Data")}{navBtn("customers","Customers")}{navBtn("suppliers","Suppliers")}{navBtn("warehouses","Warehouses")}
         <div className="group">Quality</div>{navBtn("quality","Quality")}

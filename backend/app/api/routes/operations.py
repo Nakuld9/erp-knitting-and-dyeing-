@@ -34,6 +34,7 @@ class GRNLineIn(BaseModel):
     chemical_id: uuid.UUID
     chemical_lot_id: uuid.UUID | None = None
     warehouse_id: uuid.UUID | None = None
+    purchase_order_line_id: uuid.UUID | None = None
     qty: Decimal
     unit_cost: Decimal
     tax_code_id: uuid.UUID | None = None
@@ -44,6 +45,7 @@ class GRNIn(BaseModel):
     number: str
     grn_date: date
     supplier_invoice_no: str | None = None
+    purchase_order_id: uuid.UUID | None = None
     lines: list[GRNLineIn] = Field(min_length=1)
 
 
@@ -52,15 +54,21 @@ def post_grn(payload: GRNIn, db: Session = Depends(get_db),
             user: User = Depends(require_permission("purchase.manage"))):
     grn = GoodsReceiptNote(company_id=user.company_id, supplier_id=payload.supplier_id,
                            number=payload.number, grn_date=payload.grn_date,
-                           supplier_invoice_no=payload.supplier_invoice_no, created_by=user.id)
+                           supplier_invoice_no=payload.supplier_invoice_no,
+                           purchase_order_id=payload.purchase_order_id, created_by=user.id)
     for i, ln in enumerate(payload.lines, start=1):
         grn.lines.append(GRNLine(line_no=i, **ln.model_dump()))
     db.add(grn)
     db.flush()
     voucher = procurement.post_chemical_grn(db, grn, created_by=user.id)
+    po_status = None
+    if payload.purchase_order_id:
+        from app.models.commercial import PurchaseOrder
+        po = db.get(PurchaseOrder, payload.purchase_order_id)
+        po_status = po.status if po else None
     db.commit()
     return {"grn_id": str(grn.id), "voucher_number": voucher.number,
-            "total": str(voucher.total_debit)}
+            "total": str(voucher.total_debit), "po_status": po_status}
 
 
 # ------------------------------- sales --------------------------------------

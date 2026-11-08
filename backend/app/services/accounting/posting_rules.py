@@ -29,6 +29,9 @@ DEFAULT_RULES: dict[str, dict[str, str]] = {
     "KNITTING_PRODUCTION": {"greige": "1070", "wip": "1080"},
     "WIP_TO_FG": {"fg": "1085", "wip": "1080"},
     "COGS": {"cogs": "5150", "fg": "1085"},
+    # Dispatch of fabric rolls: credit the sub-ledger account the roll sits in
+    # (greige vs finished), debit COGS.
+    "FABRIC_DELIVERY": {"cogs": "5150", "greige": "1070", "fg": "1085"},
     "SALES_INVOICE": {
         "receivable": "1040", "sales": "4010", "output_cgst": "2041",
         "output_sgst": "2042", "output_igst": "2043",

@@ -17,13 +17,15 @@ router = APIRouter(prefix="/api/rolls", tags=["rolls"])
 
 
 @router.get("")
-def list_rolls(kind: str | None = None, unbatched: bool = False,
+def list_rolls(kind: str | None = None, unbatched: bool = False, undelivered: bool = False,
                db: Session = Depends(get_db), user: User = Depends(require_permission("report.read"))):
     stmt = select(FabricRoll).where(FabricRoll.company_id == user.company_id)
     if kind:
         stmt = stmt.where(FabricRoll.kind == kind)
     if unbatched:
         stmt = stmt.where(FabricRoll.dye_batch_id.is_(None))
+    if undelivered:
+        stmt = stmt.where(FabricRoll.delivery_note_id.is_(None))
     from app.models.masters import FabricType, Machine, YarnMaster
     rows = db.execute(stmt.order_by(FabricRoll.created_at.desc())).scalars().all()
     out = []
@@ -37,6 +39,7 @@ def list_rolls(kind: str | None = None, unbatched: bool = False,
                     "yarn": yarn.name if yarn else None,
                     "fabric": fabric.name if fabric else None,
                     "dye_batch_id": str(r.dye_batch_id) if r.dye_batch_id else None,
+                    "delivered": r.delivery_note_id is not None,
                     "barcode": r.barcode or r.roll_no})
     return out
 

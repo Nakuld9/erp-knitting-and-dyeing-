@@ -2608,6 +2608,472 @@ function Admin() {
 }
 
 // ---- shell ----------------------------------------------------------------
+// ---- transactions: purchase orders (PO -> GRN roll-up) ---------------------
+const stBadge = s => /*#__PURE__*/React.createElement("span", {
+  className: "badge " + (s === "COMPLETED" ? "ok" : s === "CANCELLED" ? "err" : "")
+}, s);
+const today = () => new Date().toISOString().slice(0, 10);
+function PurchaseOrders() {
+  const suppliers = useList("/api/masters/suppliers");
+  const chemicals = useList("/api/masters/chemicals");
+  const taxes = useList("/api/masters/tax-codes");
+  const [pos, setPos] = useState([]);
+  const [open, setOpen] = useState(null);
+  const [f, setF] = useState({
+    supplier_id: "",
+    number: genNo("PO"),
+    order_date: today(),
+    chemical_id: "",
+    qty: "100",
+    rate: "1200",
+    tax_code_id: ""
+  });
+  const [res, setRes] = useState(null);
+  const [err, setErr] = useState("");
+  const load = useCallback(() => {
+    api("/api/procurement/purchase-orders").then(setPos).catch(() => {});
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+  const create = async e => {
+    e.preventDefault();
+    setErr("");
+    setRes(null);
+    try {
+      const r = await api("/api/procurement/purchase-orders", {
+        method: "POST",
+        body: {
+          supplier_id: f.supplier_id,
+          number: f.number,
+          order_date: f.order_date,
+          lines: [{
+            chemical_id: f.chemical_id || null,
+            qty: f.qty,
+            rate: f.rate,
+            tax_code_id: f.tax_code_id || null
+          }]
+        }
+      });
+      setRes({
+        po: r.number,
+        status: r.status
+      });
+      setF({
+        ...f,
+        number: genNo("PO")
+      });
+      load();
+    } catch (ex) {
+      setErr(ex.message);
+    }
+  };
+  const confirm = async id => {
+    try {
+      await api(`/api/procurement/purchase-orders/${id}/confirm`, {
+        method: "POST"
+      });
+      load();
+    } catch (ex) {
+      setErr(ex.message);
+    }
+  };
+  const view = async id => {
+    if (open && open.id === id) {
+      setOpen(null);
+      return;
+    }
+    try {
+      setOpen(await api(`/api/procurement/purchase-orders/${id}`));
+    } catch (ex) {
+      setErr(ex.message);
+    }
+  };
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Panel, {
+    title: "Raise a purchase order"
+  }, /*#__PURE__*/React.createElement("form", {
+    onSubmit: create
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "row mb"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Supplier"), /*#__PURE__*/React.createElement(Opts, {
+    items: suppliers,
+    value: f.supplier_id,
+    onChange: e => setF({
+      ...f,
+      supplier_id: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "PO number"), /*#__PURE__*/React.createElement("input", {
+    value: f.number,
+    onChange: e => setF({
+      ...f,
+      number: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Order date"), /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    value: f.order_date,
+    onChange: e => setF({
+      ...f,
+      order_date: e.target.value
+    })
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "row"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Chemical"), /*#__PURE__*/React.createElement(Opts, {
+    items: chemicals,
+    value: f.chemical_id,
+    onChange: e => setF({
+      ...f,
+      chemical_id: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Qty"), /*#__PURE__*/React.createElement("input", {
+    value: f.qty,
+    onChange: e => setF({
+      ...f,
+      qty: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Rate"), /*#__PURE__*/React.createElement("input", {
+    value: f.rate,
+    onChange: e => setF({
+      ...f,
+      rate: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Tax"), /*#__PURE__*/React.createElement(Opts, {
+    items: taxes,
+    value: f.tax_code_id,
+    onChange: e => setF({
+      ...f,
+      tax_code_id: e.target.value
+    }),
+    placeholder: "\u2014"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field",
+    style: {
+      alignSelf: "end"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Create PO"))), err && /*#__PURE__*/React.createElement("div", {
+    className: "err"
+  }, err)), /*#__PURE__*/React.createElement(Result, {
+    r: res
+  })), /*#__PURE__*/React.createElement(Panel, {
+    title: "Purchase orders"
+  }, pos.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "None yet. GRNs raised against a confirmed PO roll it to PARTIAL / COMPLETED.") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Number"), /*#__PURE__*/React.createElement("th", null, "Date"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Lines"), /*#__PURE__*/React.createElement("th", null, "Status"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, pos.map(p => [/*#__PURE__*/React.createElement("tr", {
+    key: p.id
+  }, /*#__PURE__*/React.createElement("td", null, p.number), /*#__PURE__*/React.createElement("td", null, p.order_date), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, p.lines), /*#__PURE__*/React.createElement("td", null, stBadge(p.status)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn sec",
+    onClick: () => view(p.id)
+  }, "View"), " ", p.status === "DRAFT" && /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    onClick: () => confirm(p.id)
+  }, "Confirm"))), open && open.id === p.id ? /*#__PURE__*/React.createElement("tr", {
+    key: p.id + "x"
+  }, /*#__PURE__*/React.createElement("td", {
+    colSpan: "5"
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "#"), /*#__PURE__*/React.createElement("th", null, "Item"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Ordered"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Received"))), /*#__PURE__*/React.createElement("tbody", null, open.lines.map(l => /*#__PURE__*/React.createElement("tr", {
+    key: l.id
+  }, /*#__PURE__*/React.createElement("td", null, l.line_no), /*#__PURE__*/React.createElement("td", null, l.description || l.chemical_id || "—"), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(l.qty)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(l.received_qty)))))))) : null])))));
+}
+
+// ---- transactions: sales orders + dispatch (SO -> delivery -> COGS) --------
+function SalesOrders() {
+  const customers = useList("/api/masters/customers");
+  const fabrics = useList("/api/masters/fabric-types");
+  const taxes = useList("/api/masters/tax-codes");
+  const [sos, setSos] = useState([]);
+  const [rolls, setRolls] = useState([]);
+  const [sel, setSel] = useState({});
+  const [f, setF] = useState({
+    customer_id: "",
+    number: genNo("SO"),
+    order_date: today(),
+    fabric_type_id: "",
+    qty_kg: "250",
+    rate: "300",
+    tax_code_id: ""
+  });
+  const [dsp, setDsp] = useState({
+    customer_id: "",
+    sales_order_id: ""
+  });
+  const [res, setRes] = useState(null);
+  const [dres, setDres] = useState(null);
+  const [err, setErr] = useState("");
+  const load = useCallback(() => {
+    api("/api/sales/orders").then(setSos).catch(() => {});
+    api("/api/rolls?undelivered=true").then(setRolls).catch(() => {});
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+  const chosen = rolls.filter(r => sel[r.id]);
+  const totalKg = chosen.reduce((s, r) => s + Number(r.weight_kg || 0), 0);
+  const create = async e => {
+    e.preventDefault();
+    setErr("");
+    setRes(null);
+    try {
+      const r = await api("/api/sales/orders", {
+        method: "POST",
+        body: {
+          customer_id: f.customer_id,
+          number: f.number,
+          order_date: f.order_date,
+          lines: [{
+            fabric_type_id: f.fabric_type_id || null,
+            qty_kg: f.qty_kg,
+            rate: f.rate,
+            tax_code_id: f.tax_code_id || null
+          }]
+        }
+      });
+      setRes({
+        so: r.number,
+        status: r.status,
+        ordered_kg: r.ordered_kg
+      });
+      setF({
+        ...f,
+        number: genNo("SO")
+      });
+      load();
+    } catch (ex) {
+      setErr(ex.message);
+    }
+  };
+  const confirm = async id => {
+    try {
+      await api(`/api/sales/orders/${id}/confirm`, {
+        method: "POST"
+      });
+      load();
+    } catch (ex) {
+      setErr(ex.message);
+    }
+  };
+  const dispatch = async e => {
+    e.preventDefault();
+    setErr("");
+    setDres(null);
+    if (chosen.length === 0) {
+      setErr("Select at least one undelivered roll");
+      return;
+    }
+    if (!dsp.customer_id) {
+      setErr("Pick the customer to dispatch to");
+      return;
+    }
+    try {
+      const r = await api("/api/sales/deliveries", {
+        method: "POST",
+        body: {
+          customer_id: dsp.customer_id,
+          sales_order_id: dsp.sales_order_id || null,
+          delivery_date: today(),
+          roll_ids: chosen.map(r => r.id)
+        }
+      });
+      setDres(r);
+      setSel({});
+      load();
+    } catch (ex) {
+      setErr(ex.message);
+    }
+  };
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Panel, {
+    title: "Create a sales order"
+  }, /*#__PURE__*/React.createElement("form", {
+    onSubmit: create
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "row mb"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Customer"), /*#__PURE__*/React.createElement(Opts, {
+    items: customers,
+    value: f.customer_id,
+    onChange: e => setF({
+      ...f,
+      customer_id: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "SO number"), /*#__PURE__*/React.createElement("input", {
+    value: f.number,
+    onChange: e => setF({
+      ...f,
+      number: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Order date"), /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    value: f.order_date,
+    onChange: e => setF({
+      ...f,
+      order_date: e.target.value
+    })
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "row"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Fabric"), /*#__PURE__*/React.createElement(Opts, {
+    items: fabrics,
+    value: f.fabric_type_id,
+    onChange: e => setF({
+      ...f,
+      fabric_type_id: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Qty (kg)"), /*#__PURE__*/React.createElement("input", {
+    value: f.qty_kg,
+    onChange: e => setF({
+      ...f,
+      qty_kg: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Rate"), /*#__PURE__*/React.createElement("input", {
+    value: f.rate,
+    onChange: e => setF({
+      ...f,
+      rate: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Tax"), /*#__PURE__*/React.createElement(Opts, {
+    items: taxes,
+    value: f.tax_code_id,
+    onChange: e => setF({
+      ...f,
+      tax_code_id: e.target.value
+    }),
+    placeholder: "\u2014"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field",
+    style: {
+      alignSelf: "end"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Create SO"))), err && /*#__PURE__*/React.createElement("div", {
+    className: "err"
+  }, err)), /*#__PURE__*/React.createElement(Result, {
+    r: res
+  })), /*#__PURE__*/React.createElement(Panel, {
+    title: "Sales orders"
+  }, sos.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "None yet.") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Number"), /*#__PURE__*/React.createElement("th", null, "Date"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Ordered kg"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Delivered kg"), /*#__PURE__*/React.createElement("th", null, "Status"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, sos.map(s => /*#__PURE__*/React.createElement("tr", {
+    key: s.id
+  }, /*#__PURE__*/React.createElement("td", null, s.number), /*#__PURE__*/React.createElement("td", null, s.order_date), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, s.ordered_kg ? inr2(s.ordered_kg) : "—"), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, s.delivered_kg ? inr2(s.delivered_kg) : "—"), /*#__PURE__*/React.createElement("td", null, stBadge(s.status)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, s.status === "DRAFT" && /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    onClick: () => confirm(s.id)
+  }, "Confirm"))))))), /*#__PURE__*/React.createElement(Panel, {
+    title: "Dispatch finished rolls (delivery challan \u2192 COGS)"
+  }, /*#__PURE__*/React.createElement("form", {
+    onSubmit: dispatch
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "row mb"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Customer"), /*#__PURE__*/React.createElement(Opts, {
+    items: customers,
+    value: dsp.customer_id,
+    onChange: e => setDsp({
+      ...dsp,
+      customer_id: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Against sales order"), /*#__PURE__*/React.createElement(Opts, {
+    items: sos.map(s => ({
+      id: s.id,
+      name: s.number
+    })),
+    value: dsp.sales_order_id,
+    onChange: e => setDsp({
+      ...dsp,
+      sales_order_id: e.target.value
+    }),
+    placeholder: "\u2014"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Selected"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: "9px 0",
+      fontWeight: 700
+    }
+  }, chosen.length, " rolls \xB7 ", inr2(totalKg), " kg"))), /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    style: {
+      width: 40
+    }
+  }), /*#__PURE__*/React.createElement("th", null, "Roll no."), /*#__PURE__*/React.createElement("th", null, "Fabric"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Weight (kg)"))), /*#__PURE__*/React.createElement("tbody", null, rolls.length === 0 ? /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+    colSpan: "4",
+    className: "muted"
+  }, "No undelivered rolls \u2014 record a knitting production first.")) : rolls.map(r => /*#__PURE__*/React.createElement("tr", {
+    key: r.id
+  }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: !!sel[r.id],
+    onChange: () => setSel(s => ({
+      ...s,
+      [r.id]: !s[r.id]
+    }))
+  })), /*#__PURE__*/React.createElement("td", null, r.roll_no), /*#__PURE__*/React.createElement("td", null, r.fabric || "—"), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(r.weight_kg)))))), /*#__PURE__*/React.createElement("div", {
+    className: "row",
+    style: {
+      marginTop: 12
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Dispatch (", chosen.length, " rolls)"))), /*#__PURE__*/React.createElement(Result, {
+    r: dres
+  })));
+}
 const PAGES = {
   owner: {
     t: "Owner Dashboard",
@@ -2625,6 +3091,10 @@ const PAGES = {
     t: "Chemical Dashboard",
     c: ChemicalDash
   },
+  purchaseorders: {
+    t: "Purchase Orders",
+    c: PurchaseOrders
+  },
   purchase: {
     t: "Purchase (GRN)",
     c: Purchase
@@ -2636,6 +3106,10 @@ const PAGES = {
   batching: {
     t: "Batching",
     c: Batching
+  },
+  salesorders: {
+    t: "Sales Orders & Dispatch",
+    c: SalesOrders
   },
   sales: {
     t: "Sales Invoice",
@@ -2713,7 +3187,7 @@ function App() {
     className: "group"
   }, "Dashboards"), navBtn("owner", "Owner"), navBtn("factory", "Factory"), navBtn("accounts", "Accounts"), navBtn("chemical", "Chemical"), /*#__PURE__*/React.createElement("div", {
     className: "group"
-  }, "Transactions"), navBtn("purchase", "Purchase (GRN)"), navBtn("knitting", "Knitting"), navBtn("batching", "Batching"), navBtn("sales", "Sales Invoice"), navBtn("dyeing", "Dyeing & Dispensing"), navBtn("vouchers", "Vouchers"), /*#__PURE__*/React.createElement("div", {
+  }, "Transactions"), navBtn("purchaseorders", "Purchase Orders"), navBtn("purchase", "Purchase (GRN)"), navBtn("knitting", "Knitting"), navBtn("batching", "Batching"), navBtn("salesorders", "Sales Orders"), navBtn("sales", "Sales Invoice"), navBtn("dyeing", "Dyeing & Dispensing"), navBtn("vouchers", "Vouchers"), /*#__PURE__*/React.createElement("div", {
     className: "group"
   }, "Masters"), navBtn("masters", "Master Data"), navBtn("customers", "Customers"), navBtn("suppliers", "Suppliers"), navBtn("warehouses", "Warehouses"), /*#__PURE__*/React.createElement("div", {
     className: "group"

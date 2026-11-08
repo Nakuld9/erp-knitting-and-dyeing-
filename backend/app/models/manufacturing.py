@@ -76,6 +76,8 @@ class FabricRoll(AuditMixin, Base):
     yarn_lot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("yarn_lots.id"), nullable=True)
     sales_order_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sales_orders.id"), nullable=True)
     dye_batch_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dye_batches.id"), nullable=True)
+    # Set once the roll is dispatched, so it can't be delivered twice.
+    delivery_note_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("delivery_notes.id"), nullable=True, index=True)
     weight_kg: Mapped[object] = mapped_column(Quantity, default=0)
     length_m: Mapped[object | None] = mapped_column(Quantity, nullable=True)
     gsm: Mapped[object | None] = mapped_column(Quantity, nullable=True)

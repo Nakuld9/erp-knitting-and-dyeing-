@@ -81,4 +81,13 @@ def post_chemical_grn(db: Session, grn: GoodsReceiptNote, *, created_by: uuid.UU
     grn.posting_reference = ref
     grn.status = DocStatus.POSTED
     db.flush()
+
+    # Roll the linked purchase order up to PARTIAL / COMPLETED on receipt.
+    if grn.purchase_order_id:
+        from app.models.commercial import PurchaseOrder
+        from app.services import order_lifecycle
+        po = db.get(PurchaseOrder, grn.purchase_order_id)
+        if po is not None and po.company_id == grn.company_id:
+            order_lifecycle.refresh_po_status(db, po)
+
     return voucher
