@@ -692,6 +692,39 @@ function Knitting(){
   </div>);
 }
 // ---- transactions: sales invoice ------------------------------------------
+function EInvoiceBox({invoiceId, total}){
+  const [cfg,setCfg]=useState(null); const [ei,setEi]=useState(null);
+  const [err,setErr]=useState(""); const [busy,setBusy]=useState(false);
+  useEffect(()=>{ api("/api/einvoice/config").then(setCfg).catch(()=>{});
+    api("/api/einvoice/"+invoiceId).then(setEi).catch(()=>setEi(null)); },[invoiceId]);
+  const gen=async()=>{ setErr(""); setBusy(true);
+    try{ setEi(await api("/api/einvoice/"+invoiceId+"/generate",{method:"POST"})); }
+    catch(ex){ setErr(ex.message); } finally{ setBusy(false); } };
+  const cancel=async()=>{ setErr(""); setBusy(true);
+    try{ setEi(await api("/api/einvoice/"+invoiceId+"/cancel",{method:"POST",body:{reason_code:"2",remarks:"Cancelled from UI"}})); }
+    catch(ex){ setErr(ex.message); } finally{ setBusy(false); } };
+  const st=ei&&ei.status;
+  return (<div className="panel" style={{marginTop:14}}>
+    <h3>E-invoice (IRN)</h3>
+    <div className="row mb" style={{alignItems:"center",gap:10}}>
+      <span className="muted" style={{fontSize:12.5}}>Mode:</span>
+      <span className={"badge "+(cfg&&cfg.live?"info":"")}>{cfg? (cfg.live?"LIVE GSP":"SIMULATOR"):"…"}</span>
+      {cfg&&cfg.live&&!cfg.configured && <span className="badge bad">credentials missing</span>}
+      <span style={{flex:1}}/>
+      {st!=="GENERATED" && <button className="btn" disabled={busy} onClick={gen}>Generate IRN</button>}
+      {st==="GENERATED" && <button className="btn sec" disabled={busy} onClick={cancel}>Cancel IRN</button>}
+    </div>
+    {ei&&ei.irn && <div className="act" style={{flexDirection:"column",alignItems:"flex-start",gap:4}}>
+      <div><b>Status:</b> <span className={"badge "+(st==="GENERATED"?"ok":st==="CANCELLED"?"bad":"warn")}>{st}</span></div>
+      <div style={{fontFamily:"monospace",fontSize:12,wordBreak:"break-all"}}><b>IRN:</b> {ei.irn}</div>
+      {ei.ack_no && <div style={{fontSize:12.5}}><b>Ack:</b> {ei.ack_no} · {ei.ack_date}</div>}
+      {ei.signed_qr && <div style={{fontSize:11,color:"#64748b",wordBreak:"break-all"}}><b>Signed QR:</b> {ei.signed_qr.slice(0,80)}…</div>}
+    </div>}
+    {!ei && <div className="muted" style={{fontSize:12.5}}>No IRN yet for this invoice.</div>}
+    {err && <div className="err">{err}</div>}
+  </div>);
+}
+
 function Sales(){
   const customers=useList("/api/masters/customers"); const taxes=useList("/api/masters/tax-codes");
   const [hdr,setHdr]=useState({customer_id:"",number:genNo("INV"),invoice_date:new Date().toISOString().slice(0,10)});
@@ -729,6 +762,7 @@ function Sales(){
       {err && <div className="err">{err}</div>}
     </form>
     <Result r={res}/>
+    {res && res.invoice_id && <EInvoiceBox invoiceId={res.invoice_id} total={res.total_value}/>}
   </Panel>);
 }
 

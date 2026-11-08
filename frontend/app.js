@@ -1930,6 +1930,115 @@ function Knitting() {
   })));
 }
 // ---- transactions: sales invoice ------------------------------------------
+function EInvoiceBox({
+  invoiceId,
+  total
+}) {
+  const [cfg, setCfg] = useState(null);
+  const [ei, setEi] = useState(null);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    api("/api/einvoice/config").then(setCfg).catch(() => {});
+    api("/api/einvoice/" + invoiceId).then(setEi).catch(() => setEi(null));
+  }, [invoiceId]);
+  const gen = async () => {
+    setErr("");
+    setBusy(true);
+    try {
+      setEi(await api("/api/einvoice/" + invoiceId + "/generate", {
+        method: "POST"
+      }));
+    } catch (ex) {
+      setErr(ex.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const cancel = async () => {
+    setErr("");
+    setBusy(true);
+    try {
+      setEi(await api("/api/einvoice/" + invoiceId + "/cancel", {
+        method: "POST",
+        body: {
+          reason_code: "2",
+          remarks: "Cancelled from UI"
+        }
+      }));
+    } catch (ex) {
+      setErr(ex.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const st = ei && ei.status;
+  return /*#__PURE__*/React.createElement("div", {
+    className: "panel",
+    style: {
+      marginTop: 14
+    }
+  }, /*#__PURE__*/React.createElement("h3", null, "E-invoice (IRN)"), /*#__PURE__*/React.createElement("div", {
+    className: "row mb",
+    style: {
+      alignItems: "center",
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "muted",
+    style: {
+      fontSize: 12.5
+    }
+  }, "Mode:"), /*#__PURE__*/React.createElement("span", {
+    className: "badge " + (cfg && cfg.live ? "info" : "")
+  }, cfg ? cfg.live ? "LIVE GSP" : "SIMULATOR" : "…"), cfg && cfg.live && !cfg.configured && /*#__PURE__*/React.createElement("span", {
+    className: "badge bad"
+  }, "credentials missing"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      flex: 1
+    }
+  }), st !== "GENERATED" && /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    disabled: busy,
+    onClick: gen
+  }, "Generate IRN"), st === "GENERATED" && /*#__PURE__*/React.createElement("button", {
+    className: "btn sec",
+    disabled: busy,
+    onClick: cancel
+  }, "Cancel IRN")), ei && ei.irn && /*#__PURE__*/React.createElement("div", {
+    className: "act",
+    style: {
+      flexDirection: "column",
+      alignItems: "flex-start",
+      gap: 4
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("b", null, "Status:"), " ", /*#__PURE__*/React.createElement("span", {
+    className: "badge " + (st === "GENERATED" ? "ok" : st === "CANCELLED" ? "bad" : "warn")
+  }, st)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontFamily: "monospace",
+      fontSize: 12,
+      wordBreak: "break-all"
+    }
+  }, /*#__PURE__*/React.createElement("b", null, "IRN:"), " ", ei.irn), ei.ack_no && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12.5
+    }
+  }, /*#__PURE__*/React.createElement("b", null, "Ack:"), " ", ei.ack_no, " \xB7 ", ei.ack_date), ei.signed_qr && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "#64748b",
+      wordBreak: "break-all"
+    }
+  }, /*#__PURE__*/React.createElement("b", null, "Signed QR:"), " ", ei.signed_qr.slice(0, 80), "\u2026")), !ei && /*#__PURE__*/React.createElement("div", {
+    className: "muted",
+    style: {
+      fontSize: 12.5
+    }
+  }, "No IRN yet for this invoice."), err && /*#__PURE__*/React.createElement("div", {
+    className: "err"
+  }, err));
+}
 function Sales() {
   const customers = useList("/api/masters/customers");
   const taxes = useList("/api/masters/tax-codes");
@@ -2073,6 +2182,9 @@ function Sales() {
     className: "err"
   }, err)), /*#__PURE__*/React.createElement(Result, {
     r: res
+  }), res && res.invoice_id && /*#__PURE__*/React.createElement(EInvoiceBox, {
+    invoiceId: res.invoice_id,
+    total: res.total_value
   }));
 }
 

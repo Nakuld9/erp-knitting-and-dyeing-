@@ -18,6 +18,7 @@ from app.api.routes import (
     banking,
     costing,
     dashboard,
+    einvoice,
     hardware,
     inbox,
     inventory_ops,
@@ -70,6 +71,7 @@ app.include_router(admin.router)
 app.include_router(assets.router)
 app.include_router(approvals.router)
 app.include_router(accounting_ops.router)
+app.include_router(einvoice.router)
 
 observability.install_observability(app)
 

@@ -179,7 +179,7 @@ specified (pending-verification) Color Service dispensing integration.
 **Platform** — JWT auth + RBAC (15 roles), REST API, Alembic migrations,
 idempotent seed + demo data, Docker Compose.
 
-`196 passing tests` cover the accounting invariants, the nine worked posting
+`204 passing tests` cover the accounting invariants, the nine worked posting
 examples, correction dosing, RBAC, full-cycle trial balance, procurement,
 PO / SO lifecycle (receipt + dispatch roll-up, COGS on delivery), credit /
 debit notes, the greige→finished-goods transfer on finishing, knitting,
@@ -198,6 +198,7 @@ reconciliation), and the REST flow. See the acceptance-test map below.
 | [`docs/ER_DIAGRAM.md`](docs/ER_DIAGRAM.md) | Mermaid ER diagrams + the master traceability chain |
 | [`docs/ACCOUNTING_POSTING_MATRIX.md`](docs/ACCOUNTING_POSTING_MATRIX.md) | Dr/Cr rules for every business event |
 | [`docs/COLOR_SERVICE_INTEGRATION.md`](docs/COLOR_SERVICE_INTEGRATION.md) | Dispensing integration spec, adapters, simulator |
+| [`docs/EINVOICE_INTEGRATION.md`](docs/EINVOICE_INTEGRATION.md) | E-invoice (IRN) engine, simulator + GSP adapter, going live |
 | [`docs/HARDWARE_INTEGRATION.md`](docs/HARDWARE_INTEGRATION.md) | Weighing-scale & knitting-machine integration, roll labels |
 | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Install, configure, back up / recover, upgrade, monitor |
 | [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | Day-2 runbook: scheduled jobs, health/metrics, logs, incident playbook |
@@ -270,7 +271,7 @@ erp/
     │   │                     #   banking, dashboard
     │   └── seed/             # chart of accounts, RBAC, seeder, demo data
     ├── alembic/              # migrations (baseline from metadata)
-    └── tests/                # 196 tests: invariants, posting matrix, TB, procurement,
+    └── tests/                # 204 tests: invariants, posting matrix, TB, procurement,
                               #   knitting, dyeing+dispensing, traceability, statements,
                               #   gst, banking, exports, dashboards, quality, API
 ```

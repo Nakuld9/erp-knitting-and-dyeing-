@@ -40,6 +40,22 @@ class Settings(BaseSettings):
     # Indian financial year starts in April.
     fiscal_year_start_month: int = 4
 
+    # --- E-invoice (IRN via a GST Suvidha Provider) ---
+    # Which adapter to use. "simulator" (default) issues deterministic test IRNs
+    # offline; "gsp" calls a real GSP/IRP using the credentials below. Set these
+    # from the environment / secrets — never commit real values.
+    einvoice_gsp: str = "simulator"            # "simulator" | "gsp"
+    einvoice_base_url: str = ""                # GSP REST base, e.g. https://api.gsp.example/einvoice
+    einvoice_auth_path: str = "/auth"          # token endpoint (relative to base)
+    einvoice_irn_path: str = "/invoice"        # IRN generate endpoint
+    einvoice_cancel_path: str = "/invoice/cancel"
+    einvoice_client_id: str = ""
+    einvoice_client_secret: str = ""
+    einvoice_username: str = ""                # e-invoice portal API user for the GSTIN
+    einvoice_password: str = ""
+    einvoice_gstin: str = ""                   # the registered supplier GSTIN
+    einvoice_timeout_seconds: int = 20
+
     # --- Rounding ---
     # Number of decimal places kept for monetary amounts and quantities.
     money_scale: int = 2
