@@ -121,6 +121,7 @@ COA: list[tuple[str, str, AccountType, bool, str | None, set[str]]] = [
     ("6120", "Interest", X, False, "6000", set()),
     ("6130", "Communication", X, False, "6000", set()),
     ("6190", "Miscellaneous Expenses", X, False, "6000", set()),
+    ("6195", "Inventory Adjustment (Shrinkage/Gain)", X, False, "6000", set()),
 ]
 
 

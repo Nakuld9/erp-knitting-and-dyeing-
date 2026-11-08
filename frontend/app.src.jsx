@@ -1264,10 +1264,13 @@ function SalesOrders(){
     fabric_type_id:"",qty_kg:"250",rate:"300",tax_code_id:""});
   const [dsp,setDsp]=useState({customer_id:"",sales_order_id:""});
   const [cn,setCn]=useState({customer_id:"",number:genNo("CN"),amount:"10000",tax_code_id:"",reason:""});
-  const [res,setRes]=useState(null); const [dres,setDres]=useState(null);
+  const [rret,setRret]=useState({customer_id:"",number:genNo("RET"),amount:"",tax_code_id:""});
+  const [rsel,setRsel]=useState({}); const [delivered,setDelivered]=useState([]);
+  const [res,setRes]=useState(null); const [dres,setDres]=useState(null); const [retRes,setRetRes]=useState(null);
   const [cnRes,setCnRes]=useState(null); const [cnErr,setCnErr]=useState(""); const [err,setErr]=useState("");
   const load=useCallback(()=>{ api("/api/sales/orders").then(setSos).catch(()=>{});
-    api("/api/rolls?undelivered=true").then(setRolls).catch(()=>{}); },[]);
+    api("/api/rolls?undelivered=true").then(setRolls).catch(()=>{});
+    api("/api/rolls").then(rs=>setDelivered((rs||[]).filter(r=>r.delivered))).catch(()=>{}); },[]);
   useEffect(()=>{load()},[load]);
   const chosen=rolls.filter(r=>sel[r.id]); const totalKg=chosen.reduce((s,r)=>s+Number(r.weight_kg||0),0);
   const create=async e=>{ e.preventDefault(); setErr(""); setRes(null);
@@ -1291,6 +1294,15 @@ function SalesOrders(){
         customer_id:cn.customer_id, number:cn.number, note_date:today(), reason:cn.reason||null,
         lines:[{description:cn.reason||"Adjustment", qty:"1", rate:cn.amount, tax_code_id:cn.tax_code_id||null}]}});
       setCnRes(r); setCn({...cn,number:genNo("CN")}); }
+    catch(ex){ setCnErr(ex.message); } };
+  const retSel=Object.keys(rsel).filter(k=>rsel[k]);
+  const doReturn=async e=>{ e.preventDefault(); setCnErr(""); setRetRes(null);
+    if(!rret.customer_id){ setCnErr("Pick the customer"); return; }
+    try{ const r=await api("/api/sales/returns",{method:"POST",body:{
+        customer_id:rret.customer_id, number:rret.number, note_date:today(), reason:"Sales return",
+        restock_roll_ids:retSel,
+        lines:[{description:"Sales return", qty:"1", rate:rret.amount||"0", tax_code_id:rret.tax_code_id||null}]}});
+      setRetRes(r); setRret({...rret,number:genNo("RET"),amount:""}); setRsel({}); load(); }
     catch(ex){ setCnErr(ex.message); } };
   return (<div>
     <Panel title="Create a sales order">
@@ -1347,6 +1359,24 @@ function SalesOrders(){
         {cnErr && <div className="err">{cnErr}</div>}
       </form>
       <Result r={cnRes}/>
+    </Panel>
+    <Panel title="Sales return (credit note + restock)">
+      <form onSubmit={doReturn}>
+        <div className="row mb">
+          <div className="field"><label>Customer</label><Opts items={customers} value={rret.customer_id} onChange={e=>setRret({...rret,customer_id:e.target.value})}/></div>
+          <div className="field"><label>RET number</label><input value={rret.number} onChange={e=>setRret({...rret,number:e.target.value})}/></div>
+          <div className="field"><label>Credit amount (taxable)</label><input value={rret.amount} onChange={e=>setRret({...rret,amount:e.target.value})}/></div>
+          <div className="field"><label>Tax</label><Opts items={taxes} value={rret.tax_code_id} onChange={e=>setRret({...rret,tax_code_id:e.target.value})} placeholder="—"/></div>
+          <div className="field"><label>Selected</label><div style={{padding:"9px 0",fontWeight:700}}>{retSel.length} rolls</div></div>
+        </div>
+        <div className="muted" style={{marginBottom:6,fontSize:12}}>Tick returned rolls to take them back into stock and reverse their COGS.</div>
+        <table><thead><tr><th style={{width:40}}></th><th>Roll no.</th><th>Fabric</th><th className="num">Weight (kg)</th></tr></thead>
+        <tbody>{delivered.length===0?<tr><td colSpan="4" className="muted">No delivered rolls to return.</td></tr>
+          : delivered.map(r=><tr key={r.id}><td><input type="checkbox" checked={!!rsel[r.id]} onChange={()=>setRsel(s=>({...s,[r.id]:!s[r.id]}))}/></td>
+            <td>{r.roll_no}</td><td>{r.fabric||"—"}</td><td className="num">{inr2(r.weight_kg)}</td></tr>)}</tbody></table>
+        <div className="row" style={{marginTop:12}}><button className="btn">Post sales return</button></div>
+      </form>
+      <Result r={retRes}/>
     </Panel>
   </div>);
 }
@@ -1637,8 +1667,14 @@ function InventoryOps(){
   const [tf,setTf]=useState({item_id:"",from_warehouse_id:"",to_warehouse_id:"",qty:"100",method:"FIFO"});
   const [sp,setSp]=useState({roll_id:"",a:"100",b:"150"});
   const [mSel,setMSel]=useState({});
+  const [cf,setCf]=useState({item_id:"",warehouse_id:"",counted_qty:"",reason:""});
   const [tRes,setTRes]=useState(null); const [spRes,setSpRes]=useState(null); const [mRes,setMRes]=useState(null);
+  const [cRes,setCRes]=useState(null);
   const [err,setErr]=useState("");
+  const count=e=>{ e.preventDefault(); setCRes(null); go(async()=>{
+    setCRes(await api("/api/inventory/stock-count",{method:"POST",body:{item_type:"CHEMICAL",
+      item_id:cf.item_id, warehouse_id:cf.warehouse_id||null, counted_qty:cf.counted_qty, reason:cf.reason||null}}));
+    setCf({...cf,counted_qty:""}); }); };
   const load=useCallback(()=>{ api("/api/rolls?undelivered=true").then(setRolls).catch(()=>{});
     api("/api/inventory/transfers").then(setTransfers).catch(()=>{}); },[]);
   useEffect(()=>{load()},[load]);
@@ -1659,6 +1695,19 @@ function InventoryOps(){
     go(async()=>{ setMRes(await api("/api/inventory/rolls/merge",{method:"POST",body:{roll_ids:mergeSel}}));
       setMSel({}); }); };
   return (<div>
+    <Panel title="Physical stock count (inventory adjustment)">
+      <form onSubmit={count}>
+        <div className="row">
+          <div className="field"><label>Chemical</label><Opts items={chemicals} value={cf.item_id} onChange={e=>setCf({...cf,item_id:e.target.value})}/></div>
+          <div className="field"><label>Warehouse</label><Opts items={warehouses} value={cf.warehouse_id} onChange={e=>setCf({...cf,warehouse_id:e.target.value})} placeholder="— all —"/></div>
+          <div className="field"><label>Counted qty</label><input value={cf.counted_qty} onChange={e=>setCf({...cf,counted_qty:e.target.value})}/></div>
+          <div className="field"><label>Reason</label><input value={cf.reason} onChange={e=>setCf({...cf,reason:e.target.value})} placeholder="e.g. spillage"/></div>
+          <div className="field" style={{alignSelf:"end"}}><button className="btn">Post count</button></div>
+        </div>
+        <div className="muted" style={{marginTop:8,fontSize:12}}>Posts the costed variance vs book stock: shortage → Dr Inventory adjustment / Cr inventory; surplus → the reverse.</div>
+      </form>
+      <Result r={cRes}/>
+    </Panel>
     <Panel title="Stock transfer (between warehouses)">
       <form onSubmit={transfer}>
         <div className="row">

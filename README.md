@@ -79,6 +79,12 @@ specified (pending-verification) Color Service dispensing integration.
 - **Roll split / merge** — carve a roll into children (each inheriting lineage
   and its share of the stock at cost) or merge several active rolls into one;
   both conserve stock value and reorganise only the sub-ledger (no voucher).
+- **Physical stock count** — record the counted quantity against book stock and
+  post the costed variance (shortage → Dr Inventory Adjustment / Cr inventory;
+  surplus → the reverse at average cost), keeping the sub-ledger tied to the GL.
+- **Sales-return restock** — a credit note that also takes returned rolls back
+  into finished-goods stock at their dispatch cost and reverses the COGS booked
+  on delivery.
 - **Lot tracking** — chemicals/dyes **and yarn** are received as priced lots
   (own lot master + FIFO stock per lot + accounting); knitting can draw from a
   specific yarn lot, so greige rolls are traceable to the exact yarn lot.
@@ -173,7 +179,7 @@ specified (pending-verification) Color Service dispensing integration.
 **Platform** — JWT auth + RBAC (15 roles), REST API, Alembic migrations,
 idempotent seed + demo data, Docker Compose.
 
-`175 passing tests` cover the accounting invariants, the nine worked posting
+`179 passing tests` cover the accounting invariants, the nine worked posting
 examples, correction dosing, RBAC, full-cycle trial balance, procurement,
 PO / SO lifecycle (receipt + dispatch roll-up, COGS on delivery), credit /
 debit notes, the greige→finished-goods transfer on finishing, knitting,
@@ -263,7 +269,7 @@ erp/
     │   │                     #   banking, dashboard
     │   └── seed/             # chart of accounts, RBAC, seeder, demo data
     ├── alembic/              # migrations (baseline from metadata)
-    └── tests/                # 175 tests: invariants, posting matrix, TB, procurement,
+    └── tests/                # 179 tests: invariants, posting matrix, TB, procurement,
                               #   knitting, dyeing+dispensing, traceability, statements,
                               #   gst, banking, exports, dashboards, quality, API
 ```

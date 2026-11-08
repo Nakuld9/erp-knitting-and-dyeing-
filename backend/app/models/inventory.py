@@ -77,6 +77,25 @@ class StockTransfer(AuditMixin, Base):
     cost_value: Mapped[object] = mapped_column(Money, default=0)
 
 
+class StockCount(AuditMixin, Base):
+    """A physical stock count: the counted quantity against the system book
+    quantity, with the costed variance that was posted."""
+    __tablename__ = "stock_counts"
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"), index=True)
+    number: Mapped[str] = mapped_column(String(40), index=True)
+    count_date: Mapped[date] = mapped_column(Date)
+    item_type: Mapped[ItemType] = mapped_column(String(12))
+    item_id: Mapped[uuid.UUID] = mapped_column(Uuid, index=True)
+    warehouse_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("warehouses.id"), nullable=True)
+    book_qty: Mapped[object] = mapped_column(Quantity, default=0)
+    counted_qty: Mapped[object] = mapped_column(Quantity, default=0)
+    variance_qty: Mapped[object] = mapped_column(Quantity, default=0)
+    variance_value: Mapped[object] = mapped_column(Money, default=0)
+    reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    posting_reference: Mapped[str | None] = mapped_column(String(120), index=True)
+
+
 class InventoryTransaction(AuditMixin, Base):
     """A single costed stock movement (one layer consumed/created)."""
 

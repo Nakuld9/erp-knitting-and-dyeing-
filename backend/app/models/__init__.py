@@ -51,6 +51,7 @@ from app.models.inventory import (  # noqa: F401
     InventoryTransaction,
     ItemType,
     MoveDirection,
+    StockCount,
     StockLayer,
     StockTransfer,
 )

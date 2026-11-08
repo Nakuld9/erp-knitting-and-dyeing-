@@ -3810,14 +3810,24 @@ function SalesOrders() {
     tax_code_id: "",
     reason: ""
   });
+  const [rret, setRret] = useState({
+    customer_id: "",
+    number: genNo("RET"),
+    amount: "",
+    tax_code_id: ""
+  });
+  const [rsel, setRsel] = useState({});
+  const [delivered, setDelivered] = useState([]);
   const [res, setRes] = useState(null);
   const [dres, setDres] = useState(null);
+  const [retRes, setRetRes] = useState(null);
   const [cnRes, setCnRes] = useState(null);
   const [cnErr, setCnErr] = useState("");
   const [err, setErr] = useState("");
   const load = useCallback(() => {
     api("/api/sales/orders").then(setSos).catch(() => {});
     api("/api/rolls?undelivered=true").then(setRolls).catch(() => {});
+    api("/api/rolls").then(rs => setDelivered((rs || []).filter(r => r.delivered))).catch(() => {});
   }, []);
   useEffect(() => {
     load();
@@ -3921,6 +3931,44 @@ function SalesOrders() {
         ...cn,
         number: genNo("CN")
       });
+    } catch (ex) {
+      setCnErr(ex.message);
+    }
+  };
+  const retSel = Object.keys(rsel).filter(k => rsel[k]);
+  const doReturn = async e => {
+    e.preventDefault();
+    setCnErr("");
+    setRetRes(null);
+    if (!rret.customer_id) {
+      setCnErr("Pick the customer");
+      return;
+    }
+    try {
+      const r = await api("/api/sales/returns", {
+        method: "POST",
+        body: {
+          customer_id: rret.customer_id,
+          number: rret.number,
+          note_date: today(),
+          reason: "Sales return",
+          restock_roll_ids: retSel,
+          lines: [{
+            description: "Sales return",
+            qty: "1",
+            rate: rret.amount || "0",
+            tax_code_id: rret.tax_code_id || null
+          }]
+        }
+      });
+      setRetRes(r);
+      setRret({
+        ...rret,
+        number: genNo("RET"),
+        amount: ""
+      });
+      setRsel({});
+      load();
     } catch (ex) {
       setCnErr(ex.message);
     }
@@ -4154,6 +4202,89 @@ function SalesOrders() {
     className: "err"
   }, cnErr)), /*#__PURE__*/React.createElement(Result, {
     r: cnRes
+  })), /*#__PURE__*/React.createElement(Panel, {
+    title: "Sales return (credit note + restock)"
+  }, /*#__PURE__*/React.createElement("form", {
+    onSubmit: doReturn
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "row mb"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Customer"), /*#__PURE__*/React.createElement(Opts, {
+    items: customers,
+    value: rret.customer_id,
+    onChange: e => setRret({
+      ...rret,
+      customer_id: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "RET number"), /*#__PURE__*/React.createElement("input", {
+    value: rret.number,
+    onChange: e => setRret({
+      ...rret,
+      number: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Credit amount (taxable)"), /*#__PURE__*/React.createElement("input", {
+    value: rret.amount,
+    onChange: e => setRret({
+      ...rret,
+      amount: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Tax"), /*#__PURE__*/React.createElement(Opts, {
+    items: taxes,
+    value: rret.tax_code_id,
+    onChange: e => setRret({
+      ...rret,
+      tax_code_id: e.target.value
+    }),
+    placeholder: "\u2014"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Selected"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: "9px 0",
+      fontWeight: 700
+    }
+  }, retSel.length, " rolls"))), /*#__PURE__*/React.createElement("div", {
+    className: "muted",
+    style: {
+      marginBottom: 6,
+      fontSize: 12
+    }
+  }, "Tick returned rolls to take them back into stock and reverse their COGS."), /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    style: {
+      width: 40
+    }
+  }), /*#__PURE__*/React.createElement("th", null, "Roll no."), /*#__PURE__*/React.createElement("th", null, "Fabric"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Weight (kg)"))), /*#__PURE__*/React.createElement("tbody", null, delivered.length === 0 ? /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+    colSpan: "4",
+    className: "muted"
+  }, "No delivered rolls to return.")) : delivered.map(r => /*#__PURE__*/React.createElement("tr", {
+    key: r.id
+  }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: !!rsel[r.id],
+    onChange: () => setRsel(s => ({
+      ...s,
+      [r.id]: !s[r.id]
+    }))
+  })), /*#__PURE__*/React.createElement("td", null, r.roll_no), /*#__PURE__*/React.createElement("td", null, r.fabric || "—"), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(r.weight_kg)))))), /*#__PURE__*/React.createElement("div", {
+    className: "row",
+    style: {
+      marginTop: 12
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Post sales return"))), /*#__PURE__*/React.createElement(Result, {
+    r: retRes
   })));
 }
 
@@ -5151,10 +5282,37 @@ function InventoryOps() {
     b: "150"
   });
   const [mSel, setMSel] = useState({});
+  const [cf, setCf] = useState({
+    item_id: "",
+    warehouse_id: "",
+    counted_qty: "",
+    reason: ""
+  });
   const [tRes, setTRes] = useState(null);
   const [spRes, setSpRes] = useState(null);
   const [mRes, setMRes] = useState(null);
+  const [cRes, setCRes] = useState(null);
   const [err, setErr] = useState("");
+  const count = e => {
+    e.preventDefault();
+    setCRes(null);
+    go(async () => {
+      setCRes(await api("/api/inventory/stock-count", {
+        method: "POST",
+        body: {
+          item_type: "CHEMICAL",
+          item_id: cf.item_id,
+          warehouse_id: cf.warehouse_id || null,
+          counted_qty: cf.counted_qty,
+          reason: cf.reason || null
+        }
+      }));
+      setCf({
+        ...cf,
+        counted_qty: ""
+      });
+    });
+  };
   const load = useCallback(() => {
     api("/api/rolls?undelivered=true").then(setRolls).catch(() => {});
     api("/api/inventory/transfers").then(setTransfers).catch(() => {});
@@ -5234,6 +5392,63 @@ function InventoryOps() {
     });
   };
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Panel, {
+    title: "Physical stock count (inventory adjustment)"
+  }, /*#__PURE__*/React.createElement("form", {
+    onSubmit: count
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "row"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Chemical"), /*#__PURE__*/React.createElement(Opts, {
+    items: chemicals,
+    value: cf.item_id,
+    onChange: e => setCf({
+      ...cf,
+      item_id: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Warehouse"), /*#__PURE__*/React.createElement(Opts, {
+    items: warehouses,
+    value: cf.warehouse_id,
+    onChange: e => setCf({
+      ...cf,
+      warehouse_id: e.target.value
+    }),
+    placeholder: "\u2014 all \u2014"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Counted qty"), /*#__PURE__*/React.createElement("input", {
+    value: cf.counted_qty,
+    onChange: e => setCf({
+      ...cf,
+      counted_qty: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Reason"), /*#__PURE__*/React.createElement("input", {
+    value: cf.reason,
+    onChange: e => setCf({
+      ...cf,
+      reason: e.target.value
+    }),
+    placeholder: "e.g. spillage"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field",
+    style: {
+      alignSelf: "end"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Post count"))), /*#__PURE__*/React.createElement("div", {
+    className: "muted",
+    style: {
+      marginTop: 8,
+      fontSize: 12
+    }
+  }, "Posts the costed variance vs book stock: shortage \u2192 Dr Inventory adjustment / Cr inventory; surplus \u2192 the reverse.")), /*#__PURE__*/React.createElement(Result, {
+    r: cRes
+  })), /*#__PURE__*/React.createElement(Panel, {
     title: "Stock transfer (between warehouses)"
   }, /*#__PURE__*/React.createElement("form", {
     onSubmit: transfer

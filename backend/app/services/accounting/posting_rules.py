@@ -58,6 +58,7 @@ DEFAULT_RULES: dict[str, dict[str, str]] = {
     },
     "YEAR_END": {"retained_earnings": "3030"},
     "OVERHEAD_ALLOCATION": {"wip": "1080"},
+    "STOCK_ADJUSTMENT": {"adjustment": "6195", "yarn": "1060", "chemical": "1100", "dye": "1090"},
     "CUSTOMER_RECEIPT": {"bank": "1020", "receivable": "1040"},
     "SUPPLIER_PAYMENT": {"payable": "2010", "bank": "1020"},
     # Fixed assets. Capitalisation debits the asset's own account; the credit

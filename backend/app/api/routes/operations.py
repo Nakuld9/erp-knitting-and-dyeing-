@@ -150,6 +150,38 @@ def post_credit_note(payload: CreditNoteIn, db: Session = Depends(get_db),
             "total_value": str(note.total_value)}
 
 
+class SalesReturnIn(BaseModel):
+    customer_id: uuid.UUID
+    number: str
+    note_date: date
+    reason: str | None = None
+    restock_roll_ids: list[uuid.UUID] = Field(default_factory=list)
+    lines: list[CreditNoteLineIn] = Field(min_length=1)
+
+
+@router.post("/sales/returns", status_code=status.HTTP_201_CREATED)
+def post_sales_return(payload: SalesReturnIn, db: Session = Depends(get_db),
+                      user: User = Depends(require_permission("sales.manage"))):
+    note = CreditNote(company_id=user.company_id, customer_id=payload.customer_id,
+                      number=payload.number, note_date=payload.note_date, reason=payload.reason,
+                      created_by=user.id)
+    for i, ln in enumerate(payload.lines, start=1):
+        note.lines.append(CreditNoteLine(line_no=i, **ln.model_dump()))
+    db.add(note)
+    db.flush()
+    try:
+        res = credit_debit_notes.post_sales_return(db, note, restock_roll_ids=payload.restock_roll_ids,
+                                                   created_by=user.id)
+    except RuntimeError as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    db.commit()
+    cn = res["credit_note_voucher"]; cogs = res["cogs_reversal_voucher"]
+    return {"credit_note_id": str(note.id), "credit_voucher": cn.number if cn else None,
+            "cogs_reversal_voucher": cogs.number if cogs else None,
+            "total_value": str(note.total_value), "restocked": len(payload.restock_roll_ids)}
+
+
 class DebitNoteLineIn(BaseModel):
     chemical_id: uuid.UUID
     chemical_lot_id: uuid.UUID | None = None

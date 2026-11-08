@@ -69,6 +69,34 @@ def list_transfers(db: Session = Depends(get_db),
             for t in rows[:200]]
 
 
+class StockCountIn(BaseModel):
+    item_type: str = "CHEMICAL"
+    item_id: uuid.UUID
+    warehouse_id: uuid.UUID | None = None
+    counted_qty: Decimal
+    count_date: date | None = None
+    reason: str | None = None
+
+
+@router.post("/stock-count", status_code=status.HTTP_201_CREATED)
+def stock_count(payload: StockCountIn, db: Session = Depends(get_db),
+                user: User = Depends(require_permission("inventory.adjust"))):
+    from app.services import stock_count as sc
+    try:
+        res = sc.post_stock_count(
+            db, company_id=user.company_id, item_type=payload.item_type, item_id=payload.item_id,
+            warehouse_id=payload.warehouse_id, counted_qty=payload.counted_qty,
+            count_date=payload.count_date, reason=payload.reason, created_by=user.id)
+        db.commit()
+    except (sc.StockCountError, ValueError) as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    v = res.get("voucher")
+    return {"number": res["number"], "book_qty": str(res["book_qty"]),
+            "counted_qty": str(res["counted_qty"]), "variance_qty": str(res["variance_qty"]),
+            "variance_value": str(res["variance_value"]), "voucher_number": v.number if v else None}
+
+
 @router.get("/valuation")
 def valuation(item_type: str, item_id: uuid.UUID, db: Session = Depends(get_db),
               user: User = Depends(require_permission("report.read"))):

@@ -17,6 +17,7 @@ import uuid
 from collections import defaultdict
 from decimal import Decimal
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.types import MONEY_SCALE, quantize
@@ -92,6 +93,68 @@ def post_sales_credit_note(db: Session, note: CreditNote, *, created_by: uuid.UU
 
 
 # ---------------------------- purchase debit note ---------------------------
+
+def restock_returned_rolls(db: Session, company_id: uuid.UUID, roll_ids, *, reference: str,
+                           vdate, created_by: uuid.UUID | None = None):
+    """Take delivered rolls back into stock at their dispatch cost and reverse
+    the COGS booked on delivery (Dr fabric inventory / Cr COGS)."""
+    from collections import defaultdict
+    from app.models.commercial import DeliveryNoteLine
+    from app.models.manufacturing import FabricRoll, RollKind
+    ref = f"RETCOGS:{reference}"
+    if pe.find_existing(db, company_id, ref) is not None:
+        return pe.find_existing(db, company_id, ref)
+
+    debits: dict[str, Decimal] = defaultdict(lambda: MZERO)
+    total = MZERO
+    for rid in roll_ids:
+        roll = db.get(FabricRoll, rid)
+        if roll is None or roll.company_id != company_id:
+            raise RuntimeError(f"Roll {rid} not found")
+        if roll.delivery_note_id is None:
+            raise RuntimeError(f"Roll {roll.roll_no} was not dispatched")
+        dl = db.execute(select(DeliveryNoteLine).where(
+            DeliveryNoteLine.fabric_roll_id == roll.id).order_by(DeliveryNoteLine.created_at.desc())
+        ).scalars().first()
+        cost = quantize(Decimal(str(dl.cogs_value)) if dl else 0, MONEY_SCALE)
+        qty = quantize(Decimal(str(dl.qty_kg)) if dl else Decimal(str(roll.weight_kg)), MONEY_SCALE)
+        unit = quantize(cost / qty, MONEY_SCALE) if qty > 0 else MZERO
+        inventory.receive(db, company_id=company_id, item_type=ItemType.FABRIC, item_id=roll.id,
+                          qty=qty, unit_cost=unit, warehouse_id=roll.warehouse_id,
+                          event_type="SALES_RETURN", source_module="sales_return",
+                          source_id=reference, posting_reference=ref)
+        roll.delivery_note_id = None
+        roll.status = "ACTIVE"
+        kind = roll.kind.value if isinstance(roll.kind, RollKind) else roll.kind
+        slot = "greige" if kind == RollKind.GREIGE.value else "fg"
+        acct = resolve_account(db, company_id, "FABRIC_DELIVERY", slot)
+        debits[acct] = quantize(debits[acct] + cost, MONEY_SCALE)
+        total = quantize(total + cost, MONEY_SCALE)
+    db.flush()
+    if total <= 0:
+        return None
+    lines = [pe.PostingLine(a, debit=v, narration="Returned fabric back to stock") for a, v in debits.items()]
+    lines.append(pe.PostingLine(resolve_account(db, company_id, "FABRIC_DELIVERY", "cogs"),
+                                credit=total, narration="Reverse COGS on return"))
+    return pe.post_voucher(db, pe.PostingRequest(
+        company_id=company_id, voucher_type_code="SJ", voucher_date=vdate, posting_reference=ref,
+        narration=f"Sales return restock {reference}", source_module="sales_return",
+        source_id=reference, created_by=created_by, lines=lines))
+
+
+def post_sales_return(db: Session, note: CreditNote, *, restock_roll_ids=None,
+                      created_by: uuid.UUID | None = None):
+    """A credit note that also takes returned goods back into stock: posts the
+    financial credit note and, for any returned rolls, restocks them and
+    reverses the COGS booked at delivery."""
+    cn_voucher = post_sales_credit_note(db, note, created_by=created_by)
+    cogs_voucher = None
+    if restock_roll_ids:
+        cogs_voucher = restock_returned_rolls(db, note.company_id, restock_roll_ids,
+                                              reference=note.number, vdate=note.note_date,
+                                              created_by=created_by)
+    return {"credit_note_voucher": cn_voucher, "cogs_reversal_voucher": cogs_voucher}
+
 
 def post_purchase_debit_note(db: Session, note: DebitNote, *, created_by: uuid.UUID | None = None):
     ref = note.posting_reference or f"DN:{note.number}"
