@@ -837,9 +837,272 @@ function FinalAccounts() {
     className: "num"
   }, inr2(a.amount)))), line("Total applications", ff.total_applications, true), line("Net change in working capital", ff.net_working_capital_change, true)))));
 }
+function GeneralLedger({
+  code,
+  onPick
+}) {
+  const accounts = useList("/api/accounts");
+  const [sel, setSel] = useState(code || "");
+  const [rng, setRng] = useState({
+    from: "",
+    to: today()
+  });
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (code) setSel(code);
+  }, [code]);
+  const load = useCallback(async c => {
+    const acc = c || sel;
+    if (!acc) {
+      setData(null);
+      return;
+    }
+    setErr("");
+    setBusy(true);
+    try {
+      let q = `/api/reports/ledger/${acc}`;
+      const p = [];
+      if (rng.from) p.push("date_from=" + rng.from);
+      if (rng.to) p.push("date_to=" + rng.to);
+      if (p.length) q += "?" + p.join("&");
+      setData(await api(q));
+    } catch (ex) {
+      setErr(ex.message);
+      setData(null);
+    } finally {
+      setBusy(false);
+    }
+  }, [sel, rng.from, rng.to]);
+  useEffect(() => {
+    if (code) {
+      setSel(code);
+      load(code);
+    }
+  }, [code]);
+  return /*#__PURE__*/React.createElement(Panel, {
+    title: "General ledger (by account)"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "row mb",
+    style: {
+      alignItems: "end",
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field",
+    style: {
+      minWidth: 280
+    }
+  }, /*#__PURE__*/React.createElement("label", null, "Account"), /*#__PURE__*/React.createElement("select", {
+    value: sel,
+    onChange: e => {
+      setSel(e.target.value);
+      load(e.target.value);
+    }
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "Select an account\u2026"), accounts.map(a => /*#__PURE__*/React.createElement("option", {
+    key: a.code,
+    value: a.code
+  }, a.code, " \xB7 ", a.name)))), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "From"), /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    value: rng.from,
+    onChange: e => setRng({
+      ...rng,
+      from: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "To"), /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    value: rng.to,
+    onChange: e => setRng({
+      ...rng,
+      to: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    disabled: busy || !sel,
+    onClick: () => load()
+  }, "Refresh")), err && /*#__PURE__*/React.createElement("div", {
+    className: "err"
+  }, err), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    className: "mb",
+    style: {
+      fontWeight: 700
+    }
+  }, data.account_code, " \xB7 ", data.account_name), /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Date"), /*#__PURE__*/React.createElement("th", null, "Voucher"), /*#__PURE__*/React.createElement("th", null, "Narration"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Debit"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Credit"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Balance"))), /*#__PURE__*/React.createElement("tbody", null, data.entries.length === 0 && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+    colSpan: "6",
+    className: "muted"
+  }, "No postings in this period.")), data.entries.map((e, i) => /*#__PURE__*/React.createElement("tr", {
+    key: i
+  }, /*#__PURE__*/React.createElement("td", null, e.date), /*#__PURE__*/React.createElement("td", null, e.voucher_number), /*#__PURE__*/React.createElement("td", null, e.narration || "—"), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, Number(e.debit) ? inr2(e.debit) : ""), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, Number(e.credit) ? inr2(e.credit) : ""), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(e.running_balance))))), /*#__PURE__*/React.createElement("tfoot", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    colSpan: "5"
+  }, "Closing balance"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, inr2(data.closing_balance))))), /*#__PURE__*/React.createElement("div", {
+    className: "muted",
+    style: {
+      fontSize: 12,
+      marginTop: 6
+    }
+  }, "Balance is debit-positive (Dr +, Cr \u2212).")));
+}
+function TrialBalance({
+  onDrill
+}) {
+  const [rng, setRng] = useState({
+    from: "",
+    to: today()
+  });
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(async () => {
+    setErr("");
+    setBusy(true);
+    try {
+      let q = "/api/reports/trial-balance";
+      const p = [];
+      if (rng.from) p.push("date_from=" + rng.from);
+      if (rng.to) p.push("date_to=" + rng.to);
+      if (p.length) q += "?" + p.join("&");
+      setData(await api(q));
+    } catch (ex) {
+      setErr(ex.message);
+    } finally {
+      setBusy(false);
+    }
+  }, [rng.from, rng.to]);
+  useEffect(() => {
+    load();
+  }, []);
+  const n = v => Number(v) ? inr2(v) : "";
+  const t = data && data.totals;
+  return /*#__PURE__*/React.createElement(Panel, {
+    title: "Trial balance"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "row mb",
+    style: {
+      alignItems: "end",
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "From"), /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    value: rng.from,
+    onChange: e => setRng({
+      ...rng,
+      from: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "To"), /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    value: rng.to,
+    onChange: e => setRng({
+      ...rng,
+      to: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    disabled: busy,
+    onClick: load
+  }, "Refresh"), data && /*#__PURE__*/React.createElement("span", {
+    className: "badge " + (data.is_balanced ? "ok" : "bad"),
+    style: {
+      alignSelf: "center"
+    }
+  }, data.is_balanced ? "Balanced" : "Out of balance")), err && /*#__PURE__*/React.createElement("div", {
+    className: "err"
+  }, err), data && /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Code"), /*#__PURE__*/React.createElement("th", null, "Account"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Opening Dr"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Opening Cr"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Period Dr"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Period Cr"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Closing Dr"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Closing Cr"))), /*#__PURE__*/React.createElement("tbody", null, data.rows.map(r => /*#__PURE__*/React.createElement("tr", {
+    key: r.account_code
+  }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("a", {
+    href: "#gl",
+    onClick: ev => {
+      ev.preventDefault();
+      onDrill && onDrill(r.account_code);
+    },
+    style: {
+      color: "#2563eb",
+      cursor: "pointer",
+      textDecoration: "underline"
+    }
+  }, r.account_code)), /*#__PURE__*/React.createElement("td", null, r.account_name), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, n(r.opening_debit)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, n(r.opening_credit)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, n(r.period_debit)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, n(r.period_credit)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, n(r.closing_debit)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, n(r.closing_credit))))), t && /*#__PURE__*/React.createElement("tfoot", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    colSpan: "2"
+  }, "Totals"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, inr2(t.opening_debit)), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, inr2(t.opening_credit)), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, inr2(t.period_debit)), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, inr2(t.period_credit)), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, inr2(t.closing_debit)), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, inr2(t.closing_credit))))), /*#__PURE__*/React.createElement("div", {
+    className: "muted",
+    style: {
+      fontSize: 12,
+      marginTop: 6
+    }
+  }, "Click an account code to open its general ledger."));
+}
 function Reports() {
   const [fmt, setFmt] = useState("xlsx");
   const [busy, setBusy] = useState("");
+  const [glCode, setGlCode] = useState("");
+  const drill = c => {
+    setGlCode(c);
+    setTimeout(() => {
+      const el = document.getElementById("gl");
+      if (el) el.scrollIntoView({
+        behavior: "smooth"
+      });
+    }, 50);
+  };
   const dl = async rep => {
     setBusy(rep);
     try {
@@ -858,7 +1121,13 @@ function Reports() {
       setBusy("");
     }
   };
-  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(FinalAccounts, null), /*#__PURE__*/React.createElement(Panel, {
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(TrialBalance, {
+    onDrill: drill
+  }), /*#__PURE__*/React.createElement("div", {
+    id: "gl"
+  }, /*#__PURE__*/React.createElement(GeneralLedger, {
+    code: glCode
+  })), /*#__PURE__*/React.createElement(FinalAccounts, null), /*#__PURE__*/React.createElement(Panel, {
     title: "Download reports"
   }, /*#__PURE__*/React.createElement("div", {
     className: "row mb"

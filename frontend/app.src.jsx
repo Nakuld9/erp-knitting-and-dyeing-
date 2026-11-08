@@ -356,14 +356,101 @@ function FinalAccounts(){
   </div>);
 }
 
+function GeneralLedger({code, onPick}){
+  const accounts=useList("/api/accounts");
+  const [sel,setSel]=useState(code||"");
+  const [rng,setRng]=useState({from:"",to:today()});
+  const [data,setData]=useState(null); const [err,setErr]=useState(""); const [busy,setBusy]=useState(false);
+  useEffect(()=>{ if(code) setSel(code); },[code]);
+  const load=useCallback(async(c)=>{ const acc=c||sel; if(!acc){ setData(null); return; }
+    setErr(""); setBusy(true);
+    try{ let q=`/api/reports/ledger/${acc}`; const p=[];
+      if(rng.from) p.push("date_from="+rng.from); if(rng.to) p.push("date_to="+rng.to);
+      if(p.length) q+="?"+p.join("&");
+      setData(await api(q)); }
+    catch(ex){ setErr(ex.message); setData(null); } finally{ setBusy(false); } },[sel,rng.from,rng.to]);
+  useEffect(()=>{ if(code){ setSel(code); load(code); } },[code]);
+  return (<Panel title="General ledger (by account)">
+    <div className="row mb" style={{alignItems:"end",gap:10}}>
+      <div className="field" style={{minWidth:280}}><label>Account</label>
+        <select value={sel} onChange={e=>{setSel(e.target.value); load(e.target.value);}}>
+          <option value="">Select an account…</option>
+          {accounts.map(a=><option key={a.code} value={a.code}>{a.code} · {a.name}</option>)}</select></div>
+      <div className="field"><label>From</label><input type="date" value={rng.from} onChange={e=>setRng({...rng,from:e.target.value})}/></div>
+      <div className="field"><label>To</label><input type="date" value={rng.to} onChange={e=>setRng({...rng,to:e.target.value})}/></div>
+      <button className="btn" disabled={busy||!sel} onClick={()=>load()}>Refresh</button>
+    </div>
+    {err && <div className="err">{err}</div>}
+    {data && <>
+      <div className="mb" style={{fontWeight:700}}>{data.account_code} · {data.account_name}</div>
+      <table><thead><tr><th>Date</th><th>Voucher</th><th>Narration</th>
+        <th className="num">Debit</th><th className="num">Credit</th><th className="num">Balance</th></tr></thead>
+      <tbody>
+        {data.entries.length===0 && <tr><td colSpan="6" className="muted">No postings in this period.</td></tr>}
+        {data.entries.map((e,i)=><tr key={i}><td>{e.date}</td><td>{e.voucher_number}</td><td>{e.narration||"—"}</td>
+          <td className="num">{Number(e.debit)?inr2(e.debit):""}</td>
+          <td className="num">{Number(e.credit)?inr2(e.credit):""}</td>
+          <td className="num">{inr2(e.running_balance)}</td></tr>)}
+      </tbody>
+      <tfoot><tr><th colSpan="5">Closing balance</th><th className="num">{inr2(data.closing_balance)}</th></tr></tfoot></table>
+      <div className="muted" style={{fontSize:12,marginTop:6}}>Balance is debit-positive (Dr +, Cr −).</div>
+    </>}
+  </Panel>);
+}
+
+function TrialBalance({onDrill}){
+  const [rng,setRng]=useState({from:"",to:today()});
+  const [data,setData]=useState(null); const [err,setErr]=useState(""); const [busy,setBusy]=useState(false);
+  const load=useCallback(async()=>{ setErr(""); setBusy(true);
+    try{ let q="/api/reports/trial-balance"; const p=[];
+      if(rng.from) p.push("date_from="+rng.from); if(rng.to) p.push("date_to="+rng.to);
+      if(p.length) q+="?"+p.join("&");
+      setData(await api(q)); }
+    catch(ex){ setErr(ex.message); } finally{ setBusy(false); } },[rng.from,rng.to]);
+  useEffect(()=>{load()},[]);
+  const n=v=>Number(v)?inr2(v):"";
+  const t=data&&data.totals;
+  return (<Panel title="Trial balance">
+    <div className="row mb" style={{alignItems:"end",gap:10}}>
+      <div className="field"><label>From</label><input type="date" value={rng.from} onChange={e=>setRng({...rng,from:e.target.value})}/></div>
+      <div className="field"><label>To</label><input type="date" value={rng.to} onChange={e=>setRng({...rng,to:e.target.value})}/></div>
+      <button className="btn" disabled={busy} onClick={load}>Refresh</button>
+      {data && <span className={"badge "+(data.is_balanced?"ok":"bad")} style={{alignSelf:"center"}}>
+        {data.is_balanced?"Balanced":"Out of balance"}</span>}
+    </div>
+    {err && <div className="err">{err}</div>}
+    {data && <table><thead><tr><th>Code</th><th>Account</th>
+      <th className="num">Opening Dr</th><th className="num">Opening Cr</th>
+      <th className="num">Period Dr</th><th className="num">Period Cr</th>
+      <th className="num">Closing Dr</th><th className="num">Closing Cr</th></tr></thead>
+    <tbody>{data.rows.map(r=><tr key={r.account_code}>
+      <td><a href="#gl" onClick={ev=>{ev.preventDefault(); onDrill&&onDrill(r.account_code);}}
+        style={{color:"#2563eb",cursor:"pointer",textDecoration:"underline"}}>{r.account_code}</a></td>
+      <td>{r.account_name}</td>
+      <td className="num">{n(r.opening_debit)}</td><td className="num">{n(r.opening_credit)}</td>
+      <td className="num">{n(r.period_debit)}</td><td className="num">{n(r.period_credit)}</td>
+      <td className="num">{n(r.closing_debit)}</td><td className="num">{n(r.closing_credit)}</td></tr>)}</tbody>
+    {t && <tfoot><tr><th colSpan="2">Totals</th>
+      <th className="num">{inr2(t.opening_debit)}</th><th className="num">{inr2(t.opening_credit)}</th>
+      <th className="num">{inr2(t.period_debit)}</th><th className="num">{inr2(t.period_credit)}</th>
+      <th className="num">{inr2(t.closing_debit)}</th><th className="num">{inr2(t.closing_credit)}</th></tr></tfoot>}
+    </table>}
+    <div className="muted" style={{fontSize:12,marginTop:6}}>Click an account code to open its general ledger.</div>
+  </Panel>);
+}
+
 function Reports(){
   const [fmt,setFmt]=useState("xlsx"); const [busy,setBusy]=useState("");
+  const [glCode,setGlCode]=useState("");
+  const drill=c=>{ setGlCode(c); setTimeout(()=>{ const el=document.getElementById("gl"); if(el) el.scrollIntoView({behavior:"smooth"}); },50); };
   const dl=async(rep)=>{ setBusy(rep);
     try{ const blob=await api(`/api/reports/export/${rep}?format=${fmt}`,{blob:true});
       const url=URL.createObjectURL(blob); const a=document.createElement("a");
       a.href=url; a.download=`${rep}.${fmt}`; a.click(); URL.revokeObjectURL(url); }
     catch(e){ alert(e.message); } finally{ setBusy(""); } };
   return (<div>
+    <TrialBalance onDrill={drill}/>
+    <div id="gl"><GeneralLedger code={glCode}/></div>
     <FinalAccounts/>
     <Panel title="Download reports">
     <div className="row mb"><div className="field"><label>Format</label>
