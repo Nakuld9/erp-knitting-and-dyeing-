@@ -43,6 +43,12 @@ def factory(as_of: date | None = None, db: Session = Depends(get_db),
     return _s(dash.factory_dashboard(db, user.company_id, as_of))
 
 
+@router.get("/production-trend")
+def production_trend(as_of: date | None = None, days: int = 14, db: Session = Depends(get_db),
+                     user: User = Depends(require_permission("report.read"))):
+    return _s(dash.production_trend(db, user.company_id, as_of, days))
+
+
 @router.get("/chemical")
 def chemical(as_of: date | None = None, db: Session = Depends(get_db),
              user: User = Depends(require_permission("report.read"))) -> dict:

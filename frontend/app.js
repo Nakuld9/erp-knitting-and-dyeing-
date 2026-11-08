@@ -232,12 +232,25 @@ function Result({
   }, k, ":"), " ", String(v)))) : null;
 }
 const genNo = pfx => pfx + "-" + Date.now().toString().slice(-8);
+const DONUT = ["#2563eb", "#16a34a", "#f59e0b", "#7c3aed", "#0d9488", "#e11d48", "#64748b"];
 function OwnerDash() {
   const [d, err] = useData("/api/dashboard/owner");
+  const trend = useList("/api/dashboard/production-trend");
+  const chem = useData("/api/dashboard/chemical")[0];
+  const util = useList("/api/hardware/knitting-summary");
+  const batches = useList("/api/dyeing/batches");
+  const acts = useList("/api/vouchers");
   if (err) return /*#__PURE__*/React.createElement(Panel, null, err);
   if (!d) return /*#__PURE__*/React.createElement(Panel, null, "Loading\u2026");
-  const np = Number(d.net_profit);
   const dl = d.deltas || {};
+  const mix = (chem && chem.top_consumption || []).map((m, i) => ({
+    name: m.material,
+    value: Number(m.cost),
+    c: DONUT[i % DONUT.length]
+  }));
+  const mixTotal = mix.reduce((s, m) => s + m.value, 0);
+  const alerts = chem && chem.stock_alerts || [];
+  const dayShort = s => s ? s.slice(5) : "";
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "stats"
   }, /*#__PURE__*/React.createElement(Stat, {
@@ -273,48 +286,159 @@ function OwnerDash() {
     icon: "\uD83D\uDCE4",
     label: "Payables",
     value: inr(d.payables)
-  }), /*#__PURE__*/React.createElement(Stat, {
-    tone: "",
-    icon: "\uD83D\uDCE6",
-    label: "Inventory Value",
-    value: inr(d.inventory_value)
-  })), /*#__PURE__*/React.createElement(Panel, {
-    title: "Sales trend (last 6 months)"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "grid2"
+  }, /*#__PURE__*/React.createElement(Panel, {
+    title: "Production vs dyeing output (last 14 days)"
   }, R ? /*#__PURE__*/React.createElement("div", {
     className: "chartbox"
-  }, /*#__PURE__*/React.createElement(R.ResponsiveContainer, null, /*#__PURE__*/React.createElement(R.LineChart, {
-    data: (d.sales_trend || []).map(p => ({
-      month: p.month,
-      amount: Number(p.amount)
+  }, /*#__PURE__*/React.createElement(R.ResponsiveContainer, null, /*#__PURE__*/React.createElement(R.BarChart, {
+    data: (trend || []).map(p => ({
+      d: dayShort(p.date),
+      Knitting: Number(p.knitting_kg),
+      Dyeing: Number(p.dyeing_kg)
     })),
     margin: {
       top: 10,
-      right: 20,
-      left: 10,
+      right: 16,
+      left: 0,
       bottom: 0
     }
   }, /*#__PURE__*/React.createElement(R.CartesianGrid, {
     strokeDasharray: "3 3",
     stroke: "#eef2f7"
   }), /*#__PURE__*/React.createElement(R.XAxis, {
-    dataKey: "month",
-    fontSize: 12
+    dataKey: "d",
+    fontSize: 11
   }), /*#__PURE__*/React.createElement(R.YAxis, {
-    fontSize: 12,
-    tickFormatter: v => v / 1000 + "k"
+    fontSize: 11
   }), /*#__PURE__*/React.createElement(R.Tooltip, {
-    formatter: v => inr(v)
-  }), /*#__PURE__*/React.createElement(R.Line, {
-    type: "monotone",
-    dataKey: "amount",
-    stroke: "#2563eb",
-    strokeWidth: 2,
-    dot: {
-      r: 3
+    formatter: v => inr2(v) + " kg"
+  }), /*#__PURE__*/React.createElement(R.Legend, null), /*#__PURE__*/React.createElement(R.Bar, {
+    dataKey: "Knitting",
+    stackId: "a",
+    fill: "#2563eb",
+    radius: [0, 0, 0, 0]
+  }), /*#__PURE__*/React.createElement(R.Bar, {
+    dataKey: "Dyeing",
+    stackId: "a",
+    fill: "#16a34a",
+    radius: [4, 4, 0, 0]
+  })))) : /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "Chart unavailable")), /*#__PURE__*/React.createElement(Panel, {
+    title: "Chemical consumption mix"
+  }, mix.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "No consumption yet.") : /*#__PURE__*/React.createElement("div", null, R && /*#__PURE__*/React.createElement("div", {
+    style: {
+      height: 170
     }
-  })))) : /*#__PURE__*/React.createElement(SalesTable, {
-    rows: d.sales_trend
-  })));
+  }, /*#__PURE__*/React.createElement(R.ResponsiveContainer, null, /*#__PURE__*/React.createElement(R.PieChart, null, /*#__PURE__*/React.createElement(R.Pie, {
+    data: mix,
+    dataKey: "value",
+    nameKey: "name",
+    innerRadius: 48,
+    outerRadius: 70,
+    paddingAngle: 2
+  }, mix.map((m, i) => /*#__PURE__*/React.createElement(R.Cell, {
+    key: i,
+    fill: m.c
+  }))), /*#__PURE__*/React.createElement(R.Tooltip, {
+    formatter: v => inr(v)
+  })))), /*#__PURE__*/React.createElement("div", {
+    className: "legend"
+  }, mix.map((m, i) => /*#__PURE__*/React.createElement("div", {
+    className: "lr",
+    key: i
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "dot",
+    style: {
+      background: m.c
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      flex: 1
+    }
+  }, m.name), /*#__PURE__*/React.createElement("span", {
+    className: "muted"
+  }, mixTotal ? (m.value / mixTotal * 100).toFixed(0) : 0, "%"))))))), /*#__PURE__*/React.createElement("div", {
+    className: "grid-half"
+  }, /*#__PURE__*/React.createElement(Panel, {
+    title: "Active dyeing batches"
+  }, (batches || []).length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "No batches yet.") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Batch"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Fabric (kg)"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Rolls"), /*#__PURE__*/React.createElement("th", null, "Status"))), /*#__PURE__*/React.createElement("tbody", null, batches.slice(0, 6).map(b => /*#__PURE__*/React.createElement("tr", {
+    key: b.id
+  }, /*#__PURE__*/React.createElement("td", null, b.batch_code), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(b.fabric_kg)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, b.rolls), /*#__PURE__*/React.createElement("td", null, stBadge(b.status))))))), /*#__PURE__*/React.createElement(Panel, {
+    title: "Machine utilization"
+  }, (util || []).length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "No machine telemetry yet \u2014 simulate on Devices & Labels.") : util.map((m, i) => {
+    const pc = Math.min(100, Number(m.efficiency_pct || 0));
+    return /*#__PURE__*/React.createElement("div", {
+      className: "util-row",
+      key: i
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "nm"
+    }, m.machine), /*#__PURE__*/React.createElement("span", {
+      className: "util-bar"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "util-fill",
+      style: {
+        width: pc + "%",
+        background: pc >= 80 ? "#16a34a" : pc >= 50 ? "#2563eb" : "#f59e0b"
+      }
+    })), /*#__PURE__*/React.createElement("span", {
+      className: "pc"
+    }, pc.toFixed(0), "%"));
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "grid-half"
+  }, /*#__PURE__*/React.createElement(Panel, {
+    title: "Inventory alerts"
+  }, alerts.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "All stock above reorder level.") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Item"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "On hand"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Reorder"), /*#__PURE__*/React.createElement("th", null, "Status"))), /*#__PURE__*/React.createElement("tbody", null, alerts.map((a, i) => /*#__PURE__*/React.createElement("tr", {
+    key: i
+  }, /*#__PURE__*/React.createElement("td", null, a.name), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(a.on_hand)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(a.reorder_level)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", {
+    className: "badge bad"
+  }, "Low stock"))))))), /*#__PURE__*/React.createElement(Panel, {
+    title: "Recent activity"
+  }, (acts || []).length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "No postings yet.") : acts.slice(0, 8).map((a, i) => /*#__PURE__*/React.createElement("div", {
+    className: "act",
+    key: i
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "tt"
+  }, a.voucher_date ? a.voucher_date.slice(5) : ""), /*#__PURE__*/React.createElement("span", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("b", null, a.number), " \u2014 ", a.narration || "—"), /*#__PURE__*/React.createElement("span", {
+    className: "num",
+    style: {
+      width: 90
+    }
+  }, inr2(a.total_debit)), /*#__PURE__*/React.createElement("span", {
+    className: "badge info"
+  }, a.status))))));
 }
 function SalesTable({
   rows

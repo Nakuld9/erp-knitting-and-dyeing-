@@ -172,6 +172,35 @@ def accounts_dashboard(db: Session, company_id: uuid.UUID, as_of: date | None = 
     }
 
 
+def production_trend(db: Session, company_id: uuid.UUID, as_of: date | None = None, days: int = 14) -> list[dict]:
+    """Daily knitting and dyeing output (kg) for the last ``days`` days."""
+    from app.models.manufacturing import DyeBath
+    as_of = as_of or date.today()
+    start = as_of - timedelta(days=days - 1)
+    series = {start + timedelta(days=i): {"knitting_kg": ZERO, "dyeing_kg": ZERO} for i in range(days)}
+
+    knit = db.execute(
+        select(KnittingProduction.production_date, func.sum(KnittingProduction.produced_kg))
+        .where(KnittingProduction.company_id == company_id,
+               KnittingProduction.production_date >= start, KnittingProduction.production_date <= as_of)
+        .group_by(KnittingProduction.production_date)).all()
+    for d, kg in knit:
+        if d in series:
+            series[d]["knitting_kg"] = quantize(kg or 0, QTY_SCALE)
+
+    baths = db.execute(select(DyeBath.actual_start, DyeBath.fabric_kg).where(
+        DyeBath.company_id == company_id)).all()
+    for ts, kg in baths:
+        if ts is None:
+            continue
+        d = ts.date() if hasattr(ts, "date") else ts
+        if d in series:
+            series[d]["dyeing_kg"] = quantize(Decimal(str(series[d]["dyeing_kg"])) + Decimal(str(kg or 0)), QTY_SCALE)
+
+    return [{"date": d.isoformat(), "knitting_kg": v["knitting_kg"], "dyeing_kg": v["dyeing_kg"]}
+            for d, v in sorted(series.items())]
+
+
 def factory_dashboard(db: Session, company_id: uuid.UUID, as_of: date | None = None) -> dict:
     as_of = as_of or date.today()
     knit_kg = db.execute(

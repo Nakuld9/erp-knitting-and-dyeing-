@@ -86,11 +86,21 @@ function Result({r}){ return r ? <div className="panel" style={{borderColor:"#bb
     <span className="muted">{k}:</span> {String(v)}</span>)}</div> : null; }
 const genNo = pfx => pfx+"-"+Date.now().toString().slice(-8);
 
+const DONUT=["#2563eb","#16a34a","#f59e0b","#7c3aed","#0d9488","#e11d48","#64748b"];
+
 function OwnerDash(){
   const [d,err]=useData("/api/dashboard/owner");
+  const trend=useList("/api/dashboard/production-trend");
+  const chem=useData("/api/dashboard/chemical")[0];
+  const util=useList("/api/hardware/knitting-summary");
+  const batches=useList("/api/dyeing/batches");
+  const acts=useList("/api/vouchers");
   if(err) return <Panel>{err}</Panel>; if(!d) return <Panel>Loading…</Panel>;
-  const np=Number(d.net_profit);
   const dl=d.deltas||{};
+  const mix=((chem&&chem.top_consumption)||[]).map((m,i)=>({name:m.material, value:Number(m.cost), c:DONUT[i%DONUT.length]}));
+  const mixTotal=mix.reduce((s,m)=>s+m.value,0);
+  const alerts=(chem&&chem.stock_alerts)||[];
+  const dayShort=s=>s?s.slice(5):"";
   return (<div>
     <div className="stats">
       <Stat tone="" icon="₹" label="Revenue (YTD)" value={inr(d.revenue)} delta={dl.revenue} />
@@ -99,19 +109,62 @@ function OwnerDash(){
       <Stat tone="teal" icon="🏦" label="Cash & Bank" value={inr(d.cash_and_bank)} />
       <Stat tone="amber" icon="📥" label="Receivables" value={inr(d.receivables)} />
       <Stat tone="rose" icon="📤" label="Payables" value={inr(d.payables)} />
-      <Stat tone="" icon="📦" label="Inventory Value" value={inr(d.inventory_value)} />
     </div>
-    <Panel title="Sales trend (last 6 months)">
-      {R ? <div className="chartbox"><R.ResponsiveContainer>
-        <R.LineChart data={(d.sales_trend||[]).map(p=>({month:p.month, amount:Number(p.amount)}))}
-          margin={{top:10,right:20,left:10,bottom:0}}>
-          <R.CartesianGrid strokeDasharray="3 3" stroke="#eef2f7"/>
-          <R.XAxis dataKey="month" fontSize={12}/><R.YAxis fontSize={12} tickFormatter={v=>v/1000+"k"}/>
-          <R.Tooltip formatter={v=>inr(v)}/>
-          <R.Line type="monotone" dataKey="amount" stroke="#2563eb" strokeWidth={2} dot={{r:3}}/>
-        </R.LineChart></R.ResponsiveContainer></div>
-        : <SalesTable rows={d.sales_trend}/>}
-    </Panel>
+    <div className="grid2">
+      <Panel title="Production vs dyeing output (last 14 days)">
+        {R ? <div className="chartbox"><R.ResponsiveContainer>
+          <R.BarChart data={(trend||[]).map(p=>({d:dayShort(p.date), Knitting:Number(p.knitting_kg), Dyeing:Number(p.dyeing_kg)}))}
+            margin={{top:10,right:16,left:0,bottom:0}}>
+            <R.CartesianGrid strokeDasharray="3 3" stroke="#eef2f7"/>
+            <R.XAxis dataKey="d" fontSize={11}/><R.YAxis fontSize={11}/>
+            <R.Tooltip formatter={v=>inr2(v)+" kg"}/><R.Legend/>
+            <R.Bar dataKey="Knitting" stackId="a" fill="#2563eb" radius={[0,0,0,0]}/>
+            <R.Bar dataKey="Dyeing" stackId="a" fill="#16a34a" radius={[4,4,0,0]}/>
+          </R.BarChart></R.ResponsiveContainer></div> : <div className="muted">Chart unavailable</div>}
+      </Panel>
+      <Panel title="Chemical consumption mix">
+        {mix.length===0?<div className="muted">No consumption yet.</div>:<div>
+          {R && <div style={{height:170}}><R.ResponsiveContainer>
+            <R.PieChart><R.Pie data={mix} dataKey="value" nameKey="name" innerRadius={48} outerRadius={70} paddingAngle={2}>
+              {mix.map((m,i)=><R.Cell key={i} fill={m.c}/>)}</R.Pie><R.Tooltip formatter={v=>inr(v)}/></R.PieChart>
+          </R.ResponsiveContainer></div>}
+          <div className="legend">{mix.map((m,i)=><div className="lr" key={i}>
+            <span className="dot" style={{background:m.c}}></span><span style={{flex:1}}>{m.name}</span>
+            <span className="muted">{mixTotal?((m.value/mixTotal*100).toFixed(0)):0}%</span></div>)}</div>
+        </div>}
+      </Panel>
+    </div>
+    <div className="grid-half">
+      <Panel title="Active dyeing batches">
+        {(batches||[]).length===0?<div className="muted">No batches yet.</div>:
+        <table><thead><tr><th>Batch</th><th className="num">Fabric (kg)</th><th className="num">Rolls</th><th>Status</th></tr></thead>
+        <tbody>{batches.slice(0,6).map(b=><tr key={b.id}><td>{b.batch_code}</td><td className="num">{inr2(b.fabric_kg)}</td>
+          <td className="num">{b.rolls}</td><td>{stBadge(b.status)}</td></tr>)}</tbody></table>}
+      </Panel>
+      <Panel title="Machine utilization">
+        {(util||[]).length===0?<div className="muted">No machine telemetry yet — simulate on Devices &amp; Labels.</div>:
+        util.map((m,i)=>{ const pc=Math.min(100,Number(m.efficiency_pct||0)); return <div className="util-row" key={i}>
+          <span className="nm">{m.machine}</span><span className="util-bar"><span className="util-fill"
+            style={{width:pc+"%", background:pc>=80?"#16a34a":pc>=50?"#2563eb":"#f59e0b"}}></span></span>
+          <span className="pc">{pc.toFixed(0)}%</span></div>; })}
+      </Panel>
+    </div>
+    <div className="grid-half">
+      <Panel title="Inventory alerts">
+        {alerts.length===0?<div className="muted">All stock above reorder level.</div>:
+        <table><thead><tr><th>Item</th><th className="num">On hand</th><th className="num">Reorder</th><th>Status</th></tr></thead>
+        <tbody>{alerts.map((a,i)=><tr key={i}><td>{a.name}</td><td className="num">{inr2(a.on_hand)}</td>
+          <td className="num">{inr2(a.reorder_level)}</td><td><span className="badge bad">Low stock</span></td></tr>)}</tbody></table>}
+      </Panel>
+      <Panel title="Recent activity">
+        {(acts||[]).length===0?<div className="muted">No postings yet.</div>:
+        acts.slice(0,8).map((a,i)=><div className="act" key={i}>
+          <span className="tt">{a.voucher_date?a.voucher_date.slice(5):""}</span>
+          <span style={{flex:1}}><b>{a.number}</b> — {a.narration||"—"}</span>
+          <span className="num" style={{width:90}}>{inr2(a.total_debit)}</span>
+          <span className="badge info">{a.status}</span></div>)}
+      </Panel>
+    </div>
   </div>);
 }
 function SalesTable({rows}){ return (<table><thead><tr><th>Month</th><th className="num">Sales</th></tr></thead>
