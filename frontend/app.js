@@ -1036,6 +1036,112 @@ function Quality() {
 }
 
 // ---- masters: parties -----------------------------------------------------
+function PartyLedger({
+  kind,
+  party,
+  onClose
+}) {
+  // party: {id,name}
+  const isCust = kind === "customers";
+  const [rng, setRng] = useState({
+    from: "",
+    to: today()
+  });
+  const [data, setData] = useState(null);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(async () => {
+    setErr("");
+    setBusy(true);
+    try {
+      const idp = isCust ? "customer_id" : "supplier_id";
+      const ep = isCust ? "customer-statement" : "supplier-statement";
+      let q = `/api/reports/${ep}?${idp}=${party.id}`;
+      if (rng.from) q += `&date_from=${rng.from}`;
+      if (rng.to) q += `&date_to=${rng.to}`;
+      setData(await api(q));
+    } catch (ex) {
+      setErr(ex.message);
+    } finally {
+      setBusy(false);
+    }
+  }, [party.id, rng.from, rng.to, isCust]);
+  useEffect(() => {
+    load();
+  }, [party.id]); // reload when party changes; date changes apply on Refresh
+  const nature = isCust ? "Dr (owes us)" : "Cr (we owe)";
+  return /*#__PURE__*/React.createElement(Panel, {
+    title: `Ledger — ${party.name}`
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "row mb",
+    style: {
+      alignItems: "end",
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "From"), /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    value: rng.from,
+    onChange: e => setRng({
+      ...rng,
+      from: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "To"), /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    value: rng.to,
+    onChange: e => setRng({
+      ...rng,
+      to: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    disabled: busy,
+    onClick: load
+  }, "Refresh"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      flex: 1
+    }
+  }), /*#__PURE__*/React.createElement("button", {
+    className: "btn sec",
+    onClick: onClose
+  }, "Close")), err && /*#__PURE__*/React.createElement("div", {
+    className: "err"
+  }, err), data && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Date"), /*#__PURE__*/React.createElement("th", null, "Voucher"), /*#__PURE__*/React.createElement("th", null, "Narration"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Debit"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Credit"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Balance"))), /*#__PURE__*/React.createElement("tbody", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+    colSpan: "5"
+  }, /*#__PURE__*/React.createElement("b", null, "Opening balance")), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, /*#__PURE__*/React.createElement("b", null, inr2(data.opening)))), data.rows.length === 0 && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+    colSpan: "6",
+    className: "muted"
+  }, "No transactions in this period.")), data.rows.map((r, i) => /*#__PURE__*/React.createElement("tr", {
+    key: i
+  }, /*#__PURE__*/React.createElement("td", null, r.date), /*#__PURE__*/React.createElement("td", null, r.voucher), /*#__PURE__*/React.createElement("td", null, r.narration || "—"), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, Number(r.debit) ? inr2(r.debit) : ""), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, Number(r.credit) ? inr2(r.credit) : ""), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(r.balance))))), /*#__PURE__*/React.createElement("tfoot", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    colSpan: "5"
+  }, "Closing balance"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, inr2(data.closing))))), /*#__PURE__*/React.createElement("div", {
+    className: "muted",
+    style: {
+      fontSize: 12,
+      marginTop: 6
+    }
+  }, "Positive balance = outstanding \xB7 ", nature, ".")));
+}
 function PartyPage({
   kind
 }) {
@@ -1043,6 +1149,7 @@ function PartyPage({
   const isCust = kind === "customers";
   const [rows, setRows] = useState(null);
   const [err, setErr] = useState("");
+  const [ledger, setLedger] = useState(null); // {id,name} of party whose ledger is open
   const blank = {
     code: "",
     name: "",
@@ -1054,6 +1161,7 @@ function PartyPage({
   const load = useCallback(() => api(`/api/masters/${kind}`).then(setRows).catch(e => setErr(e.message)), [kind]);
   useEffect(() => {
     load();
+    setLedger(null);
   }, [load]);
   const add = async e => {
     e.preventDefault();
@@ -1139,15 +1247,27 @@ function PartyPage({
     className: "btn"
   }, "Add")), err && /*#__PURE__*/React.createElement("div", {
     className: "err"
-  }, err)), /*#__PURE__*/React.createElement(Panel, {
+  }, err)), ledger && /*#__PURE__*/React.createElement(PartyLedger, {
+    kind: kind,
+    party: ledger,
+    onClose: () => setLedger(null)
+  }), /*#__PURE__*/React.createElement(Panel, {
     title: title.charAt(0).toUpperCase() + title.slice(1) + "s"
   }, !rows ? "Loading…" : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Code"), /*#__PURE__*/React.createElement("th", null, "Name"), /*#__PURE__*/React.createElement("th", null, "GSTIN"), /*#__PURE__*/React.createElement("th", null, "State"), isCust && /*#__PURE__*/React.createElement("th", {
     className: "num"
-  }, "Credit limit"))), /*#__PURE__*/React.createElement("tbody", null, rows.map(r => /*#__PURE__*/React.createElement("tr", {
+  }, "Credit limit"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, rows.map(r => /*#__PURE__*/React.createElement("tr", {
     key: r.id
   }, /*#__PURE__*/React.createElement("td", null, r.code), /*#__PURE__*/React.createElement("td", null, r.name), /*#__PURE__*/React.createElement("td", null, r.gstin || "-"), /*#__PURE__*/React.createElement("td", null, r.state_code || "-"), isCust && /*#__PURE__*/React.createElement("td", {
     className: "num"
-  }, Number(r.credit_limit) > 0 ? inr2(r.credit_limit) : "—")))))));
+  }, Number(r.credit_limit) > 0 ? inr2(r.credit_limit) : "—"), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn sec",
+    onClick: () => setLedger({
+      id: r.id,
+      name: r.name
+    })
+  }, "Ledger"))))))));
 }
 
 // ---- pre-sales: enquiries, quotations, statements -------------------------

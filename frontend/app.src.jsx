@@ -442,13 +442,52 @@ function Quality(){
 }
 
 // ---- masters: parties -----------------------------------------------------
+function PartyLedger({kind, party, onClose}){  // party: {id,name}
+  const isCust = kind==="customers";
+  const [rng,setRng]=useState({from:"",to:today()});
+  const [data,setData]=useState(null); const [err,setErr]=useState(""); const [busy,setBusy]=useState(false);
+  const load=useCallback(async()=>{ setErr(""); setBusy(true);
+    try{ const idp=isCust?"customer_id":"supplier_id"; const ep=isCust?"customer-statement":"supplier-statement";
+      let q=`/api/reports/${ep}?${idp}=${party.id}`;
+      if(rng.from) q+=`&date_from=${rng.from}`; if(rng.to) q+=`&date_to=${rng.to}`;
+      setData(await api(q)); }
+    catch(ex){ setErr(ex.message); } finally{ setBusy(false); } },[party.id,rng.from,rng.to,isCust]);
+  useEffect(()=>{load()},[party.id]); // reload when party changes; date changes apply on Refresh
+  const nature = isCust ? "Dr (owes us)" : "Cr (we owe)";
+  return (<Panel title={`Ledger — ${party.name}`}>
+    <div className="row mb" style={{alignItems:"end",gap:10}}>
+      <div className="field"><label>From</label><input type="date" value={rng.from} onChange={e=>setRng({...rng,from:e.target.value})}/></div>
+      <div className="field"><label>To</label><input type="date" value={rng.to} onChange={e=>setRng({...rng,to:e.target.value})}/></div>
+      <button className="btn" disabled={busy} onClick={load}>Refresh</button>
+      <span style={{flex:1}}/>
+      <button className="btn sec" onClick={onClose}>Close</button>
+    </div>
+    {err && <div className="err">{err}</div>}
+    {data && <>
+      <table><thead><tr><th>Date</th><th>Voucher</th><th>Narration</th>
+        <th className="num">Debit</th><th className="num">Credit</th><th className="num">Balance</th></tr></thead>
+      <tbody>
+        <tr><td colSpan="5"><b>Opening balance</b></td><td className="num"><b>{inr2(data.opening)}</b></td></tr>
+        {data.rows.length===0 && <tr><td colSpan="6" className="muted">No transactions in this period.</td></tr>}
+        {data.rows.map((r,i)=><tr key={i}><td>{r.date}</td><td>{r.voucher}</td><td>{r.narration||"—"}</td>
+          <td className="num">{Number(r.debit)?inr2(r.debit):""}</td>
+          <td className="num">{Number(r.credit)?inr2(r.credit):""}</td>
+          <td className="num">{inr2(r.balance)}</td></tr>)}
+      </tbody>
+      <tfoot><tr><th colSpan="5">Closing balance</th><th className="num">{inr2(data.closing)}</th></tr></tfoot></table>
+      <div className="muted" style={{fontSize:12,marginTop:6}}>Positive balance = outstanding · {nature}.</div>
+    </>}
+  </Panel>);
+}
+
 function PartyPage({kind}){  // kind: "customers" | "suppliers"
   const isCust = kind==="customers";
   const [rows,setRows]=useState(null); const [err,setErr]=useState("");
+  const [ledger,setLedger]=useState(null);   // {id,name} of party whose ledger is open
   const blank={code:"",name:"",gstin:"",state_code:"",credit_limit:"0"};
   const [f,setF]=useState(blank);
   const load=useCallback(()=>api(`/api/masters/${kind}`).then(setRows).catch(e=>setErr(e.message)),[kind]);
-  useEffect(()=>{load()},[load]);
+  useEffect(()=>{load(); setLedger(null);},[load]);
   const add=async e=>{ e.preventDefault(); setErr("");
     const body={code:f.code,name:f.name,gstin:f.gstin,state_code:f.state_code};
     if(isCust) body.credit_limit=f.credit_limit||"0";
@@ -472,10 +511,12 @@ function PartyPage({kind}){  // kind: "customers" | "suppliers"
         <button className="btn">Add</button>
       </form>{err && <div className="err">{err}</div>}
     </Panel>
+    {ledger && <PartyLedger kind={kind} party={ledger} onClose={()=>setLedger(null)}/>}
     <Panel title={title.charAt(0).toUpperCase()+title.slice(1)+"s"}>
-      {!rows?"Loading…":<table><thead><tr><th>Code</th><th>Name</th><th>GSTIN</th><th>State</th>{isCust && <th className="num">Credit limit</th>}</tr></thead>
+      {!rows?"Loading…":<table><thead><tr><th>Code</th><th>Name</th><th>GSTIN</th><th>State</th>{isCust && <th className="num">Credit limit</th>}<th></th></tr></thead>
       <tbody>{rows.map(r=><tr key={r.id}><td>{r.code}</td><td>{r.name}</td><td>{r.gstin||"-"}</td>
-        <td>{r.state_code||"-"}</td>{isCust && <td className="num">{Number(r.credit_limit)>0?inr2(r.credit_limit):"—"}</td>}</tr>)}</tbody></table>}
+        <td>{r.state_code||"-"}</td>{isCust && <td className="num">{Number(r.credit_limit)>0?inr2(r.credit_limit):"—"}</td>}
+        <td className="num"><button className="btn sec" onClick={()=>setLedger({id:r.id,name:r.name})}>Ledger</button></td></tr>)}</tbody></table>}
     </Panel>
   </div>);
 }
