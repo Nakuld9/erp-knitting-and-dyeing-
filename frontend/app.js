@@ -453,9 +453,13 @@ function SalesTable({
 }
 function FactoryDash() {
   const [d, err] = useData("/api/dashboard/factory");
+  const trend = useList("/api/dashboard/production-trend");
+  const util = useList("/api/hardware/knitting-summary");
+  const batches = useList("/api/dyeing/batches");
   if (err) return /*#__PURE__*/React.createElement(Panel, null, err);
   if (!d) return /*#__PURE__*/React.createElement(Panel, null, "Loading\u2026");
-  return /*#__PURE__*/React.createElement("div", {
+  const dayShort = s => s ? s.slice(5) : "";
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "stats"
   }, /*#__PURE__*/React.createElement(Stat, {
     tone: "",
@@ -477,10 +481,86 @@ function FactoryDash() {
     icon: "\uD83E\uDDEA",
     label: "Chemical consumption",
     value: inr(d.chemical_consumption_cost)
-  }));
+  })), /*#__PURE__*/React.createElement(Panel, {
+    title: "Production vs dyeing output (last 14 days)"
+  }, R ? /*#__PURE__*/React.createElement("div", {
+    className: "chartbox"
+  }, /*#__PURE__*/React.createElement(R.ResponsiveContainer, null, /*#__PURE__*/React.createElement(R.BarChart, {
+    data: (trend || []).map(p => ({
+      d: dayShort(p.date),
+      Knitting: Number(p.knitting_kg),
+      Dyeing: Number(p.dyeing_kg)
+    })),
+    margin: {
+      top: 10,
+      right: 16,
+      left: 0,
+      bottom: 0
+    }
+  }, /*#__PURE__*/React.createElement(R.CartesianGrid, {
+    strokeDasharray: "3 3",
+    stroke: "#eef2f7"
+  }), /*#__PURE__*/React.createElement(R.XAxis, {
+    dataKey: "d",
+    fontSize: 11
+  }), /*#__PURE__*/React.createElement(R.YAxis, {
+    fontSize: 11
+  }), /*#__PURE__*/React.createElement(R.Tooltip, {
+    formatter: v => inr2(v) + " kg"
+  }), /*#__PURE__*/React.createElement(R.Legend, null), /*#__PURE__*/React.createElement(R.Bar, {
+    dataKey: "Knitting",
+    stackId: "a",
+    fill: "#2563eb"
+  }), /*#__PURE__*/React.createElement(R.Bar, {
+    dataKey: "Dyeing",
+    stackId: "a",
+    fill: "#16a34a",
+    radius: [4, 4, 0, 0]
+  })))) : /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "Chart unavailable")), /*#__PURE__*/React.createElement("div", {
+    className: "grid-half"
+  }, /*#__PURE__*/React.createElement(Panel, {
+    title: "Machine utilization"
+  }, (util || []).length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "No machine telemetry yet \u2014 simulate on Devices & Labels.") : util.map((m, i) => {
+    const pc = Math.min(100, Number(m.efficiency_pct || 0));
+    return /*#__PURE__*/React.createElement("div", {
+      className: "util-row",
+      key: i
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "nm"
+    }, m.machine), /*#__PURE__*/React.createElement("span", {
+      className: "util-bar"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "util-fill",
+      style: {
+        width: pc + "%",
+        background: pc >= 80 ? "#16a34a" : pc >= 50 ? "#2563eb" : "#f59e0b"
+      }
+    })), /*#__PURE__*/React.createElement("span", {
+      className: "pc"
+    }, pc.toFixed(0), "%"));
+  })), /*#__PURE__*/React.createElement(Panel, {
+    title: "Active dyeing batches"
+  }, (batches || []).length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "No batches yet.") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Batch"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Fabric (kg)"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Rolls"), /*#__PURE__*/React.createElement("th", null, "Status"))), /*#__PURE__*/React.createElement("tbody", null, batches.slice(0, 8).map(b => /*#__PURE__*/React.createElement("tr", {
+    key: b.id
+  }, /*#__PURE__*/React.createElement("td", null, b.batch_code), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(b.fabric_kg)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, b.rolls), /*#__PURE__*/React.createElement("td", null, stBadge(b.status)))))))));
 }
 function AccountsDash() {
   const [d, err] = useData("/api/dashboard/accounts");
+  const acts = useList("/api/vouchers");
   if (err) return /*#__PURE__*/React.createElement(Panel, null, err);
   if (!d) return /*#__PURE__*/React.createElement(Panel, null, "Loading\u2026");
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
@@ -517,15 +597,39 @@ function AccountsDash() {
     value: /*#__PURE__*/React.createElement("span", {
       className: "badge " + (d.trial_balance_balanced ? "ok" : "bad")
     }, d.trial_balance_balanced ? "Balanced" : "Out of balance")
-  })), /*#__PURE__*/React.createElement(Panel, {
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "grid-half"
+  }, /*#__PURE__*/React.createElement(Panel, {
     title: "Bank balances"
-  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Account"), /*#__PURE__*/React.createElement("th", {
+  }, (d.bank_balances || []).length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "No bank accounts yet.") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Account"), /*#__PURE__*/React.createElement("th", {
     className: "num"
   }, "Balance"))), /*#__PURE__*/React.createElement("tbody", null, (d.bank_balances || []).map((b, i) => /*#__PURE__*/React.createElement("tr", {
     key: i
   }, /*#__PURE__*/React.createElement("td", null, b.name), /*#__PURE__*/React.createElement("td", {
     className: "num"
-  }, inr2(b.balance))))))));
+  }, inr2(b.balance))))))), /*#__PURE__*/React.createElement(Panel, {
+    title: "Recent vouchers"
+  }, (acts || []).length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "No postings yet.") : acts.slice(0, 8).map((a, i) => /*#__PURE__*/React.createElement("div", {
+    className: "act",
+    key: i
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "tt"
+  }, a.voucher_date ? a.voucher_date.slice(5) : ""), /*#__PURE__*/React.createElement("span", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("b", null, a.number), " \u2014 ", a.narration || "—"), /*#__PURE__*/React.createElement("span", {
+    className: "num",
+    style: {
+      width: 90
+    }
+  }, inr2(a.total_debit)), /*#__PURE__*/React.createElement("span", {
+    className: "badge info"
+  }, a.status))))));
 }
 function ChemicalDash() {
   const [d, err] = useData("/api/dashboard/chemical");

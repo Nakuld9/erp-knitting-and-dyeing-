@@ -172,17 +172,49 @@ function SalesTable({rows}){ return (<table><thead><tr><th>Month</th><th classNa
 
 function FactoryDash(){
   const [d,err]=useData("/api/dashboard/factory");
+  const trend=useList("/api/dashboard/production-trend");
+  const util=useList("/api/hardware/knitting-summary");
+  const batches=useList("/api/dyeing/batches");
   if(err) return <Panel>{err}</Panel>; if(!d) return <Panel>Loading…</Panel>;
-  return (<div className="stats">
-    <Stat tone="" icon="🧶" label="Knitting output (kg)" value={inr2(d.knitting_output_kg)} />
-    <Stat tone="violet" icon="🎨" label="Dyeing output (kg)" value={inr2(d.dyeing_output_kg)} />
-    <Stat tone="amber" icon="⚙️" label="Active batches" value={d.active_batches} />
-    <Stat tone="teal" icon="🧪" label="Chemical consumption" value={inr(d.chemical_consumption_cost)} />
+  const dayShort=s=>s?s.slice(5):"";
+  return (<div>
+    <div className="stats">
+      <Stat tone="" icon="🧶" label="Knitting output (kg)" value={inr2(d.knitting_output_kg)} />
+      <Stat tone="violet" icon="🎨" label="Dyeing output (kg)" value={inr2(d.dyeing_output_kg)} />
+      <Stat tone="amber" icon="⚙️" label="Active batches" value={d.active_batches} />
+      <Stat tone="teal" icon="🧪" label="Chemical consumption" value={inr(d.chemical_consumption_cost)} />
+    </div>
+    <Panel title="Production vs dyeing output (last 14 days)">
+      {R ? <div className="chartbox"><R.ResponsiveContainer>
+        <R.BarChart data={(trend||[]).map(p=>({d:dayShort(p.date), Knitting:Number(p.knitting_kg), Dyeing:Number(p.dyeing_kg)}))}
+          margin={{top:10,right:16,left:0,bottom:0}}>
+          <R.CartesianGrid strokeDasharray="3 3" stroke="#eef2f7"/>
+          <R.XAxis dataKey="d" fontSize={11}/><R.YAxis fontSize={11}/>
+          <R.Tooltip formatter={v=>inr2(v)+" kg"}/><R.Legend/>
+          <R.Bar dataKey="Knitting" stackId="a" fill="#2563eb"/><R.Bar dataKey="Dyeing" stackId="a" fill="#16a34a" radius={[4,4,0,0]}/>
+        </R.BarChart></R.ResponsiveContainer></div> : <div className="muted">Chart unavailable</div>}
+    </Panel>
+    <div className="grid-half">
+      <Panel title="Machine utilization">
+        {(util||[]).length===0?<div className="muted">No machine telemetry yet — simulate on Devices &amp; Labels.</div>:
+        util.map((m,i)=>{ const pc=Math.min(100,Number(m.efficiency_pct||0)); return <div className="util-row" key={i}>
+          <span className="nm">{m.machine}</span><span className="util-bar"><span className="util-fill"
+            style={{width:pc+"%", background:pc>=80?"#16a34a":pc>=50?"#2563eb":"#f59e0b"}}></span></span>
+          <span className="pc">{pc.toFixed(0)}%</span></div>; })}
+      </Panel>
+      <Panel title="Active dyeing batches">
+        {(batches||[]).length===0?<div className="muted">No batches yet.</div>:
+        <table><thead><tr><th>Batch</th><th className="num">Fabric (kg)</th><th className="num">Rolls</th><th>Status</th></tr></thead>
+        <tbody>{batches.slice(0,8).map(b=><tr key={b.id}><td>{b.batch_code}</td><td className="num">{inr2(b.fabric_kg)}</td>
+          <td className="num">{b.rolls}</td><td>{stBadge(b.status)}</td></tr>)}</tbody></table>}
+      </Panel>
+    </div>
   </div>);
 }
 
 function AccountsDash(){
   const [d,err]=useData("/api/dashboard/accounts");
+  const acts=useList("/api/vouchers");
   if(err) return <Panel>{err}</Panel>; if(!d) return <Panel>Loading…</Panel>;
   return (<div>
     <div className="stats">
@@ -194,11 +226,22 @@ function AccountsDash(){
       <Stat tone="" icon={d.trial_balance_balanced?"✅":"⚠️"} label="Trial balance"
         value={<span className={"badge "+(d.trial_balance_balanced?"ok":"bad")}>{d.trial_balance_balanced?"Balanced":"Out of balance"}</span>} />
     </div>
-    <Panel title="Bank balances">
-      <table><thead><tr><th>Account</th><th className="num">Balance</th></tr></thead>
-      <tbody>{(d.bank_balances||[]).map((b,i)=><tr key={i}><td>{b.name}</td>
-        <td className="num">{inr2(b.balance)}</td></tr>)}</tbody></table>
-    </Panel>
+    <div className="grid-half">
+      <Panel title="Bank balances">
+        {(d.bank_balances||[]).length===0?<div className="muted">No bank accounts yet.</div>:
+        <table><thead><tr><th>Account</th><th className="num">Balance</th></tr></thead>
+        <tbody>{(d.bank_balances||[]).map((b,i)=><tr key={i}><td>{b.name}</td>
+          <td className="num">{inr2(b.balance)}</td></tr>)}</tbody></table>}
+      </Panel>
+      <Panel title="Recent vouchers">
+        {(acts||[]).length===0?<div className="muted">No postings yet.</div>:
+        acts.slice(0,8).map((a,i)=><div className="act" key={i}>
+          <span className="tt">{a.voucher_date?a.voucher_date.slice(5):""}</span>
+          <span style={{flex:1}}><b>{a.number}</b> — {a.narration||"—"}</span>
+          <span className="num" style={{width:90}}>{inr2(a.total_debit)}</span>
+          <span className="badge info">{a.status}</span></div>)}
+      </Panel>
+    </div>
   </div>);
 }
 
