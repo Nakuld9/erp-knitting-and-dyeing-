@@ -4,7 +4,9 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 
 from app.api.routes import (
     accounting_ops,
@@ -31,6 +33,10 @@ from app.api.routes import (
     vouchers,
 )
 from app.core.config import settings
+from app.core.database import engine
+from app.core import observability
+
+observability.configure_logging(settings.log_level, settings.log_json)
 
 app = FastAPI(
     title=settings.app_name,
@@ -65,10 +71,33 @@ app.include_router(assets.router)
 app.include_router(approvals.router)
 app.include_router(accounting_ops.router)
 
+observability.install_observability(app)
+
 
 @app.get("/health", tags=["system"])
 def health() -> dict:
+    """Liveness: the process is up and serving."""
     return {"status": "ok", "app": settings.app_name, "environment": settings.environment}
+
+
+@app.get("/health/ready", tags=["system"])
+def readiness():
+    """Readiness: the process can reach its database. 503 if it cannot, so an
+    orchestrator or load balancer stops routing traffic to a broken instance."""
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return {"status": "ready", "database": "ok"}
+    except Exception as exc:  # noqa: BLE001
+        observability.error_logger.warning("readiness check failed: %s", exc)
+        return JSONResponse(status_code=503, content={"status": "not-ready", "database": "error"})
+
+
+@app.get("/health/metrics", tags=["system"])
+def metrics() -> dict:
+    """In-process request counters since start (requests, status classes,
+    error count, latency). Scrape into your monitoring stack."""
+    return observability.metrics.snapshot()
 
 
 # Serve the web UI (static SPA) at /app, if present.

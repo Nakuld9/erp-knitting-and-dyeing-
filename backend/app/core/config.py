@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     environment: str = "development"
     debug: bool = True
 
+    # --- Observability ---
+    log_level: str = "INFO"
+    # Emit one JSON object per log line (for log shippers); plain text otherwise.
+    log_json: bool = False
+
     # --- Database ---
     # Production: postgresql+psycopg2://user:pass@host:5432/erp
     # Tests default to in-memory SQLite (see tests/conftest.py).

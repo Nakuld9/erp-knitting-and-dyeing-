@@ -179,7 +179,7 @@ specified (pending-verification) Color Service dispensing integration.
 **Platform** — JWT auth + RBAC (15 roles), REST API, Alembic migrations,
 idempotent seed + demo data, Docker Compose.
 
-`189 passing tests` cover the accounting invariants, the nine worked posting
+`196 passing tests` cover the accounting invariants, the nine worked posting
 examples, correction dosing, RBAC, full-cycle trial balance, procurement,
 PO / SO lifecycle (receipt + dispatch roll-up, COGS on delivery), credit /
 debit notes, the greige→finished-goods transfer on finishing, knitting,
@@ -200,6 +200,7 @@ reconciliation), and the REST flow. See the acceptance-test map below.
 | [`docs/COLOR_SERVICE_INTEGRATION.md`](docs/COLOR_SERVICE_INTEGRATION.md) | Dispensing integration spec, adapters, simulator |
 | [`docs/HARDWARE_INTEGRATION.md`](docs/HARDWARE_INTEGRATION.md) | Weighing-scale & knitting-machine integration, roll labels |
 | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) | Install, configure, back up / recover, upgrade, monitor |
+| [`docs/OPERATIONS.md`](docs/OPERATIONS.md) | Day-2 runbook: scheduled jobs, health/metrics, logs, incident playbook |
 | [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) | Administrator guide + user guide by workflow |
 
 ## Quick start
@@ -269,7 +270,7 @@ erp/
     │   │                     #   banking, dashboard
     │   └── seed/             # chart of accounts, RBAC, seeder, demo data
     ├── alembic/              # migrations (baseline from metadata)
-    └── tests/                # 189 tests: invariants, posting matrix, TB, procurement,
+    └── tests/                # 196 tests: invariants, posting matrix, TB, procurement,
                               #   knitting, dyeing+dispensing, traceability, statements,
                               #   gst, banking, exports, dashboards, quality, API
 ```

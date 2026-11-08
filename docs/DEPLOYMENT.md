@@ -81,17 +81,24 @@ emit explicit operations.
 (ledger, inventory, documents, audit log). The container filesystem is
 disposable.
 
-**Scheduled logical backup** (nightly, keep ≥30 days off-host):
+**Scheduled logical backup** — use the committed `scripts/backup.sh`. It dumps
+the database named by `DATABASE_URL` (PostgreSQL via `pg_dump --format=custom`,
+or SQLite via a consistent `.backup`) to a timestamped file in `BACKUP_DIR`,
+then prunes files older than `RETENTION_DAYS`. It exits non-zero on failure so
+a scheduler can alert.
 ```bash
-pg_dump --format=custom --no-owner "$DATABASE_URL" > erp-$(date +%F).dump
-# Docker: docker compose exec -T db pg_dump -U erp -Fc erp > erp-$(date +%F).dump
+DATABASE_URL=... BACKUP_DIR=/var/backups/erp RETENTION_DAYS=30 ./scripts/backup.sh
 ```
+Schedule it from cron (see `scripts/crontab.example`) and **sync `BACKUP_DIR`
+off-host** (object storage, another machine) after each run — a backup on the
+same box is not a backup.
 
-**Restore** into a fresh database:
+**Restore** with `scripts/restore.sh`, which directs a Postgres restore at a
+*separate* target database by default so you verify before repointing the app:
 ```bash
-createdb erp_restore
-pg_restore --no-owner --dbname erp_restore erp-2026-11-07.dump
-# point DATABASE_URL at erp_restore and start the API
+TARGET_URL=postgresql://erp:pass@host:5432/erp_restore \
+  ./scripts/restore.sh /var/backups/erp/erp-20261108-021700.dump
+# SQLite: TARGET_URL=sqlite:////var/lib/erp/erp_restore.sqlite ./scripts/restore.sh <file>.sqlite
 ```
 
 **Point-in-time recovery:** for stricter RPO, enable Postgres WAL archiving
@@ -116,11 +123,33 @@ Rebuild the UI bundle only if `frontend/app.src.jsx` changed:
 
 ## 8. Monitoring & logs
 
-- `GET /health` for liveness.
-- Container/uvicorn stdout for request logs; ship to your log stack.
-- The append-only `audit_logs` table records every posting, reversal and login.
-- Integration events (`integration_events`) record each Color Service exchange
-  with status for reconciliation.
+**Endpoints** (no auth, cheap to poll):
+- `GET /health` — liveness: the process is up.
+- `GET /health/ready` — readiness: the process **and** its database are up
+  (`503` otherwise). Point load balancers and orchestrators here so a broken
+  instance is drained instead of served traffic. The Docker image ships a
+  `HEALTHCHECK` that hits it; `scripts/healthcheck.sh` is the same probe for
+  cron/monitoring.
+- `GET /health/metrics` — in-process counters since start: `requests_total`,
+  `requests_by_status_class` (`2xx`/`4xx`/`5xx`), `errors_total`,
+  `avg_duration_ms`, `max_duration_ms`, `uptime_seconds`. Scrape into your
+  monitoring stack; alert on a rising `errors_total` or `5xx` rate.
+
+**Request logging.** Every request is logged as one structured line with its
+method, path, status, duration and a correlation id. Each response carries an
+`X-Request-ID` header (an inbound one is honoured), and that id appears in the
+log line and in the body of any `500` — quote it in a bug report to find the
+exact request. Set `LOG_LEVEL` (default `INFO`) and `LOG_JSON=true` to emit one
+JSON object per line for a log shipper. Unhandled exceptions are logged with a
+full traceback and returned to the caller as a clean JSON `500`.
+
+**Audit trail.** The append-only `audit_logs` table records every posting,
+reversal and login; `integration_events` records each Color Service exchange
+with status for reconciliation. These are the durable record — the in-process
+metrics reset on restart.
+
+See `docs/OPERATIONS.md` for the day-2 runbook (backup schedule, what to alert
+on, and the incident playbook).
 
 ## 9. Security checklist
 

@@ -1,7 +1,7 @@
 # Project status & pending list
 
 Audit of the implementation against the master specification (the 24-section
-brief). Updated **2026-11-08**. Test suite: **189 passing**
+brief). Updated **2026-11-08**. Test suite: **196 passing**
 (`cd backend && pytest`).
 
 Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ not built.
@@ -45,6 +45,7 @@ Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ no
 | Reports | Excel + PDF exports |
 | Security | JWT, 15 RBAC roles, granular permissions, immutable posted entries |
 | Traceability | order → yarn → roll → batch → bath → dispensing → inventory → GL |
+| **Observability / ops** | readiness probe (`/health/ready`, DB-checked), in-process metrics (`/health/metrics`), structured per-request logging with correlation id (`X-Request-ID`), unhandled-error capture → clean JSON 500; committed backup / restore / health-probe scripts + cron example; Docker/compose `HEALTHCHECK` |
 
 ### Completed in the latest work cycle
 - PO / SO lifecycle (receipt & dispatch roll-up, COGS on delivery)
@@ -62,6 +63,7 @@ Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ no
 - Physical stock count (inventory adjustment) + sales-return restock
 - Approvals extended to purchase orders via a generic executor (dispatch by doc type); in-app notifications + document attachments (upload/list/download)
 - Approvals extended to journals / vouchers: a held voucher parks its full posting payload (validated balanced at submit), posts unchanged on approval, stays unposted on reject
+- Operability scaffolding: readiness + metrics endpoints, structured request logging with correlation ids, unhandled-error capture; backup/restore/health scripts + cron example + container HEALTHCHECK; OPERATIONS.md runbook
 
 ---
 
@@ -74,14 +76,17 @@ routing could be surfaced on more document types — GRNs, sales invoices — as
 future enhancement, but every control the brief calls for is in place.)
 
 ### Integration (needs vendor access)
+_These are the only remaining functional gaps, and each is blocked on external
+credentials or hardware — not on code._
 1. **Live Color Service adapter** (SOAP / OPC-UA / Modbus / DB) — only the simulator exists
-2. **E-invoice / e-way bill** — marked "readiness", not implemented
+2. **E-invoice / e-way bill** — marked "readiness", not implemented (needs IRP/GSP credentials)
 3. **Bank-feed** integration (CSV import done; live feeds not)
 
 ### Deliverables / ops
-4. Admin & user manuals beyond `docs/USER_GUIDE.md`; installation / backup guides (API docs = FastAPI `/docs`)
-5. Automated backups + error-logging / monitoring infrastructure
-6. Frontend is the self-contained SPA, **not** the Next.js/TS/Tailwind/shadcn stack in the spec (functionally complete, different stack)
+4. Frontend is the self-contained SPA, **not** the Next.js/TS/Tailwind/shadcn stack in the spec (functionally complete, different stack — a deliberate choice, not a gap)
+
+Backups, error-logging / monitoring infrastructure and the admin/ops runbook are
+now **built** (see the Observability / ops row above and `docs/OPERATIONS.md`).
 
 ---
 
