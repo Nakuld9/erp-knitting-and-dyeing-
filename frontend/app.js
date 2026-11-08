@@ -2039,6 +2039,166 @@ function EInvoiceBox({
     className: "err"
   }, err));
 }
+function EWayBillBox({
+  invoiceId
+}) {
+  const [cfg, setCfg] = useState(null);
+  const [eb, setEb] = useState(null);
+  const [t, setT] = useState({
+    trans_mode: "1",
+    vehicle_no: "",
+    distance_km: "",
+    transporter_id: ""
+  });
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    api("/api/ewaybill/config").then(setCfg).catch(() => {});
+    api("/api/ewaybill/" + invoiceId).then(setEb).catch(() => setEb(null));
+  }, [invoiceId]);
+  const gen = async () => {
+    setErr("");
+    setBusy(true);
+    try {
+      setEb(await api("/api/ewaybill/" + invoiceId + "/generate", {
+        method: "POST",
+        body: {
+          trans_mode: t.trans_mode,
+          vehicle_no: t.vehicle_no || null,
+          distance_km: Number(t.distance_km || 0),
+          transporter_id: t.transporter_id || null
+        }
+      }));
+    } catch (ex) {
+      setErr(ex.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const cancel = async () => {
+    setErr("");
+    setBusy(true);
+    try {
+      setEb(await api("/api/ewaybill/" + invoiceId + "/cancel", {
+        method: "POST",
+        body: {
+          reason_code: "2",
+          remarks: "Cancelled from UI"
+        }
+      }));
+    } catch (ex) {
+      setErr(ex.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const st = eb && eb.status;
+  return /*#__PURE__*/React.createElement("div", {
+    className: "panel",
+    style: {
+      marginTop: 14
+    }
+  }, /*#__PURE__*/React.createElement("h3", null, "E-way bill"), /*#__PURE__*/React.createElement("div", {
+    className: "row mb",
+    style: {
+      alignItems: "center",
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "muted",
+    style: {
+      fontSize: 12.5
+    }
+  }, "Mode:"), /*#__PURE__*/React.createElement("span", {
+    className: "badge " + (cfg && cfg.live ? "info" : "")
+  }, cfg ? cfg.live ? "LIVE GSP" : "SIMULATOR" : "…")), st !== "GENERATED" && /*#__PURE__*/React.createElement("div", {
+    className: "row mb"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Transport mode"), /*#__PURE__*/React.createElement("select", {
+    value: t.trans_mode,
+    onChange: e => setT({
+      ...t,
+      trans_mode: e.target.value
+    })
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "1"
+  }, "Road"), /*#__PURE__*/React.createElement("option", {
+    value: "2"
+  }, "Rail"), /*#__PURE__*/React.createElement("option", {
+    value: "3"
+  }, "Air"), /*#__PURE__*/React.createElement("option", {
+    value: "4"
+  }, "Ship"))), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Vehicle no."), /*#__PURE__*/React.createElement("input", {
+    value: t.vehicle_no,
+    onChange: e => setT({
+      ...t,
+      vehicle_no: e.target.value
+    }),
+    placeholder: "PB10AB1234"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Distance (km)"), /*#__PURE__*/React.createElement("input", {
+    value: t.distance_km,
+    onChange: e => setT({
+      ...t,
+      distance_km: e.target.value
+    }),
+    placeholder: "120"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Transporter ID"), /*#__PURE__*/React.createElement("input", {
+    value: t.transporter_id,
+    onChange: e => setT({
+      ...t,
+      transporter_id: e.target.value
+    }),
+    placeholder: "optional GSTIN"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field",
+    style: {
+      alignSelf: "end"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    disabled: busy,
+    onClick: gen
+  }, "Generate EWB"))), eb && eb.ewb_no && /*#__PURE__*/React.createElement("div", {
+    className: "act",
+    style: {
+      flexDirection: "column",
+      alignItems: "flex-start",
+      gap: 4
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("b", null, "Status:"), " ", /*#__PURE__*/React.createElement("span", {
+    className: "badge " + (st === "GENERATED" ? "ok" : st === "CANCELLED" ? "bad" : "warn")
+  }, st), st === "GENERATED" && /*#__PURE__*/React.createElement("button", {
+    className: "btn sec",
+    style: {
+      marginLeft: 10
+    },
+    disabled: busy,
+    onClick: cancel
+  }, "Cancel EWB")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontFamily: "monospace",
+      fontSize: 13
+    }
+  }, /*#__PURE__*/React.createElement("b", null, "EWB No:"), " ", eb.ewb_no), eb.valid_until && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12.5
+    }
+  }, /*#__PURE__*/React.createElement("b", null, "Valid until:"), " ", eb.valid_until), eb.irn && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "#64748b"
+    }
+  }, "linked to IRN ", eb.irn.slice(0, 16), "\u2026")), err && /*#__PURE__*/React.createElement("div", {
+    className: "err"
+  }, err));
+}
 function Sales() {
   const customers = useList("/api/masters/customers");
   const taxes = useList("/api/masters/tax-codes");
@@ -2185,6 +2345,8 @@ function Sales() {
   }), res && res.invoice_id && /*#__PURE__*/React.createElement(EInvoiceBox, {
     invoiceId: res.invoice_id,
     total: res.total_value
+  }), res && res.invoice_id && /*#__PURE__*/React.createElement(EWayBillBox, {
+    invoiceId: res.invoice_id
   }));
 }
 

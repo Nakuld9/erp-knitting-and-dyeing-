@@ -1,7 +1,7 @@
 # Project status & pending list
 
 Audit of the implementation against the master specification (the 24-section
-brief). Updated **2026-11-08**. Test suite: **207 passing**
+brief). Updated **2026-11-08**. Test suite: **217 passing**
 (`cd backend && pytest`).
 
 Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ not built.
@@ -46,7 +46,8 @@ Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ no
 | Security | JWT, 15 RBAC roles, granular permissions, immutable posted entries |
 | Traceability | order → yarn → roll → batch → bath → dispensing → inventory → GL |
 | **Observability / ops** | readiness probe (`/health/ready`, DB-checked), in-process metrics (`/health/metrics`), structured per-request logging with correlation id (`X-Request-ID`), unhandled-error capture → clean JSON 500; committed backup / restore / health-probe scripts + cron example; Docker/compose `HEALTHCHECK` |
-| **E-invoice (IRN)** | canonical NIC payload (v1.1) from a posted sales invoice with intra/inter-state CGST-SGST/IGST split; pluggable adapter (offline **simulator** + configurable **GSP** REST adapter for WeP / Tele-electrosoft / Pinnacle); IRN/Ack/signed-QR stored, idempotent generate, cancel, `integration_events` audit; generate/cancel from the Sales Invoice page |
+| **E-invoice (IRN)** | canonical NIC payload (v1.1) from a posted sales invoice with intra/inter-state CGST-SGST/IGST split; pluggable adapter (offline **simulator** + configurable **GSP** REST adapter for Webtel / Pinnacle, with subscription-key header); IRN/Ack/signed-QR stored, idempotent generate, cancel, `integration_events` audit; generate/cancel from the Sales Invoice page |
+| **E-way bill** | NIC EWB payload from the invoice + transport details (mode/vehicle/distance/transporter); same GSP connection as e-invoice, **links to the IRN** when present; EWB no + validity stored, idempotent generate, cancel, audit; transport form + generate/cancel on the Sales Invoice page |
 
 ### Completed in the latest work cycle
 - PO / SO lifecycle (receipt & dispatch roll-up, COGS on delivery)
@@ -66,6 +67,7 @@ Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ no
 - Approvals extended to journals / vouchers: a held voucher parks its full posting payload (validated balanced at submit), posts unchanged on approval, stays unposted on reject
 - Operability scaffolding: readiness + metrics endpoints, structured request logging with correlation ids, unhandled-error capture; backup/restore/health scripts + cron example + container HEALTHCHECK; OPERATIONS.md runbook
 - E-invoice (IRN): canonical NIC payload, simulator + configurable GSP adapter, IRN/QR storage, idempotent generate + cancel, UI on the Sales Invoice page (see EINVOICE_INTEGRATION.md)
+- E-way bill: NIC EWB payload + transport details, same GSP connection, links to the IRN, EWB no/validity storage, generate + cancel, UI on the Sales Invoice page
 
 ---
 
@@ -81,11 +83,12 @@ future enhancement, but every control the brief calls for is in place.)
 _The engines are built with an offline simulator and a configurable real
 adapter; what remains is the live wiring, which needs the vendor's endpoint and
 credentials (and network access) — not code._
-1. **E-invoice** — the full engine, simulator and GSP adapter are built; going
-   live needs your GSTIN's GSP credentials in the environment and, if your GSP's
-   auth differs from the common token flow, a tweak to the one adapter seam
-   (`GspAdapter._auth_token`). See `docs/EINVOICE_INTEGRATION.md`. **E-way bill**
-   is not yet built (a close cousin — same GSP, a different payload/endpoint).
+1. **E-invoice & e-way bill** — both engines, the simulator and the GSP adapter
+   are built (EWB reuses the e-invoice GSP connection and links to the IRN).
+   Going live needs your GSTIN's GSP credentials (Webtel / Pinnacle) in the
+   environment and, if the GSP's auth differs from the common token flow, a tweak
+   to the one adapter seam (`GspAdapter._auth_token`). See
+   `docs/EINVOICE_INTEGRATION.md`.
 2. **Live Color Service adapter** (SOAP / OPC-UA / Modbus / DB) — only the simulator exists
 3. **Bank-feed** integration (CSV import done; live feeds not)
 

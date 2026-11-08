@@ -105,6 +105,26 @@ For a real IRN (the simulator does not enforce these):
 A missing GSTIN or state code fails fast with a clear `422` at generate time, so
 the gap is obvious before the IRP ever sees the document.
 
+## E-way bill
+
+The e-way bill (EWB) reuses the **same GSP connection** (base URL, credentials,
+subscription key) — only the endpoint paths differ (`EWB_PATH`,
+`EWB_CANCEL_PATH`). It is generated from the invoice **plus transport details**
+(mode, vehicle no., distance, optional transporter id) and, when the invoice
+already has an IRN, **links to it** automatically. Mirrors e-invoice: canonical
+NIC payload, simulator + GSP adapter, idempotent generate, cancel, and an
+`integration_events` audit trail.
+
+- API: `POST /api/ewaybill/{invoice_id}/generate` (transport body),
+  `POST /api/ewaybill/{invoice_id}/cancel`, `GET /api/ewaybill/{invoice_id}`,
+  `GET /api/ewaybill/config`.
+- UI: an **E-way bill** panel on the Sales Invoice page (transport form →
+  Generate → EWB no + validity → Cancel).
+- Mandatory above the ₹50,000 consignment threshold (`EWB_THRESHOLD`).
+- The live EWB response field names (`ewayBillNo`, `validUpto`) follow the NIC
+  EWB API; adjust in `EWayBillGspAdapter.generate_ewb` if your GSP differs — the
+  same single seam as e-invoice.
+
 ## Operational notes
 
 - **Idempotent**: generating twice returns the same IRN; the invoice is never

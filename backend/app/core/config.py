@@ -59,6 +59,11 @@ class Settings(BaseSettings):
     einvoice_subscription_key: str = ""
     einvoice_subscription_header: str = "subscription-key"
     einvoice_timeout_seconds: int = 20
+    # E-way bill shares the same GSP connection/credentials, different endpoints.
+    ewb_path: str = "/ewaybill"
+    ewb_cancel_path: str = "/ewaybill/cancel"
+    # EWB is mandatory above this consignment value (₹50,000); below it is a warning.
+    ewb_threshold: int = 50000
 
     # --- Rounding ---
     # Number of decimal places kept for monetary amounts and quantities.

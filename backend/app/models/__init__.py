@@ -115,6 +115,7 @@ from app.models.approvals import (  # noqa: F401
 )
 from app.models.notifications import Attachment, Notification  # noqa: F401
 from app.models.einvoice import EInvoice, EInvoiceStatus  # noqa: F401
+from app.models.ewaybill import EWayBill, EWayBillStatus  # noqa: F401
 from app.models.banking import BankReconciliation, BankStatementLine  # noqa: F401
 from app.models.quality import (  # noqa: F401
     ComplaintStatus,

@@ -725,6 +725,48 @@ function EInvoiceBox({invoiceId, total}){
   </div>);
 }
 
+function EWayBillBox({invoiceId}){
+  const [cfg,setCfg]=useState(null); const [eb,setEb]=useState(null);
+  const [t,setT]=useState({trans_mode:"1",vehicle_no:"",distance_km:"",transporter_id:""});
+  const [err,setErr]=useState(""); const [busy,setBusy]=useState(false);
+  useEffect(()=>{ api("/api/ewaybill/config").then(setCfg).catch(()=>{});
+    api("/api/ewaybill/"+invoiceId).then(setEb).catch(()=>setEb(null)); },[invoiceId]);
+  const gen=async()=>{ setErr(""); setBusy(true);
+    try{ setEb(await api("/api/ewaybill/"+invoiceId+"/generate",{method:"POST",body:{
+        trans_mode:t.trans_mode, vehicle_no:t.vehicle_no||null,
+        distance_km:Number(t.distance_km||0), transporter_id:t.transporter_id||null}})); }
+    catch(ex){ setErr(ex.message); } finally{ setBusy(false); } };
+  const cancel=async()=>{ setErr(""); setBusy(true);
+    try{ setEb(await api("/api/ewaybill/"+invoiceId+"/cancel",{method:"POST",body:{reason_code:"2",remarks:"Cancelled from UI"}})); }
+    catch(ex){ setErr(ex.message); } finally{ setBusy(false); } };
+  const st=eb&&eb.status;
+  return (<div className="panel" style={{marginTop:14}}>
+    <h3>E-way bill</h3>
+    <div className="row mb" style={{alignItems:"center",gap:10}}>
+      <span className="muted" style={{fontSize:12.5}}>Mode:</span>
+      <span className={"badge "+(cfg&&cfg.live?"info":"")}>{cfg? (cfg.live?"LIVE GSP":"SIMULATOR"):"…"}</span>
+    </div>
+    {st!=="GENERATED" && <div className="row mb">
+      <div className="field"><label>Transport mode</label>
+        <select value={t.trans_mode} onChange={e=>setT({...t,trans_mode:e.target.value})}>
+          <option value="1">Road</option><option value="2">Rail</option>
+          <option value="3">Air</option><option value="4">Ship</option></select></div>
+      <div className="field"><label>Vehicle no.</label><input value={t.vehicle_no} onChange={e=>setT({...t,vehicle_no:e.target.value})} placeholder="PB10AB1234"/></div>
+      <div className="field"><label>Distance (km)</label><input value={t.distance_km} onChange={e=>setT({...t,distance_km:e.target.value})} placeholder="120"/></div>
+      <div className="field"><label>Transporter ID</label><input value={t.transporter_id} onChange={e=>setT({...t,transporter_id:e.target.value})} placeholder="optional GSTIN"/></div>
+      <div className="field" style={{alignSelf:"end"}}><button className="btn" disabled={busy} onClick={gen}>Generate EWB</button></div>
+    </div>}
+    {eb&&eb.ewb_no && <div className="act" style={{flexDirection:"column",alignItems:"flex-start",gap:4}}>
+      <div><b>Status:</b> <span className={"badge "+(st==="GENERATED"?"ok":st==="CANCELLED"?"bad":"warn")}>{st}</span>
+        {st==="GENERATED" && <button className="btn sec" style={{marginLeft:10}} disabled={busy} onClick={cancel}>Cancel EWB</button>}</div>
+      <div style={{fontFamily:"monospace",fontSize:13}}><b>EWB No:</b> {eb.ewb_no}</div>
+      {eb.valid_until && <div style={{fontSize:12.5}}><b>Valid until:</b> {eb.valid_until}</div>}
+      {eb.irn && <div style={{fontSize:11,color:"#64748b"}}>linked to IRN {eb.irn.slice(0,16)}…</div>}
+    </div>}
+    {err && <div className="err">{err}</div>}
+  </div>);
+}
+
 function Sales(){
   const customers=useList("/api/masters/customers"); const taxes=useList("/api/masters/tax-codes");
   const [hdr,setHdr]=useState({customer_id:"",number:genNo("INV"),invoice_date:new Date().toISOString().slice(0,10)});
@@ -763,6 +805,7 @@ function Sales(){
     </form>
     <Result r={res}/>
     {res && res.invoice_id && <EInvoiceBox invoiceId={res.invoice_id} total={res.total_value}/>}
+    {res && res.invoice_id && <EWayBillBox invoiceId={res.invoice_id}/>}
   </Panel>);
 }
 
