@@ -227,6 +227,10 @@ erp/
 
 ## Stage status (brief §22)
 
+> A full done-vs-pending audit against the master spec is kept in
+> [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md).
+
+
 | Stage | Scope | Status |
 |---|---|---|
 | 1 | Architecture, schema foundation, auth, master data | **Done** |
