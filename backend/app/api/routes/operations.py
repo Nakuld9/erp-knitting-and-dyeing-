@@ -16,10 +16,20 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.deps import require_permission
-from app.models.commercial import GoodsReceiptNote, GRNLine, SalesInvoice, SalesInvoiceLine
+from app.models.commercial import (
+    CreditNote,
+    CreditNoteLine,
+    DebitNote,
+    DebitNoteLine,
+    GoodsReceiptNote,
+    GRNLine,
+    SalesInvoice,
+    SalesInvoiceLine,
+)
 from app.models.core import User
 from app.models.manufacturing import BatchStatus, DyeBatch, DyeBath
-from app.services import batching, procurement, sales
+from app.services import batching, credit_debit_notes, procurement, sales
+from app.services.inventory.service import InsufficientStockError
 from app.services.colorservice import ColorServiceSimulator
 from app.services.colorservice import ingest as cs
 from app.services.colorservice.register import bath_consumption_register
@@ -103,6 +113,79 @@ def post_sales_invoice(payload: SalesInvoiceIn, db: Session = Depends(get_db),
     return {"invoice_id": str(inv.id), "voucher_number": voucher.number,
             "taxable_value": str(inv.taxable_value), "tax_amount": str(inv.tax_amount),
             "total_value": str(inv.total_value)}
+
+
+# --------------------------- credit / debit notes ---------------------------
+
+class CreditNoteLineIn(BaseModel):
+    description: str | None = None
+    qty: Decimal
+    rate: Decimal
+    tax_code_id: uuid.UUID | None = None
+
+
+class CreditNoteIn(BaseModel):
+    customer_id: uuid.UUID
+    number: str
+    note_date: date
+    reason: str | None = None
+    original_invoice_id: uuid.UUID | None = None
+    lines: list[CreditNoteLineIn] = Field(min_length=1)
+
+
+@router.post("/sales/credit-notes", status_code=status.HTTP_201_CREATED)
+def post_credit_note(payload: CreditNoteIn, db: Session = Depends(get_db),
+                     user: User = Depends(require_permission("sales.manage"))):
+    note = CreditNote(company_id=user.company_id, customer_id=payload.customer_id,
+                      number=payload.number, note_date=payload.note_date, reason=payload.reason,
+                      original_invoice_id=payload.original_invoice_id, created_by=user.id)
+    for i, ln in enumerate(payload.lines, start=1):
+        note.lines.append(CreditNoteLine(line_no=i, **ln.model_dump()))
+    db.add(note)
+    db.flush()
+    voucher = credit_debit_notes.post_sales_credit_note(db, note, created_by=user.id)
+    db.commit()
+    return {"credit_note_id": str(note.id), "voucher_number": voucher.number,
+            "taxable_value": str(note.taxable_value), "tax_amount": str(note.tax_amount),
+            "total_value": str(note.total_value)}
+
+
+class DebitNoteLineIn(BaseModel):
+    chemical_id: uuid.UUID
+    chemical_lot_id: uuid.UUID | None = None
+    warehouse_id: uuid.UUID | None = None
+    qty: Decimal
+    tax_code_id: uuid.UUID | None = None
+
+
+class DebitNoteIn(BaseModel):
+    supplier_id: uuid.UUID
+    number: str
+    note_date: date
+    reason: str | None = None
+    original_grn_id: uuid.UUID | None = None
+    lines: list[DebitNoteLineIn] = Field(min_length=1)
+
+
+@router.post("/purchase/debit-notes", status_code=status.HTTP_201_CREATED)
+def post_debit_note(payload: DebitNoteIn, db: Session = Depends(get_db),
+                    user: User = Depends(require_permission("purchase.manage"))):
+    note = DebitNote(company_id=user.company_id, supplier_id=payload.supplier_id,
+                     number=payload.number, note_date=payload.note_date, reason=payload.reason,
+                     original_grn_id=payload.original_grn_id, created_by=user.id)
+    for i, ln in enumerate(payload.lines, start=1):
+        note.lines.append(DebitNoteLine(line_no=i, **ln.model_dump()))
+    db.add(note)
+    db.flush()
+    try:
+        voucher = credit_debit_notes.post_purchase_debit_note(db, note, created_by=user.id)
+    except InsufficientStockError as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    db.commit()
+    return {"debit_note_id": str(note.id), "voucher_number": voucher.number,
+            "taxable_value": str(note.taxable_value), "tax_amount": str(note.tax_amount),
+            "total_value": str(note.total_value)}
 
 
 # ------------------------------ dyeing --------------------------------------

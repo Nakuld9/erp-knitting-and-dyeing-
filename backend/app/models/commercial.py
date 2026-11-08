@@ -195,3 +195,81 @@ class DeliveryNoteLine(AuditMixin, Base):
     cogs_value: Mapped[object] = mapped_column(Money, default=0)
 
     delivery: Mapped[DeliveryNote] = relationship(back_populates="lines")
+
+
+# --- sales credit note (customer: price adjustment / return value) ----------
+
+class CreditNote(AuditMixin, Base):
+    """Reduces a customer's receivable and reverses output GST (price
+    adjustment, discount or short-shipment)."""
+    __tablename__ = "credit_notes"
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"), index=True)
+    customer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("customers.id"), index=True)
+    original_invoice_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sales_invoices.id"), nullable=True)
+    number: Mapped[str] = mapped_column(String(40), index=True)
+    note_date: Mapped[date] = mapped_column(Date)
+    reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    status: Mapped[DocStatus] = mapped_column(String(12), default=DocStatus.DRAFT)
+    taxable_value: Mapped[object] = mapped_column(Money, default=0)
+    tax_amount: Mapped[object] = mapped_column(Money, default=0)
+    total_value: Mapped[object] = mapped_column(Money, default=0)
+    posting_reference: Mapped[str | None] = mapped_column(String(120), index=True)
+
+    lines: Mapped[list["CreditNoteLine"]] = relationship(
+        back_populates="note", cascade="all, delete-orphan"
+    )
+
+
+class CreditNoteLine(AuditMixin, Base):
+    __tablename__ = "credit_note_lines"
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    note_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("credit_notes.id", ondelete="CASCADE"), index=True)
+    line_no: Mapped[int] = mapped_column(Integer, default=1)
+    description: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    qty: Mapped[object] = mapped_column(Quantity, default=0)
+    rate: Mapped[object] = mapped_column(Money, default=0)
+    amount: Mapped[object] = mapped_column(Money, default=0)
+    tax_code_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("tax_codes.id"), nullable=True)
+
+    note: Mapped[CreditNote] = relationship(back_populates="lines")
+
+
+# --- purchase debit note (supplier: goods return) ---------------------------
+
+class DebitNote(AuditMixin, Base):
+    """Returns chemicals to a supplier: reduces stock (FIFO), the supplier
+    payable and the input GST originally claimed."""
+    __tablename__ = "debit_notes"
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"), index=True)
+    supplier_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("suppliers.id"), index=True)
+    original_grn_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("goods_receipt_notes.id"), nullable=True)
+    number: Mapped[str] = mapped_column(String(40), index=True)
+    note_date: Mapped[date] = mapped_column(Date)
+    reason: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    status: Mapped[DocStatus] = mapped_column(String(12), default=DocStatus.DRAFT)
+    taxable_value: Mapped[object] = mapped_column(Money, default=0)
+    tax_amount: Mapped[object] = mapped_column(Money, default=0)
+    total_value: Mapped[object] = mapped_column(Money, default=0)
+    posting_reference: Mapped[str | None] = mapped_column(String(120), index=True)
+
+    lines: Mapped[list["DebitNoteLine"]] = relationship(
+        back_populates="note", cascade="all, delete-orphan"
+    )
+
+
+class DebitNoteLine(AuditMixin, Base):
+    __tablename__ = "debit_note_lines"
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    note_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("debit_notes.id", ondelete="CASCADE"), index=True)
+    line_no: Mapped[int] = mapped_column(Integer, default=1)
+    chemical_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("chemicals.id"), index=True)
+    chemical_lot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("chemical_lots.id"), nullable=True)
+    warehouse_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("warehouses.id"), nullable=True)
+    qty: Mapped[object] = mapped_column(Quantity, default=0)
+    tax_code_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("tax_codes.id"), nullable=True)
+    # Stamped from the FIFO cost actually relieved, so GST ties to the ledger.
+    cost_value: Mapped[object] = mapped_column(Money, default=0)
+
+    note: Mapped[DebitNote] = relationship(back_populates="lines")

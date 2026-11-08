@@ -888,6 +888,8 @@ function PurchaseOrders(){
   const [f,setF]=useState({supplier_id:"",number:genNo("PO"),order_date:today(),
     chemical_id:"",qty:"100",rate:"1200",tax_code_id:""});
   const [res,setRes]=useState(null); const [err,setErr]=useState("");
+  const [dn,setDn]=useState({supplier_id:"",number:genNo("DN"),chemical_id:"",qty:"10",tax_code_id:"",reason:""});
+  const [dnRes,setDnRes]=useState(null); const [dnErr,setDnErr]=useState("");
   const load=useCallback(()=>{ api("/api/procurement/purchase-orders").then(setPos).catch(()=>{}); },[]);
   useEffect(()=>{load()},[load]);
   const create=async e=>{ e.preventDefault(); setErr(""); setRes(null);
@@ -900,6 +902,12 @@ function PurchaseOrders(){
     catch(ex){ setErr(ex.message); } };
   const view=async id=>{ if(open&&open.id===id){ setOpen(null); return; }
     try{ setOpen(await api(`/api/procurement/purchase-orders/${id}`)); }catch(ex){ setErr(ex.message); } };
+  const createDN=async e=>{ e.preventDefault(); setDnErr(""); setDnRes(null);
+    try{ const r=await api("/api/purchase/debit-notes",{method:"POST",body:{
+        supplier_id:dn.supplier_id, number:dn.number, note_date:today(), reason:dn.reason||null,
+        lines:[{chemical_id:dn.chemical_id, qty:dn.qty, tax_code_id:dn.tax_code_id||null}]}});
+      setDnRes(r); setDn({...dn,number:genNo("DN")}); }
+    catch(ex){ setDnErr(ex.message); } };
   return (<div>
     <Panel title="Raise a purchase order">
       <form onSubmit={create}>
@@ -933,6 +941,21 @@ function PurchaseOrders(){
         </td></tr> : null
       ])}</tbody></table>}
     </Panel>
+    <Panel title="Debit note (return chemicals to supplier)">
+      <form onSubmit={createDN}>
+        <div className="row">
+          <div className="field"><label>Supplier</label><Opts items={suppliers} value={dn.supplier_id} onChange={e=>setDn({...dn,supplier_id:e.target.value})}/></div>
+          <div className="field"><label>DN number</label><input value={dn.number} onChange={e=>setDn({...dn,number:e.target.value})}/></div>
+          <div className="field"><label>Chemical</label><Opts items={chemicals} value={dn.chemical_id} onChange={e=>setDn({...dn,chemical_id:e.target.value})}/></div>
+          <div className="field"><label>Qty returned</label><input value={dn.qty} onChange={e=>setDn({...dn,qty:e.target.value})}/></div>
+          <div className="field"><label>Tax</label><Opts items={taxes} value={dn.tax_code_id} onChange={e=>setDn({...dn,tax_code_id:e.target.value})} placeholder="—"/></div>
+          <div className="field" style={{alignSelf:"end"}}><button className="btn">Post debit note</button></div>
+        </div>
+        <div className="row"><div className="field" style={{flex:1}}><label>Reason</label><input value={dn.reason} onChange={e=>setDn({...dn,reason:e.target.value})} placeholder="e.g. damaged goods"/></div></div>
+        {dnErr && <div className="err">{dnErr}</div>}
+      </form>
+      <Result r={dnRes}/>
+    </Panel>
   </div>);
 }
 
@@ -944,7 +967,9 @@ function SalesOrders(){
   const [f,setF]=useState({customer_id:"",number:genNo("SO"),order_date:today(),
     fabric_type_id:"",qty_kg:"250",rate:"300",tax_code_id:""});
   const [dsp,setDsp]=useState({customer_id:"",sales_order_id:""});
-  const [res,setRes]=useState(null); const [dres,setDres]=useState(null); const [err,setErr]=useState("");
+  const [cn,setCn]=useState({customer_id:"",number:genNo("CN"),amount:"10000",tax_code_id:"",reason:""});
+  const [res,setRes]=useState(null); const [dres,setDres]=useState(null);
+  const [cnRes,setCnRes]=useState(null); const [cnErr,setCnErr]=useState(""); const [err,setErr]=useState("");
   const load=useCallback(()=>{ api("/api/sales/orders").then(setSos).catch(()=>{});
     api("/api/rolls?undelivered=true").then(setRolls).catch(()=>{}); },[]);
   useEffect(()=>{load()},[load]);
@@ -965,6 +990,12 @@ function SalesOrders(){
         delivery_date:today(), roll_ids:chosen.map(r=>r.id)}});
       setDres(r); setSel({}); load(); }
     catch(ex){ setErr(ex.message); } };
+  const createCN=async e=>{ e.preventDefault(); setCnErr(""); setCnRes(null);
+    try{ const r=await api("/api/sales/credit-notes",{method:"POST",body:{
+        customer_id:cn.customer_id, number:cn.number, note_date:today(), reason:cn.reason||null,
+        lines:[{description:cn.reason||"Adjustment", qty:"1", rate:cn.amount, tax_code_id:cn.tax_code_id||null}]}});
+      setCnRes(r); setCn({...cn,number:genNo("CN")}); }
+    catch(ex){ setCnErr(ex.message); } };
   return (<div>
     <Panel title="Create a sales order">
       <form onSubmit={create}>
@@ -1006,6 +1037,20 @@ function SalesOrders(){
         <div className="row" style={{marginTop:12}}><button className="btn">Dispatch ({chosen.length} rolls)</button></div>
       </form>
       <Result r={dres}/>
+    </Panel>
+    <Panel title="Credit note (customer adjustment)">
+      <form onSubmit={createCN}>
+        <div className="row">
+          <div className="field"><label>Customer</label><Opts items={customers} value={cn.customer_id} onChange={e=>setCn({...cn,customer_id:e.target.value})}/></div>
+          <div className="field"><label>CN number</label><input value={cn.number} onChange={e=>setCn({...cn,number:e.target.value})}/></div>
+          <div className="field"><label>Taxable amount</label><input value={cn.amount} onChange={e=>setCn({...cn,amount:e.target.value})}/></div>
+          <div className="field"><label>Tax</label><Opts items={taxes} value={cn.tax_code_id} onChange={e=>setCn({...cn,tax_code_id:e.target.value})} placeholder="—"/></div>
+          <div className="field" style={{alignSelf:"end"}}><button className="btn">Post credit note</button></div>
+        </div>
+        <div className="row"><div className="field" style={{flex:1}}><label>Reason</label><input value={cn.reason} onChange={e=>setCn({...cn,reason:e.target.value})} placeholder="e.g. rate difference / short shipment"/></div></div>
+        {cnErr && <div className="err">{cnErr}</div>}
+      </form>
+      <Result r={cnRes}/>
     </Panel>
   </div>);
 }

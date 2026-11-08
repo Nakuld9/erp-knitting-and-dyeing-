@@ -2630,6 +2630,16 @@ function PurchaseOrders() {
   });
   const [res, setRes] = useState(null);
   const [err, setErr] = useState("");
+  const [dn, setDn] = useState({
+    supplier_id: "",
+    number: genNo("DN"),
+    chemical_id: "",
+    qty: "10",
+    tax_code_id: "",
+    reason: ""
+  });
+  const [dnRes, setDnRes] = useState(null);
+  const [dnErr, setDnErr] = useState("");
   const load = useCallback(() => {
     api("/api/procurement/purchase-orders").then(setPos).catch(() => {});
   }, []);
@@ -2687,6 +2697,34 @@ function PurchaseOrders() {
       setOpen(await api(`/api/procurement/purchase-orders/${id}`));
     } catch (ex) {
       setErr(ex.message);
+    }
+  };
+  const createDN = async e => {
+    e.preventDefault();
+    setDnErr("");
+    setDnRes(null);
+    try {
+      const r = await api("/api/purchase/debit-notes", {
+        method: "POST",
+        body: {
+          supplier_id: dn.supplier_id,
+          number: dn.number,
+          note_date: today(),
+          reason: dn.reason || null,
+          lines: [{
+            chemical_id: dn.chemical_id,
+            qty: dn.qty,
+            tax_code_id: dn.tax_code_id || null
+          }]
+        }
+      });
+      setDnRes(r);
+      setDn({
+        ...dn,
+        number: genNo("DN")
+      });
+    } catch (ex) {
+      setDnErr(ex.message);
     }
   };
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Panel, {
@@ -2801,7 +2839,82 @@ function PurchaseOrders() {
     className: "num"
   }, inr2(l.qty)), /*#__PURE__*/React.createElement("td", {
     className: "num"
-  }, inr2(l.received_qty)))))))) : null])))));
+  }, inr2(l.received_qty)))))))) : null])))), /*#__PURE__*/React.createElement(Panel, {
+    title: "Debit note (return chemicals to supplier)"
+  }, /*#__PURE__*/React.createElement("form", {
+    onSubmit: createDN
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "row"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Supplier"), /*#__PURE__*/React.createElement(Opts, {
+    items: suppliers,
+    value: dn.supplier_id,
+    onChange: e => setDn({
+      ...dn,
+      supplier_id: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "DN number"), /*#__PURE__*/React.createElement("input", {
+    value: dn.number,
+    onChange: e => setDn({
+      ...dn,
+      number: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Chemical"), /*#__PURE__*/React.createElement(Opts, {
+    items: chemicals,
+    value: dn.chemical_id,
+    onChange: e => setDn({
+      ...dn,
+      chemical_id: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Qty returned"), /*#__PURE__*/React.createElement("input", {
+    value: dn.qty,
+    onChange: e => setDn({
+      ...dn,
+      qty: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Tax"), /*#__PURE__*/React.createElement(Opts, {
+    items: taxes,
+    value: dn.tax_code_id,
+    onChange: e => setDn({
+      ...dn,
+      tax_code_id: e.target.value
+    }),
+    placeholder: "\u2014"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field",
+    style: {
+      alignSelf: "end"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Post debit note"))), /*#__PURE__*/React.createElement("div", {
+    className: "row"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field",
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("label", null, "Reason"), /*#__PURE__*/React.createElement("input", {
+    value: dn.reason,
+    onChange: e => setDn({
+      ...dn,
+      reason: e.target.value
+    }),
+    placeholder: "e.g. damaged goods"
+  }))), dnErr && /*#__PURE__*/React.createElement("div", {
+    className: "err"
+  }, dnErr)), /*#__PURE__*/React.createElement(Result, {
+    r: dnRes
+  })));
 }
 
 // ---- transactions: sales orders + dispatch (SO -> delivery -> COGS) --------
@@ -2825,8 +2938,17 @@ function SalesOrders() {
     customer_id: "",
     sales_order_id: ""
   });
+  const [cn, setCn] = useState({
+    customer_id: "",
+    number: genNo("CN"),
+    amount: "10000",
+    tax_code_id: "",
+    reason: ""
+  });
   const [res, setRes] = useState(null);
   const [dres, setDres] = useState(null);
+  const [cnRes, setCnRes] = useState(null);
+  const [cnErr, setCnErr] = useState("");
   const [err, setErr] = useState("");
   const load = useCallback(() => {
     api("/api/sales/orders").then(setSos).catch(() => {});
@@ -2907,6 +3029,35 @@ function SalesOrders() {
       load();
     } catch (ex) {
       setErr(ex.message);
+    }
+  };
+  const createCN = async e => {
+    e.preventDefault();
+    setCnErr("");
+    setCnRes(null);
+    try {
+      const r = await api("/api/sales/credit-notes", {
+        method: "POST",
+        body: {
+          customer_id: cn.customer_id,
+          number: cn.number,
+          note_date: today(),
+          reason: cn.reason || null,
+          lines: [{
+            description: cn.reason || "Adjustment",
+            qty: "1",
+            rate: cn.amount,
+            tax_code_id: cn.tax_code_id || null
+          }]
+        }
+      });
+      setCnRes(r);
+      setCn({
+        ...cn,
+        number: genNo("CN")
+      });
+    } catch (ex) {
+      setCnErr(ex.message);
     }
   };
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Panel, {
@@ -3072,6 +3223,72 @@ function SalesOrders() {
     className: "btn"
   }, "Dispatch (", chosen.length, " rolls)"))), /*#__PURE__*/React.createElement(Result, {
     r: dres
+  })), /*#__PURE__*/React.createElement(Panel, {
+    title: "Credit note (customer adjustment)"
+  }, /*#__PURE__*/React.createElement("form", {
+    onSubmit: createCN
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "row"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Customer"), /*#__PURE__*/React.createElement(Opts, {
+    items: customers,
+    value: cn.customer_id,
+    onChange: e => setCn({
+      ...cn,
+      customer_id: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "CN number"), /*#__PURE__*/React.createElement("input", {
+    value: cn.number,
+    onChange: e => setCn({
+      ...cn,
+      number: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Taxable amount"), /*#__PURE__*/React.createElement("input", {
+    value: cn.amount,
+    onChange: e => setCn({
+      ...cn,
+      amount: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Tax"), /*#__PURE__*/React.createElement(Opts, {
+    items: taxes,
+    value: cn.tax_code_id,
+    onChange: e => setCn({
+      ...cn,
+      tax_code_id: e.target.value
+    }),
+    placeholder: "\u2014"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field",
+    style: {
+      alignSelf: "end"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Post credit note"))), /*#__PURE__*/React.createElement("div", {
+    className: "row"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field",
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("label", null, "Reason"), /*#__PURE__*/React.createElement("input", {
+    value: cn.reason,
+    onChange: e => setCn({
+      ...cn,
+      reason: e.target.value
+    }),
+    placeholder: "e.g. rate difference / short shipment"
+  }))), cnErr && /*#__PURE__*/React.createElement("div", {
+    className: "err"
+  }, cnErr)), /*#__PURE__*/React.createElement(Result, {
+    r: cnRes
   })));
 }
 

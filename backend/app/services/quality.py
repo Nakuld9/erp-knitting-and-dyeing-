@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.types import QTY_SCALE, quantize
+from app.models.inventory import ItemType
 from app.models.manufacturing import FabricRoll, RollKind
 from app.models.quality import (
     ComplaintStatus,
@@ -19,7 +20,10 @@ from app.models.quality import (
     InspectionResult,
     QualityInspection,
 )
+from app.services import inventory
+from app.services.accounting import posting_engine as pe
 from app.services.accounting.posting_engine import fiscal_year_for
+from app.services.accounting.posting_rules import resolve_account
 from app.services.sequences import next_document_number
 
 # Default Delta E thresholds (configurable per deployment later).
@@ -55,6 +59,7 @@ def record_finishing(db: Session, company_id: uuid.UUID, *, process_type, proces
     if fabric_roll_id and pt in FINISHING_PROCESSES:
         roll = db.get(FabricRoll, fabric_roll_id)
         if roll is not None:
+            was_greige = (roll.kind == RollKind.GREIGE or roll.kind == RollKind.GREIGE.value)
             roll.kind = RollKind.FINISHED
             if width_cm is not None:
                 roll.width_cm = width_cm
@@ -62,8 +67,35 @@ def record_finishing(db: Session, company_id: uuid.UUID, *, process_type, proces
                 roll.gsm = gsm
             if output_weight_kg is not None:
                 roll.weight_kg = output_weight_kg
+            if was_greige:
+                _transfer_greige_to_fg(db, company_id, roll, process_date, created_by)
     db.flush()
     return ft
+
+
+def _transfer_greige_to_fg(db: Session, company_id, roll: FabricRoll, process_date: date, created_by):
+    """On finishing, move the roll's carried fabric cost greige -> finished in
+    the GL (Dr Finished Fabric Inventory / Cr Greige Fabric Inventory), so the
+    finished-goods account carries the roll and later dispatch credits it.
+    Idempotent per roll; a no-op when the roll carries no stock value."""
+    ref = f"FGXFER:{roll.id}"
+    if pe.find_existing(db, company_id, ref) is not None:
+        return
+    bal = inventory.balance(db, company_id=company_id, item_type=ItemType.FABRIC, item_id=roll.id)
+    value = bal["value"]
+    if value <= 0:
+        return
+    pe.post_voucher(db, pe.PostingRequest(
+        company_id=company_id, voucher_type_code="SJ", voucher_date=process_date,
+        posting_reference=ref, narration=f"Finish roll {roll.roll_no} (greige -> FG)",
+        source_module="finishing", source_id=str(roll.id), created_by=created_by,
+        lines=[
+            pe.PostingLine(resolve_account(db, company_id, "FINISHING_FG", "fg"), debit=value,
+                           narration="Finished fabric inventory"),
+            pe.PostingLine(resolve_account(db, company_id, "FINISHING_FG", "greige"), credit=value,
+                           narration="Greige fabric inventory"),
+        ],
+    ))
 
 
 def _derive_result(delta_e, shade_match) -> InspectionResult:

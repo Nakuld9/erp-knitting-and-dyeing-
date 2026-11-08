@@ -28,6 +28,8 @@ DEFAULT_RULES: dict[str, dict[str, str]] = {
     "YARN_ISSUE": {"wip": "1080", "inventory": "1060"},
     "KNITTING_PRODUCTION": {"greige": "1070", "wip": "1080"},
     "WIP_TO_FG": {"fg": "1085", "wip": "1080"},
+    # Finishing moves a roll's carried cost from greige to finished inventory.
+    "FINISHING_FG": {"fg": "1085", "greige": "1070"},
     "COGS": {"cogs": "5150", "fg": "1085"},
     # Dispatch of fabric rolls: credit the sub-ledger account the roll sits in
     # (greige vs finished), debit COGS.
@@ -35,6 +37,14 @@ DEFAULT_RULES: dict[str, dict[str, str]] = {
     "SALES_INVOICE": {
         "receivable": "1040", "sales": "4010", "output_cgst": "2041",
         "output_sgst": "2042", "output_igst": "2043",
+    },
+    "SALES_CREDIT_NOTE": {
+        "receivable": "1040", "sales": "4010", "output_cgst": "2041",
+        "output_sgst": "2042", "output_igst": "2043",
+    },
+    "PURCHASE_DEBIT_NOTE": {
+        "payable": "2010", "inventory": "1100", "input_cgst": "1121",
+        "input_sgst": "1122", "input_igst": "1123",
     },
     "CUSTOMER_RECEIPT": {"bank": "1020", "receivable": "1040"},
     "SUPPLIER_PAYMENT": {"payable": "2010", "bank": "1020"},

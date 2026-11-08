@@ -65,6 +65,13 @@ specified (pending-verification) Color Service dispensing integration.
   sub-ledger cost) and booking a balanced **COGS** voucher; the SO rolls to
   PARTIAL / COMPLETED on delivered quantity, and a roll can't be dispatched
   twice. The revenue invoice follows the dispatch.
+- **Credit / debit notes** — a **sales credit note** reverses the receivable and
+  output GST (price adjustment / short shipment); a **purchase debit note**
+  returns chemicals (relieves FIFO stock), reducing the payable and input GST.
+  Both post balanced vouchers and flow into the GST registers as negatives.
+- **Greige → finished-goods transfer** — finishing a roll moves its carried cost
+  from the greige inventory account to finished-goods, so dispatch COGS credits
+  the right control account and the sub-ledger stays reconciled.
 - **Batching** — assign greige rolls to a dye batch (the dyeing lot); the batch
   fabric weight is summed from the selected rolls, a roll can't be double-batched,
   and each roll is stamped with its batch for traceability.
@@ -119,9 +126,10 @@ specified (pending-verification) Color Service dispensing integration.
 **Platform** — JWT auth + RBAC (15 roles), REST API, Alembic migrations,
 idempotent seed + demo data, Docker Compose.
 
-`118 passing tests` cover the accounting invariants, the nine worked posting
+`125 passing tests` cover the accounting invariants, the nine worked posting
 examples, correction dosing, RBAC, full-cycle trial balance, procurement,
-PO / SO lifecycle (receipt + dispatch roll-up, COGS on delivery), knitting,
+PO / SO lifecycle (receipt + dispatch roll-up, COGS on delivery), credit /
+debit notes, the greige→finished-goods transfer on finishing, knitting,
 roll auto-numbering + lineage, fixed assets (SLM/WDV depreciation + disposal),
 recipe scaling, the full dispensing cycle, end-to-end traceability, the
 financial statements (P&L / Balance Sheet / Cash Flow / ageing), GST
@@ -207,7 +215,7 @@ erp/
     │   │                     #   banking, dashboard
     │   └── seed/             # chart of accounts, RBAC, seeder, demo data
     ├── alembic/              # migrations (baseline from metadata)
-    └── tests/                # 118 tests: invariants, posting matrix, TB, procurement,
+    └── tests/                # 125 tests: invariants, posting matrix, TB, procurement,
                               #   knitting, dyeing+dispensing, traceability, statements,
                               #   gst, banking, exports, dashboards, quality, API
 ```
@@ -241,7 +249,7 @@ erp/
 | 9 | Dr WIP / Cr inventory on consumption | ✅ `test_ingest_dispensing…`, `test_example2` |
 | 10 | 200 g correction dosing = separate transaction | ✅ `test_correction_dosing…` |
 | 11 | Final actual dye-bath cost | ✅ `test_bath_consumption_register` |
-| 12 | WIP → Finished Goods transfer | ✅ `test_example7` |
+| 12 | WIP → Finished Goods transfer | ✅ `test_example7`, `test_finishing_transfer` (greige→FG on finishing) |
 | 13 | Sales invoice with GST postings | ✅ `test_stage2_sales`, `test_example4` |
 | 15 | Trial balance debit == credit | ✅ `test_trial_balance…` |
 | 18 | Reconnect integration → no duplicates | ✅ `test_reconnect_does_not_duplicate` |

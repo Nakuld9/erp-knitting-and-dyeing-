@@ -18,7 +18,13 @@ from sqlalchemy.orm import Session
 
 from app.core.types import MONEY_SCALE, quantize
 from app.models.accounting import ChartOfAccount, JournalLine, Voucher, VoucherStatus
-from app.models.commercial import DocStatus, GoodsReceiptNote, SalesInvoice
+from app.models.commercial import (
+    CreditNote,
+    DebitNote,
+    DocStatus,
+    GoodsReceiptNote,
+    SalesInvoice,
+)
 from app.models.core import Company
 from app.models.masters import Customer, Supplier, TaxCode
 from app.services.tax import compute_gst
@@ -68,6 +74,33 @@ def sales_register(db: Session, company_id: uuid.UUID, date_from: date, date_to:
         for k in tx:
             tot[k] += tx[k]
         tot["total"] += total
+
+    # Credit notes reduce outward supply (shown as negative rows).
+    notes = db.execute(
+        select(CreditNote).where(
+            CreditNote.company_id == company_id, CreditNote.status == DocStatus.POSTED,
+            CreditNote.note_date >= date_from, CreditNote.note_date <= date_to,
+        ).order_by(CreditNote.note_date, CreditNote.number)
+    ).scalars().all()
+    for note in notes:
+        cust = db.get(Customer, note.customer_id)
+        intra = _intra(company, cust.state_code if cust else None)
+        tx = {"taxable": ZERO, "cgst": ZERO, "sgst": ZERO, "igst": ZERO}
+        for line in note.lines:
+            amount = quantize(Decimal(str(line.qty)) * Decimal(str(line.rate)), MONEY_SCALE)
+            tc = db.get(TaxCode, line.tax_code_id) if line.tax_code_id else None
+            g = compute_gst(tc, amount, intra_state=intra)
+            tx["taxable"] += amount; tx["cgst"] += g["cgst"]; tx["sgst"] += g["sgst"]; tx["igst"] += g["igst"]
+        total = tx["taxable"] + tx["cgst"] + tx["sgst"] + tx["igst"]
+        neg = {k: -v for k, v in tx.items()}
+        rows.append({"document": note.number, "date": note.note_date,
+                     "party": cust.name if cust else None, "gstin": cust.gstin if cust else None,
+                     "place_of_supply": cust.state_code if cust else None,
+                     "supply_type": ("INTRA" if intra else "INTER"), "doc_type": "CREDIT_NOTE",
+                     **neg, "total": -total})
+        for k in tx:
+            tot[k] -= tx[k]
+        tot["total"] -= total
     return {"date_from": date_from, "date_to": date_to, "rows": rows, "totals": tot}
 
 
@@ -97,6 +130,32 @@ def purchase_register(db: Session, company_id: uuid.UUID, date_from: date, date_
         for k in tx:
             tot[k] += tx[k]
         tot["total"] += total
+
+    # Debit notes (purchase returns) reduce inward supply / ITC.
+    notes = db.execute(
+        select(DebitNote).where(
+            DebitNote.company_id == company_id, DebitNote.status == DocStatus.POSTED,
+            DebitNote.note_date >= date_from, DebitNote.note_date <= date_to,
+        ).order_by(DebitNote.note_date, DebitNote.number)
+    ).scalars().all()
+    for note in notes:
+        sup = db.get(Supplier, note.supplier_id)
+        intra = _intra(company, sup.state_code if sup else None)
+        tx = {"taxable": ZERO, "cgst": ZERO, "sgst": ZERO, "igst": ZERO}
+        for line in note.lines:
+            amount = quantize(Decimal(str(line.cost_value or 0)), MONEY_SCALE)
+            tc = db.get(TaxCode, line.tax_code_id) if line.tax_code_id else None
+            g = compute_gst(tc, amount, intra_state=intra)
+            tx["taxable"] += amount; tx["cgst"] += g["cgst"]; tx["sgst"] += g["sgst"]; tx["igst"] += g["igst"]
+        total = tx["taxable"] + tx["cgst"] + tx["sgst"] + tx["igst"]
+        neg = {k: -v for k, v in tx.items()}
+        rows.append({"document": note.number, "date": note.note_date,
+                     "party": sup.name if sup else None, "gstin": sup.gstin if sup else None,
+                     "supply_type": ("INTRA" if intra else "INTER"), "doc_type": "DEBIT_NOTE",
+                     **neg, "total": -total})
+        for k in tx:
+            tot[k] -= tx[k]
+        tot["total"] -= total
     return {"date_from": date_from, "date_to": date_to, "rows": rows, "totals": tot}
 
 
