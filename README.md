@@ -50,6 +50,11 @@ specified (pending-verification) Color Service dispensing integration.
   computation, and a **monthly run** that posts one balanced PRV voucher
   (salaries + employer PF/ESI debited; net pay and the statutory payables
   credited), idempotent per pay period.
+- **Maker-checker approvals** — configurable rules (per document type and
+  amount threshold) route a document for approval; the requester can never
+  approve their own request, and only an approved request completes the action.
+  Wired to **supplier payments**: a payment at/above the threshold is held until
+  the required approvals arrive, then posts; below it, it posts immediately.
 
 **Operations (Stage 2–4)**
 - **Procurement** — chemical/dye GRN → FIFO stock layer + GST purchase voucher.
@@ -131,15 +136,16 @@ specified (pending-verification) Color Service dispensing integration.
 **Platform** — JWT auth + RBAC (15 roles), REST API, Alembic migrations,
 idempotent seed + demo data, Docker Compose.
 
-`131 passing tests` cover the accounting invariants, the nine worked posting
+`138 passing tests` cover the accounting invariants, the nine worked posting
 examples, correction dosing, RBAC, full-cycle trial balance, procurement,
 PO / SO lifecycle (receipt + dispatch roll-up, COGS on delivery), credit /
 debit notes, the greige→finished-goods transfer on finishing, knitting,
 roll auto-numbering + lineage, fixed assets (SLM/WDV depreciation + disposal),
-payroll (PF/ESI/PT/TDS + balanced run), recipe scaling, the full dispensing
-cycle, end-to-end traceability, the financial statements (P&L / Balance Sheet /
-Cash Flow / ageing), GST (registers / GSTR-1 / GSTR-3B / reconciliation), and
-the REST flow. See the acceptance-test map below.
+payroll (PF/ESI/PT/TDS + balanced run), maker-checker approvals, recipe
+scaling, the full dispensing cycle, end-to-end traceability, the financial
+statements (P&L / Balance Sheet / Cash Flow / ageing), GST (registers /
+GSTR-1 / GSTR-3B / reconciliation), and the REST flow. See the
+acceptance-test map below.
 
 ## Design documents (start here)
 
@@ -220,7 +226,7 @@ erp/
     │   │                     #   banking, dashboard
     │   └── seed/             # chart of accounts, RBAC, seeder, demo data
     ├── alembic/              # migrations (baseline from metadata)
-    └── tests/                # 131 tests: invariants, posting matrix, TB, procurement,
+    └── tests/                # 138 tests: invariants, posting matrix, TB, procurement,
                               #   knitting, dyeing+dispensing, traceability, statements,
                               #   gst, banking, exports, dashboards, quality, API
 ```

@@ -1,7 +1,7 @@
 # Project status & pending list
 
 Audit of the implementation against the master specification (the 24-section
-brief). Updated **2026-11-08**. Test suite: **131 passing**
+brief). Updated **2026-11-08**. Test suite: **138 passing**
 (`cd backend && pytest`).
 
 Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ not built.
@@ -32,6 +32,7 @@ Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ no
 | Costing | per-kg knit/dye/finish, shade/machine/order, std-vs-actual, customer profitability |
 | **Fixed assets** | register, SLM/WDV depreciation, disposal (gain/loss) |
 | **Payroll** | salary structures, PF/ESI/PT/TDS, payslips, balanced monthly PRV run |
+| **Approvals** | configurable maker-checker rules; supplier-payment approval gate (self-approval blocked, N approvals, posts on approval) |
 | Quality/finishing | inspections, complaints, finishing processes |
 | Hardware | weighing-scale + knitting-machine integration (simulated), efficiency |
 | Dashboards | Owner / Factory / Accounts / Chemical |
@@ -45,6 +46,7 @@ Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ no
 - Credit notes (sales) & debit notes (purchase returns)
 - Greige → Finished-Goods transfer on finishing (Acceptance Test 12)
 - Payroll (structures, statutory deductions, balanced run)
+- Maker-checker approval workflows (supplier-payment gate)
 
 ---
 
@@ -56,7 +58,8 @@ Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ no
 3. **Year-end closing** → retained-earnings roll-forward routine
 
 ### Workflow / controls
-4. **Approval workflows** (maker-checker) — `approval_requests` / `approval_history`, voucher/payment approval gates *(next in queue)*
+4. **Approval coverage beyond payments** — the maker-checker engine is built and
+   gates supplier payments; extend the same rules to vouchers, POs and journals.
 5. **Notifications** & **attachments** (document uploads)
 
 ### Sales / commercial
@@ -89,9 +92,9 @@ Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ no
 - All ledger, inventory, GST, costing and traceability tests (1–4, 7–17, 19–20) pass, including **Test 12** (WIP→FG) now that finishing posts the greige→FG transfer.
 
 ## Suggested priority order for remaining work
-1. Approval workflows (maker-checker)
-2. GST adjustment voucher + year-end close
-3. Roll split/merge, stock transfers, FEFO/weighted-average
-4. Enquiries/quotations + credit limits + party statements
+1. GST adjustment voucher + year-end close
+2. Roll split/merge, stock transfers, FEFO/weighted-average
+3. Enquiries/quotations + credit limits + party statements
+4. Extend approvals to vouchers/POs/journals + notifications/attachments
 5. Live external integrations (when vendor credentials/hardware are available)
 6. Operational docs, backups, monitoring

@@ -94,6 +94,15 @@ from app.models.payroll import (  # noqa: F401
     PayrollStatus,
     SalaryStructure,
 )
+from app.models.approvals import (  # noqa: F401
+    ApprovalAction,
+    ApprovalEvent,
+    ApprovalRequest,
+    ApprovalRule,
+    ApprovalStatus,
+    PaymentApproval,
+    PaymentStatus,
+)
 from app.models.banking import BankReconciliation, BankStatementLine  # noqa: F401
 from app.models.quality import (  # noqa: F401
     ComplaintStatus,

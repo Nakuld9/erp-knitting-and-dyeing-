@@ -18,6 +18,16 @@ from app.services.accounting import posting_engine as pe
 router = APIRouter(prefix="/api/banking", tags=["banking"])
 
 
+@router.get("/accounts")
+def list_bank_accounts(db: Session = Depends(get_db),
+                       user: User = Depends(require_permission("report.read"))):
+    from sqlalchemy import select
+    from app.models.masters import BankAccount
+    rows = db.execute(select(BankAccount).where(BankAccount.company_id == user.company_id)).scalars().all()
+    return [{"id": str(b.id), "name": f"{b.name} ({b.bank_name})", "bank_name": b.bank_name}
+            for b in rows]
+
+
 def _stringify(obj):
     if isinstance(obj, Decimal):
         return str(obj)

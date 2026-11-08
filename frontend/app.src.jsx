@@ -1206,6 +1206,63 @@ function Payroll(){
   </div>);
 }
 
+// ---- approvals (maker-checker) --------------------------------------------
+function Approvals(){
+  const suppliers=useList("/api/masters/suppliers"); const banks=useList("/api/banking/accounts");
+  const [rules,setRules]=useState([]); const [reqs,setReqs]=useState([]);
+  const [rf,setRf]=useState({min_amount:"100000",approvals_required:"1"});
+  const [pf,setPf]=useState({supplier_id:"",bank_account_id:"",amount:"150000",note:""});
+  const [rRes,setRRes]=useState(null); const [pRes,setPRes]=useState(null); const [err,setErr]=useState("");
+  const load=useCallback(()=>{ api("/api/approvals/rules").then(setRules).catch(()=>{});
+    api("/api/approvals/requests?status_filter=PENDING").then(setReqs).catch(()=>{}); },[]);
+  useEffect(()=>{load()},[load]);
+  const addRule=async e=>{ e.preventDefault(); setErr(""); setRRes(null);
+    try{ const r=await api("/api/approvals/rules",{method:"POST",body:{doc_type:"PAYMENT",
+        min_amount:rf.min_amount, approvals_required:Number(rf.approvals_required)}});
+      setRRes(r); load(); }catch(ex){ setErr(ex.message); } };
+  const reqPay=async e=>{ e.preventDefault(); setErr(""); setPRes(null);
+    try{ const r=await api("/api/approvals/payments",{method:"POST",body:{
+        supplier_id:pf.supplier_id, bank_account_id:pf.bank_account_id, amount:pf.amount, note:pf.note||null}});
+      setPRes(r); load(); }catch(ex){ setErr(ex.message); } };
+  const decide=async(id,action)=>{ setErr("");
+    try{ await api(`/api/approvals/requests/${id}/${action}`,{method:"POST",body:{}}); load(); }
+    catch(ex){ setErr(ex.message); } };
+  return (<div>
+    <div className="row" style={{gap:16,alignItems:"flex-start"}}>
+      <div style={{flex:1}}><Panel title="Payment approval threshold">
+        <form onSubmit={addRule}>
+          <div className="field"><label>Needs approval at or above (₹)</label><input value={rf.min_amount} onChange={e=>setRf({...rf,min_amount:e.target.value})}/></div>
+          <div className="field"><label>Approvals required</label><input value={rf.approvals_required} onChange={e=>setRf({...rf,approvals_required:e.target.value})}/></div>
+          <div style={{marginTop:10}}><button className="btn">Save rule</button></div>
+        </form>
+        <Result r={rRes}/>
+        {rules.length>0 && <table style={{marginTop:12}}><thead><tr><th>Type</th><th className="num">Threshold</th><th className="num">Approvals</th></tr></thead>
+          <tbody>{rules.map(r=><tr key={r.id}><td>{r.doc_type}</td><td className="num">{inr2(r.min_amount)}</td><td className="num">{r.approvals_required}</td></tr>)}</tbody></table>}
+      </Panel></div>
+      <div style={{flex:1}}><Panel title="Request a supplier payment">
+        <form onSubmit={reqPay}>
+          <div className="field"><label>Supplier</label><Opts items={suppliers} value={pf.supplier_id} onChange={e=>setPf({...pf,supplier_id:e.target.value})}/></div>
+          <div className="field"><label>Bank account</label><Opts items={banks} value={pf.bank_account_id} onChange={e=>setPf({...pf,bank_account_id:e.target.value})}/></div>
+          <div className="field"><label>Amount (₹)</label><input value={pf.amount} onChange={e=>setPf({...pf,amount:e.target.value})}/></div>
+          <div className="field"><label>Note</label><input value={pf.note} onChange={e=>setPf({...pf,note:e.target.value})}/></div>
+          <div style={{marginTop:10}}><button className="btn">Request payment</button></div>
+        </form>
+        <Result r={pRes}/>
+      </Panel></div>
+    </div>
+    <Panel title="Pending approvals">
+      <div className="muted" style={{marginBottom:8,fontSize:12}}>Maker-checker: the person who requested a payment cannot approve it — a different approver must sign off.</div>
+      {reqs.length===0?<div className="muted">Nothing awaiting approval.</div>:
+      <table><thead><tr><th>Document</th><th className="num">Amount</th><th className="num">Approvals</th><th></th></tr></thead>
+      <tbody>{reqs.map(r=><tr key={r.id}><td>{r.title}</td><td className="num">{inr2(r.amount)}</td>
+        <td className="num">{r.approvals_received}/{r.approvals_required}</td>
+        <td className="num"><button className="btn" onClick={()=>decide(r.id,"approve")}>Approve</button>{" "}
+          <button className="btn sec" onClick={()=>decide(r.id,"reject")}>Reject</button></td></tr>)}</tbody></table>}
+      {err && <div className="err">{err}</div>}
+    </Panel>
+  </div>);
+}
+
 const PAGES={
   owner:{t:"Owner Dashboard",c:OwnerDash}, factory:{t:"Factory Dashboard",c:FactoryDash},
   accounts:{t:"Accounts Dashboard",c:AccountsDash}, chemical:{t:"Chemical Dashboard",c:ChemicalDash},
@@ -1219,6 +1276,7 @@ const PAGES={
   warehouses:{t:"Warehouses",c:Warehouses}, quality:{t:"Quality & Finishing",c:Quality},
   assets:{t:"Fixed Assets & Depreciation",c:FixedAssets},
   payroll:{t:"Payroll",c:Payroll},
+  approvals:{t:"Approvals (maker-checker)",c:Approvals},
   costing:{t:"Costing & Profitability",c:Costing}, devices:{t:"Devices & Labels",c:Devices},
   masters:{t:"Master Data",c:MastersManager}, vouchers:{t:"Vouchers",c:Vouchers}, admin:{t:"Administration",c:Admin},
   reports:{t:"Reports",c:Reports},
@@ -1246,7 +1304,7 @@ function App(){
         <div className="group">Costing</div>{navBtn("costing","Costing")}
         <div className="group">Devices</div>{navBtn("devices","Devices & Labels")}
         <div className="group">Reports</div>{navBtn("reports","Reports")}
-        <div className="group">Admin</div>{navBtn("admin","Administration")}
+        <div className="group">Admin</div>{navBtn("approvals","Approvals")}{navBtn("admin","Administration")}
         <div className="group">Session</div>
         <button onClick={()=>{setToken(null); location.reload();}}>Log out</button>
       </nav>

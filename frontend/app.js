@@ -3830,6 +3830,218 @@ function Payroll() {
     className: "num"
   }, inr2(r.total_net)), /*#__PURE__*/React.createElement("td", null, stBadge(r.status))))))));
 }
+
+// ---- approvals (maker-checker) --------------------------------------------
+function Approvals() {
+  const suppliers = useList("/api/masters/suppliers");
+  const banks = useList("/api/banking/accounts");
+  const [rules, setRules] = useState([]);
+  const [reqs, setReqs] = useState([]);
+  const [rf, setRf] = useState({
+    min_amount: "100000",
+    approvals_required: "1"
+  });
+  const [pf, setPf] = useState({
+    supplier_id: "",
+    bank_account_id: "",
+    amount: "150000",
+    note: ""
+  });
+  const [rRes, setRRes] = useState(null);
+  const [pRes, setPRes] = useState(null);
+  const [err, setErr] = useState("");
+  const load = useCallback(() => {
+    api("/api/approvals/rules").then(setRules).catch(() => {});
+    api("/api/approvals/requests?status_filter=PENDING").then(setReqs).catch(() => {});
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+  const addRule = async e => {
+    e.preventDefault();
+    setErr("");
+    setRRes(null);
+    try {
+      const r = await api("/api/approvals/rules", {
+        method: "POST",
+        body: {
+          doc_type: "PAYMENT",
+          min_amount: rf.min_amount,
+          approvals_required: Number(rf.approvals_required)
+        }
+      });
+      setRRes(r);
+      load();
+    } catch (ex) {
+      setErr(ex.message);
+    }
+  };
+  const reqPay = async e => {
+    e.preventDefault();
+    setErr("");
+    setPRes(null);
+    try {
+      const r = await api("/api/approvals/payments", {
+        method: "POST",
+        body: {
+          supplier_id: pf.supplier_id,
+          bank_account_id: pf.bank_account_id,
+          amount: pf.amount,
+          note: pf.note || null
+        }
+      });
+      setPRes(r);
+      load();
+    } catch (ex) {
+      setErr(ex.message);
+    }
+  };
+  const decide = async (id, action) => {
+    setErr("");
+    try {
+      await api(`/api/approvals/requests/${id}/${action}`, {
+        method: "POST",
+        body: {}
+      });
+      load();
+    } catch (ex) {
+      setErr(ex.message);
+    }
+  };
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "row",
+    style: {
+      gap: 16,
+      alignItems: "flex-start"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement(Panel, {
+    title: "Payment approval threshold"
+  }, /*#__PURE__*/React.createElement("form", {
+    onSubmit: addRule
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Needs approval at or above (\u20B9)"), /*#__PURE__*/React.createElement("input", {
+    value: rf.min_amount,
+    onChange: e => setRf({
+      ...rf,
+      min_amount: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Approvals required"), /*#__PURE__*/React.createElement("input", {
+    value: rf.approvals_required,
+    onChange: e => setRf({
+      ...rf,
+      approvals_required: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 10
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Save rule"))), /*#__PURE__*/React.createElement(Result, {
+    r: rRes
+  }), rules.length > 0 && /*#__PURE__*/React.createElement("table", {
+    style: {
+      marginTop: 12
+    }
+  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Type"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Threshold"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Approvals"))), /*#__PURE__*/React.createElement("tbody", null, rules.map(r => /*#__PURE__*/React.createElement("tr", {
+    key: r.id
+  }, /*#__PURE__*/React.createElement("td", null, r.doc_type), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(r.min_amount)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, r.approvals_required))))))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement(Panel, {
+    title: "Request a supplier payment"
+  }, /*#__PURE__*/React.createElement("form", {
+    onSubmit: reqPay
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Supplier"), /*#__PURE__*/React.createElement(Opts, {
+    items: suppliers,
+    value: pf.supplier_id,
+    onChange: e => setPf({
+      ...pf,
+      supplier_id: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Bank account"), /*#__PURE__*/React.createElement(Opts, {
+    items: banks,
+    value: pf.bank_account_id,
+    onChange: e => setPf({
+      ...pf,
+      bank_account_id: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Amount (\u20B9)"), /*#__PURE__*/React.createElement("input", {
+    value: pf.amount,
+    onChange: e => setPf({
+      ...pf,
+      amount: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Note"), /*#__PURE__*/React.createElement("input", {
+    value: pf.note,
+    onChange: e => setPf({
+      ...pf,
+      note: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 10
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Request payment"))), /*#__PURE__*/React.createElement(Result, {
+    r: pRes
+  })))), /*#__PURE__*/React.createElement(Panel, {
+    title: "Pending approvals"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "muted",
+    style: {
+      marginBottom: 8,
+      fontSize: 12
+    }
+  }, "Maker-checker: the person who requested a payment cannot approve it \u2014 a different approver must sign off."), reqs.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "Nothing awaiting approval.") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Document"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Amount"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Approvals"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, reqs.map(r => /*#__PURE__*/React.createElement("tr", {
+    key: r.id
+  }, /*#__PURE__*/React.createElement("td", null, r.title), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(r.amount)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, r.approvals_received, "/", r.approvals_required), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    onClick: () => decide(r.id, "approve")
+  }, "Approve"), " ", /*#__PURE__*/React.createElement("button", {
+    className: "btn sec",
+    onClick: () => decide(r.id, "reject")
+  }, "Reject")))))), err && /*#__PURE__*/React.createElement("div", {
+    className: "err"
+  }, err)));
+}
 const PAGES = {
   owner: {
     t: "Owner Dashboard",
@@ -3903,6 +4115,10 @@ const PAGES = {
     t: "Payroll",
     c: Payroll
   },
+  approvals: {
+    t: "Approvals (maker-checker)",
+    c: Approvals
+  },
   costing: {
     t: "Costing & Profitability",
     c: Costing
@@ -3967,7 +4183,7 @@ function App() {
     className: "group"
   }, "Reports"), navBtn("reports", "Reports"), /*#__PURE__*/React.createElement("div", {
     className: "group"
-  }, "Admin"), navBtn("admin", "Administration"), /*#__PURE__*/React.createElement("div", {
+  }, "Admin"), navBtn("approvals", "Approvals"), navBtn("admin", "Administration"), /*#__PURE__*/React.createElement("div", {
     className: "group"
   }, "Session"), /*#__PURE__*/React.createElement("button", {
     onClick: () => {
