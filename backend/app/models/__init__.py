@@ -81,6 +81,13 @@ from app.models.dispensing import (  # noqa: F401
     DosingStatus,
     IntegrationEvent,
 )
+from app.models.assets import (  # noqa: F401
+    AssetStatus,
+    DepMethod,
+    DepreciationEntry,
+    DepreciationRun,
+    FixedAsset,
+)
 from app.models.banking import BankReconciliation, BankStatementLine  # noqa: F401
 from app.models.quality import (  # noqa: F401
     ComplaintStatus,

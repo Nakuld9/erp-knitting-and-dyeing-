@@ -41,6 +41,10 @@ specified (pending-verification) Color Service dispensing integration.
   charge postings, **CSV bank-statement import** (idempotent), and **bank
   reconciliation** (auto-match by amount + date, outstanding/in-transit items,
   difference explained).
+- **Fixed assets & depreciation** — asset register with capitalisation posting,
+  **straight-line and written-down-value** depreciation (floored at salvage),
+  a **monthly depreciation run** that posts one balanced DEP voucher for the
+  batch (idempotent per period), and **disposal** with automatic gain/loss.
 
 **Operations (Stage 2–4)**
 - **Procurement** — chemical/dye GRN → FIFO stock layer + GST purchase voucher.
@@ -115,13 +119,14 @@ specified (pending-verification) Color Service dispensing integration.
 **Platform** — JWT auth + RBAC (15 roles), REST API, Alembic migrations,
 idempotent seed + demo data, Docker Compose.
 
-`110 passing tests` cover the accounting invariants, the nine worked posting
+`118 passing tests` cover the accounting invariants, the nine worked posting
 examples, correction dosing, RBAC, full-cycle trial balance, procurement,
 PO / SO lifecycle (receipt + dispatch roll-up, COGS on delivery), knitting,
-roll auto-numbering + lineage, recipe scaling, the full dispensing cycle,
-end-to-end traceability, the financial statements (P&L / Balance Sheet /
-Cash Flow / ageing), GST (registers / GSTR-1 / GSTR-3B / reconciliation), and
-the REST flow. See the acceptance-test map below.
+roll auto-numbering + lineage, fixed assets (SLM/WDV depreciation + disposal),
+recipe scaling, the full dispensing cycle, end-to-end traceability, the
+financial statements (P&L / Balance Sheet / Cash Flow / ageing), GST
+(registers / GSTR-1 / GSTR-3B / reconciliation), and the REST flow. See the
+acceptance-test map below.
 
 ## Design documents (start here)
 
@@ -202,7 +207,7 @@ erp/
     │   │                     #   banking, dashboard
     │   └── seed/             # chart of accounts, RBAC, seeder, demo data
     ├── alembic/              # migrations (baseline from metadata)
-    └── tests/                # 110 tests: invariants, posting matrix, TB, procurement,
+    └── tests/                # 118 tests: invariants, posting matrix, TB, procurement,
                               #   knitting, dyeing+dispensing, traceability, statements,
                               #   gst, banking, exports, dashboards, quality, API
 ```

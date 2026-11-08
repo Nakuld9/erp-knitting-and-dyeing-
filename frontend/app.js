@@ -3074,6 +3074,253 @@ function SalesOrders() {
     r: dres
   })));
 }
+
+// ---- fixed assets & depreciation ------------------------------------------
+function FixedAssets() {
+  const accounts = useList("/api/accounts");
+  const [assets, setAssets] = useState([]);
+  const [res, setRes] = useState(null);
+  const [dep, setDep] = useState(null);
+  const [err, setErr] = useState("");
+  const [month, setMonth] = useState(today().slice(0, 7));
+  const [f, setF] = useState({
+    code: genNo("FA"),
+    name: "",
+    category: "",
+    asset_account_code: "",
+    acquisition_date: today(),
+    cost: "120000",
+    salvage_value: "0",
+    method: "SLM",
+    useful_life_months: "60",
+    dep_rate_pct: "15"
+  });
+  const load = useCallback(() => {
+    api("/api/assets").then(setAssets).catch(() => {});
+  }, []);
+  useEffect(() => {
+    load();
+  }, [load]);
+  const assetAccts = accounts.filter(a => a.code && a.code.indexOf("15") === 0 && a.allow_posting && a.code !== "1590").map(a => ({
+    id: a.code,
+    name: a.code + " — " + a.name
+  }));
+  const create = async e => {
+    e.preventDefault();
+    setErr("");
+    setRes(null);
+    const body = {
+      code: f.code,
+      name: f.name,
+      category: f.category || null,
+      asset_account_code: f.asset_account_code,
+      acquisition_date: f.acquisition_date,
+      cost: f.cost,
+      salvage_value: f.salvage_value,
+      method: f.method
+    };
+    if (f.method === "SLM") body.useful_life_months = Number(f.useful_life_months);else body.dep_rate_pct = f.dep_rate_pct;
+    try {
+      const r = await api("/api/assets", {
+        method: "POST",
+        body
+      });
+      setRes({
+        asset: r.code,
+        book_value: r.book_value
+      });
+      setF({
+        ...f,
+        code: genNo("FA"),
+        name: ""
+      });
+      load();
+    } catch (ex) {
+      setErr(ex.message);
+    }
+  };
+  const runDep = async () => {
+    setErr("");
+    setDep(null);
+    try {
+      setDep(await api("/api/assets/depreciation-runs", {
+        method: "POST",
+        body: {
+          period_month: month + "-01"
+        }
+      }));
+      load();
+    } catch (ex) {
+      setErr(ex.message);
+    }
+  };
+  const dispose = async a => {
+    const proceeds = prompt(`Dispose ${a.code} — sale proceeds (₹)?`, "0");
+    if (proceeds === null) return;
+    try {
+      await api(`/api/assets/${a.id}/dispose`, {
+        method: "POST",
+        body: {
+          disposal_date: today(),
+          proceeds: proceeds || "0"
+        }
+      });
+      load();
+    } catch (ex) {
+      setErr(ex.message);
+    }
+  };
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Panel, {
+    title: "Register (capitalise) a fixed asset"
+  }, /*#__PURE__*/React.createElement("form", {
+    onSubmit: create
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "row mb"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Code"), /*#__PURE__*/React.createElement("input", {
+    value: f.code,
+    onChange: e => setF({
+      ...f,
+      code: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Name"), /*#__PURE__*/React.createElement("input", {
+    value: f.name,
+    onChange: e => setF({
+      ...f,
+      name: e.target.value
+    }),
+    required: true
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Category"), /*#__PURE__*/React.createElement("input", {
+    value: f.category,
+    onChange: e => setF({
+      ...f,
+      category: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Asset account"), /*#__PURE__*/React.createElement(Opts, {
+    items: assetAccts,
+    value: f.asset_account_code,
+    onChange: e => setF({
+      ...f,
+      asset_account_code: e.target.value
+    })
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "row"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Acquired"), /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    value: f.acquisition_date,
+    onChange: e => setF({
+      ...f,
+      acquisition_date: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Cost"), /*#__PURE__*/React.createElement("input", {
+    value: f.cost,
+    onChange: e => setF({
+      ...f,
+      cost: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Salvage"), /*#__PURE__*/React.createElement("input", {
+    value: f.salvage_value,
+    onChange: e => setF({
+      ...f,
+      salvage_value: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Method"), /*#__PURE__*/React.createElement("select", {
+    value: f.method,
+    onChange: e => setF({
+      ...f,
+      method: e.target.value
+    })
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "SLM"
+  }, "Straight-line"), /*#__PURE__*/React.createElement("option", {
+    value: "WDV"
+  }, "Written-down value"))), f.method === "SLM" ? /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Life (months)"), /*#__PURE__*/React.createElement("input", {
+    value: f.useful_life_months,
+    onChange: e => setF({
+      ...f,
+      useful_life_months: e.target.value
+    })
+  })) : /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Rate (% / yr)"), /*#__PURE__*/React.createElement("input", {
+    value: f.dep_rate_pct,
+    onChange: e => setF({
+      ...f,
+      dep_rate_pct: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field",
+    style: {
+      alignSelf: "end"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Capitalise"))), err && /*#__PURE__*/React.createElement("div", {
+    className: "err"
+  }, err)), /*#__PURE__*/React.createElement(Result, {
+    r: res
+  })), /*#__PURE__*/React.createElement(Panel, {
+    title: "Run monthly depreciation"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "row"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Period (month)"), /*#__PURE__*/React.createElement("input", {
+    type: "month",
+    value: month,
+    onChange: e => setMonth(e.target.value)
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field",
+    style: {
+      alignSelf: "end"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    onClick: runDep
+  }, "Run depreciation"))), /*#__PURE__*/React.createElement(Result, {
+    r: dep
+  })), /*#__PURE__*/React.createElement(Panel, {
+    title: "Asset register"
+  }, assets.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "None yet.") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Code"), /*#__PURE__*/React.createElement("th", null, "Name"), /*#__PURE__*/React.createElement("th", null, "Method"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Cost"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Accum. dep."), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Book value"), /*#__PURE__*/React.createElement("th", null, "Status"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, assets.map(a => /*#__PURE__*/React.createElement("tr", {
+    key: a.id
+  }, /*#__PURE__*/React.createElement("td", null, a.code), /*#__PURE__*/React.createElement("td", null, a.name), /*#__PURE__*/React.createElement("td", null, a.method), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(a.cost)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(a.accumulated_depreciation)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(a.book_value)), /*#__PURE__*/React.createElement("td", null, stBadge(a.status)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, a.status === "ACTIVE" && /*#__PURE__*/React.createElement("button", {
+    className: "btn sec",
+    onClick: () => dispose(a)
+  }, "Dispose"))))))));
+}
 const PAGES = {
   owner: {
     t: "Owner Dashboard",
@@ -3139,6 +3386,10 @@ const PAGES = {
     t: "Quality & Finishing",
     c: Quality
   },
+  assets: {
+    t: "Fixed Assets & Depreciation",
+    c: FixedAssets
+  },
   costing: {
     t: "Costing & Profitability",
     c: Costing
@@ -3192,6 +3443,8 @@ function App() {
   }, "Masters"), navBtn("masters", "Master Data"), navBtn("customers", "Customers"), navBtn("suppliers", "Suppliers"), navBtn("warehouses", "Warehouses"), /*#__PURE__*/React.createElement("div", {
     className: "group"
   }, "Quality"), navBtn("quality", "Quality"), /*#__PURE__*/React.createElement("div", {
+    className: "group"
+  }, "Assets"), navBtn("assets", "Fixed Assets"), /*#__PURE__*/React.createElement("div", {
     className: "group"
   }, "Costing"), navBtn("costing", "Costing"), /*#__PURE__*/React.createElement("div", {
     className: "group"

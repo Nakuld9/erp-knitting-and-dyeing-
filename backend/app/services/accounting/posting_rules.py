@@ -38,6 +38,12 @@ DEFAULT_RULES: dict[str, dict[str, str]] = {
     },
     "CUSTOMER_RECEIPT": {"bank": "1020", "receivable": "1040"},
     "SUPPLIER_PAYMENT": {"payable": "2010", "bank": "1020"},
+    # Fixed assets. Capitalisation debits the asset's own account; the credit
+    # account is supplied per document (bank / payable / capital).
+    "ASSET_CAPITALISATION": {"credit": "1020"},
+    "DEPRECIATION": {"expense": "6110", "accumulated": "1590"},
+    "ASSET_DISPOSAL": {"accumulated": "1590", "proceeds": "1020",
+                       "gain": "4090", "loss": "6190"},
 }
 
 

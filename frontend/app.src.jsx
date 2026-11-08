@@ -1010,6 +1010,75 @@ function SalesOrders(){
   </div>);
 }
 
+// ---- fixed assets & depreciation ------------------------------------------
+function FixedAssets(){
+  const accounts=useList("/api/accounts");
+  const [assets,setAssets]=useState([]); const [res,setRes]=useState(null);
+  const [dep,setDep]=useState(null); const [err,setErr]=useState("");
+  const [month,setMonth]=useState(today().slice(0,7));
+  const [f,setF]=useState({code:genNo("FA"),name:"",category:"",asset_account_code:"",
+    acquisition_date:today(),cost:"120000",salvage_value:"0",method:"SLM",
+    useful_life_months:"60",dep_rate_pct:"15"});
+  const load=useCallback(()=>{ api("/api/assets").then(setAssets).catch(()=>{}); },[]);
+  useEffect(()=>{load()},[load]);
+  const assetAccts=accounts.filter(a=>a.code && a.code.indexOf("15")===0 && a.allow_posting && a.code!=="1590")
+    .map(a=>({id:a.code,name:a.code+" — "+a.name}));
+  const create=async e=>{ e.preventDefault(); setErr(""); setRes(null);
+    const body={code:f.code,name:f.name,category:f.category||null,asset_account_code:f.asset_account_code,
+      acquisition_date:f.acquisition_date,cost:f.cost,salvage_value:f.salvage_value,method:f.method};
+    if(f.method==="SLM") body.useful_life_months=Number(f.useful_life_months);
+    else body.dep_rate_pct=f.dep_rate_pct;
+    try{ const r=await api("/api/assets",{method:"POST",body});
+      setRes({asset:r.code,book_value:r.book_value}); setF({...f,code:genNo("FA"),name:""}); load(); }
+    catch(ex){ setErr(ex.message); } };
+  const runDep=async()=>{ setErr(""); setDep(null);
+    try{ setDep(await api("/api/assets/depreciation-runs",{method:"POST",body:{period_month:month+"-01"}})); load(); }
+    catch(ex){ setErr(ex.message); } };
+  const dispose=async a=>{ const proceeds=prompt(`Dispose ${a.code} — sale proceeds (₹)?`,"0"); if(proceeds===null) return;
+    try{ await api(`/api/assets/${a.id}/dispose`,{method:"POST",body:{disposal_date:today(),proceeds:proceeds||"0"}}); load(); }
+    catch(ex){ setErr(ex.message); } };
+  return (<div>
+    <Panel title="Register (capitalise) a fixed asset">
+      <form onSubmit={create}>
+        <div className="row mb">
+          <div className="field"><label>Code</label><input value={f.code} onChange={e=>setF({...f,code:e.target.value})}/></div>
+          <div className="field"><label>Name</label><input value={f.name} onChange={e=>setF({...f,name:e.target.value})} required/></div>
+          <div className="field"><label>Category</label><input value={f.category} onChange={e=>setF({...f,category:e.target.value})}/></div>
+          <div className="field"><label>Asset account</label><Opts items={assetAccts} value={f.asset_account_code} onChange={e=>setF({...f,asset_account_code:e.target.value})}/></div>
+        </div>
+        <div className="row">
+          <div className="field"><label>Acquired</label><input type="date" value={f.acquisition_date} onChange={e=>setF({...f,acquisition_date:e.target.value})}/></div>
+          <div className="field"><label>Cost</label><input value={f.cost} onChange={e=>setF({...f,cost:e.target.value})}/></div>
+          <div className="field"><label>Salvage</label><input value={f.salvage_value} onChange={e=>setF({...f,salvage_value:e.target.value})}/></div>
+          <div className="field"><label>Method</label><select value={f.method} onChange={e=>setF({...f,method:e.target.value})}><option value="SLM">Straight-line</option><option value="WDV">Written-down value</option></select></div>
+          {f.method==="SLM"
+            ? <div className="field"><label>Life (months)</label><input value={f.useful_life_months} onChange={e=>setF({...f,useful_life_months:e.target.value})}/></div>
+            : <div className="field"><label>Rate (% / yr)</label><input value={f.dep_rate_pct} onChange={e=>setF({...f,dep_rate_pct:e.target.value})}/></div>}
+          <div className="field" style={{alignSelf:"end"}}><button className="btn">Capitalise</button></div>
+        </div>
+        {err && <div className="err">{err}</div>}
+      </form>
+      <Result r={res}/>
+    </Panel>
+    <Panel title="Run monthly depreciation">
+      <div className="row">
+        <div className="field"><label>Period (month)</label><input type="month" value={month} onChange={e=>setMonth(e.target.value)}/></div>
+        <div className="field" style={{alignSelf:"end"}}><button className="btn" onClick={runDep}>Run depreciation</button></div>
+      </div>
+      <Result r={dep}/>
+    </Panel>
+    <Panel title="Asset register">
+      {assets.length===0?<div className="muted">None yet.</div>:
+      <table><thead><tr><th>Code</th><th>Name</th><th>Method</th><th className="num">Cost</th>
+        <th className="num">Accum. dep.</th><th className="num">Book value</th><th>Status</th><th></th></tr></thead>
+      <tbody>{assets.map(a=><tr key={a.id}><td>{a.code}</td><td>{a.name}</td><td>{a.method}</td>
+        <td className="num">{inr2(a.cost)}</td><td className="num">{inr2(a.accumulated_depreciation)}</td>
+        <td className="num">{inr2(a.book_value)}</td><td>{stBadge(a.status)}</td>
+        <td className="num">{a.status==="ACTIVE" && <button className="btn sec" onClick={()=>dispose(a)}>Dispose</button>}</td></tr>)}</tbody></table>}
+    </Panel>
+  </div>);
+}
+
 const PAGES={
   owner:{t:"Owner Dashboard",c:OwnerDash}, factory:{t:"Factory Dashboard",c:FactoryDash},
   accounts:{t:"Accounts Dashboard",c:AccountsDash}, chemical:{t:"Chemical Dashboard",c:ChemicalDash},
@@ -1021,6 +1090,7 @@ const PAGES={
   customers:{t:"Customers",c:()=> <PartyPage kind="customers"/>},
   suppliers:{t:"Suppliers",c:()=> <PartyPage kind="suppliers"/>},
   warehouses:{t:"Warehouses",c:Warehouses}, quality:{t:"Quality & Finishing",c:Quality},
+  assets:{t:"Fixed Assets & Depreciation",c:FixedAssets},
   costing:{t:"Costing & Profitability",c:Costing}, devices:{t:"Devices & Labels",c:Devices},
   masters:{t:"Master Data",c:MastersManager}, vouchers:{t:"Vouchers",c:Vouchers}, admin:{t:"Administration",c:Admin},
   reports:{t:"Reports",c:Reports},
@@ -1043,6 +1113,7 @@ function App(){
         <div className="group">Masters</div>
         {navBtn("masters","Master Data")}{navBtn("customers","Customers")}{navBtn("suppliers","Suppliers")}{navBtn("warehouses","Warehouses")}
         <div className="group">Quality</div>{navBtn("quality","Quality")}
+        <div className="group">Assets</div>{navBtn("assets","Fixed Assets")}
         <div className="group">Costing</div>{navBtn("costing","Costing")}
         <div className="group">Devices</div>{navBtn("devices","Devices & Labels")}
         <div className="group">Reports</div>{navBtn("reports","Reports")}
