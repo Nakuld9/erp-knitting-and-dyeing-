@@ -1,7 +1,7 @@
 # Project status & pending list
 
 Audit of the implementation against the master specification (the 24-section
-brief). Updated **2026-11-08**. Test suite: **171 passing**
+brief). Updated **2026-11-08**. Test suite: **175 passing**
 (`cd backend && pytest`).
 
 Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ not built.
@@ -57,32 +57,30 @@ Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ no
 - Machines as work centres: cost-centre-tagged production postings + cost-centre report
 - Overhead allocation: pools absorbed into work centres (fully-loaded cost)
 - Sales pipeline: enquiries/quotations + convert-to-SO, credit limits, party statements
+- Manufacturing / Trading / Funds-Flow statements (completes the 10-statement set)
 
 ---
 
 ## ❌ Pending
 
-### Accounting
-1. **Funds Flow**, **Trading Account**, **Manufacturing Account** (3 of the 10 statements)
-
 ### Workflow / controls
-2. **Approval coverage beyond payments** — the maker-checker engine is built and
+1. **Approval coverage beyond payments** — the maker-checker engine is built and
    gates supplier payments; extend the same rules to vouchers, POs and journals.
-3. **Notifications** & **attachments** (document uploads)
+2. **Notifications** & **attachments** (document uploads)
 
 ### Manufacturing / inventory
-4. **Physical-verification** / stock-count adjustment workflow
-5. **Sales-return restock** (sales credit note is financial-only today)
+3. **Physical-verification** / stock-count adjustment workflow
+4. **Sales-return restock** (sales credit note is financial-only today)
 
 ### Integration (needs vendor access)
-9. **Live Color Service adapter** (SOAP / OPC-UA / Modbus / DB) — only the simulator exists
-10. **E-invoice / e-way bill** — marked "readiness", not implemented
-11. **Bank-feed** integration (CSV import done; live feeds not)
+5. **Live Color Service adapter** (SOAP / OPC-UA / Modbus / DB) — only the simulator exists
+6. **E-invoice / e-way bill** — marked "readiness", not implemented
+7. **Bank-feed** integration (CSV import done; live feeds not)
 
 ### Deliverables / ops
-12. Admin & user manuals beyond `docs/USER_GUIDE.md`; installation / backup guides (API docs = FastAPI `/docs`)
-13. Automated backups + error-logging / monitoring infrastructure
-14. Frontend is the self-contained SPA, **not** the Next.js/TS/Tailwind/shadcn stack in the spec (functionally complete, different stack)
+8. Admin & user manuals beyond `docs/USER_GUIDE.md`; installation / backup guides (API docs = FastAPI `/docs`)
+9. Automated backups + error-logging / monitoring infrastructure
+10. Frontend is the self-contained SPA, **not** the Next.js/TS/Tailwind/shadcn stack in the spec (functionally complete, different stack)
 
 ---
 
@@ -93,8 +91,7 @@ Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ no
 - All ledger, inventory, GST, costing and traceability tests (1–4, 7–17, 19–20) pass, including **Test 12** (WIP→FG) now that finishing posts the greige→FG transfer.
 
 ## Suggested priority order for remaining work
-1. Funds Flow / Trading / Manufacturing accounts
-2. Physical-verification workflow + sales-return restock
-3. Extend approvals to vouchers/POs/journals + notifications/attachments
-4. Live external integrations (when vendor credentials/hardware are available)
-5. Operational docs, backups, monitoring
+1. Physical-verification workflow + sales-return restock
+2. Extend approvals to vouchers/POs/journals + notifications/attachments
+3. Live external integrations (when vendor credentials/hardware are available)
+4. Operational docs, backups, monitoring

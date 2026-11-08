@@ -683,6 +683,56 @@ function Warehouses() {
 
 // ---- reports (authenticated downloads) ------------------------------------
 const REPORTS = [["trial-balance", "Trial Balance"], ["profit-and-loss", "Profit & Loss"], ["balance-sheet", "Balance Sheet"], ["cash-flow", "Cash Flow"], ["debtors-ageing", "Debtors Ageing"], ["creditors-ageing", "Creditors Ageing"], ["gst-sales-register", "GST Sales Register"], ["gst-purchase-register", "GST Purchase Register"], ["gstr3b", "GSTR-3B"], ["stock-reconciliation", "Stock vs GL Reconciliation"]];
+function FinalAccounts() {
+  const mfg = useData("/api/reports/manufacturing-account")[0];
+  const trd = useData("/api/reports/trading-account")[0];
+  const ff = useData("/api/reports/funds-flow")[0];
+  const line = (l, v, b) => /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+    style: b ? {
+      fontWeight: 700
+    } : {}
+  }, l), /*#__PURE__*/React.createElement("td", {
+    className: "num",
+    style: b ? {
+      fontWeight: 700
+    } : {}
+  }, inr2(v)));
+  return /*#__PURE__*/React.createElement("div", {
+    className: "grid3"
+  }, /*#__PURE__*/React.createElement(Panel, {
+    title: "Manufacturing account"
+  }, !mfg ? /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "\u2026") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("tbody", null, line("Opening WIP", mfg.opening_wip), line("Charged to production", mfg.charged_to_production), line("Less: closing WIP", mfg.closing_wip), line("Cost of goods manufactured", mfg.cost_of_goods_manufactured, true)))), /*#__PURE__*/React.createElement(Panel, {
+    title: "Trading account"
+  }, !trd ? /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "\u2026") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("tbody", null, line("Sales", trd.sales), line("Opening stock", trd.opening_stock), line("Cost of goods manufactured", trd.cost_of_goods_manufactured), line("Less: closing stock", trd.closing_stock), line("Cost of goods sold", trd.cost_of_goods_sold), line("Gross profit", trd.gross_profit, true)))), /*#__PURE__*/React.createElement(Panel, {
+    title: "Funds flow statement"
+  }, !ff ? /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "\u2026") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("tbody", null, line("Funds from operations", ff.funds_from_operations), /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+    colSpan: "2",
+    className: "muted",
+    style: {
+      paddingTop: 10
+    }
+  }, "Sources")), (ff.sources || []).map((s, i) => /*#__PURE__*/React.createElement("tr", {
+    key: "s" + i
+  }, /*#__PURE__*/React.createElement("td", null, "\xB7 ", s.item), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(s.amount)))), line("Total sources", ff.total_sources, true), /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+    colSpan: "2",
+    className: "muted",
+    style: {
+      paddingTop: 10
+    }
+  }, "Applications")), (ff.applications || []).map((a, i) => /*#__PURE__*/React.createElement("tr", {
+    key: "a" + i
+  }, /*#__PURE__*/React.createElement("td", null, "\xB7 ", a.item), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(a.amount)))), line("Total applications", ff.total_applications, true), line("Net change in working capital", ff.net_working_capital_change, true)))));
+}
 function Reports() {
   const [fmt, setFmt] = useState("xlsx");
   const [busy, setBusy] = useState("");
@@ -704,7 +754,7 @@ function Reports() {
       setBusy("");
     }
   };
-  return /*#__PURE__*/React.createElement(Panel, {
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(FinalAccounts, null), /*#__PURE__*/React.createElement(Panel, {
     title: "Download reports"
   }, /*#__PURE__*/React.createElement("div", {
     className: "row mb"
@@ -725,7 +775,7 @@ function Reports() {
     className: "btn sec",
     disabled: busy === id,
     onClick: () => dl(id)
-  }, busy === id ? "…" : "Download")))))));
+  }, busy === id ? "…" : "Download"))))))));
 }
 
 // ---- quality --------------------------------------------------------------

@@ -274,6 +274,45 @@ const REPORTS=[
   ["gst-sales-register","GST Sales Register"],["gst-purchase-register","GST Purchase Register"],
   ["gstr3b","GSTR-3B"],["stock-reconciliation","Stock vs GL Reconciliation"],
 ];
+function FinalAccounts(){
+  const mfg=useData("/api/reports/manufacturing-account")[0];
+  const trd=useData("/api/reports/trading-account")[0];
+  const ff=useData("/api/reports/funds-flow")[0];
+  const line=(l,v,b)=> <tr><td style={b?{fontWeight:700}:{}}>{l}</td><td className="num" style={b?{fontWeight:700}:{}}>{inr2(v)}</td></tr>;
+  return (<div className="grid3">
+    <Panel title="Manufacturing account">
+      {!mfg?<div className="muted">…</div>:<table><tbody>
+        {line("Opening WIP",mfg.opening_wip)}
+        {line("Charged to production",mfg.charged_to_production)}
+        {line("Less: closing WIP",mfg.closing_wip)}
+        {line("Cost of goods manufactured",mfg.cost_of_goods_manufactured,true)}
+      </tbody></table>}
+    </Panel>
+    <Panel title="Trading account">
+      {!trd?<div className="muted">…</div>:<table><tbody>
+        {line("Sales",trd.sales)}
+        {line("Opening stock",trd.opening_stock)}
+        {line("Cost of goods manufactured",trd.cost_of_goods_manufactured)}
+        {line("Less: closing stock",trd.closing_stock)}
+        {line("Cost of goods sold",trd.cost_of_goods_sold)}
+        {line("Gross profit",trd.gross_profit,true)}
+      </tbody></table>}
+    </Panel>
+    <Panel title="Funds flow statement">
+      {!ff?<div className="muted">…</div>:<table><tbody>
+        {line("Funds from operations",ff.funds_from_operations)}
+        <tr><td colSpan="2" className="muted" style={{paddingTop:10}}>Sources</td></tr>
+        {(ff.sources||[]).map((s,i)=><tr key={"s"+i}><td>· {s.item}</td><td className="num">{inr2(s.amount)}</td></tr>)}
+        {line("Total sources",ff.total_sources,true)}
+        <tr><td colSpan="2" className="muted" style={{paddingTop:10}}>Applications</td></tr>
+        {(ff.applications||[]).map((a,i)=><tr key={"a"+i}><td>· {a.item}</td><td className="num">{inr2(a.amount)}</td></tr>)}
+        {line("Total applications",ff.total_applications,true)}
+        {line("Net change in working capital",ff.net_working_capital_change,true)}
+      </tbody></table>}
+    </Panel>
+  </div>);
+}
+
 function Reports(){
   const [fmt,setFmt]=useState("xlsx"); const [busy,setBusy]=useState("");
   const dl=async(rep)=>{ setBusy(rep);
@@ -281,7 +320,9 @@ function Reports(){
       const url=URL.createObjectURL(blob); const a=document.createElement("a");
       a.href=url; a.download=`${rep}.${fmt}`; a.click(); URL.revokeObjectURL(url); }
     catch(e){ alert(e.message); } finally{ setBusy(""); } };
-  return (<Panel title="Download reports">
+  return (<div>
+    <FinalAccounts/>
+    <Panel title="Download reports">
     <div className="row mb"><div className="field"><label>Format</label>
       <select value={fmt} onChange={e=>setFmt(e.target.value)}><option value="xlsx">Excel</option>
       <option value="pdf">PDF</option></select></div></div>
@@ -290,7 +331,8 @@ function Reports(){
         <td className="num"><button className="btn sec" disabled={busy===id}
           onClick={()=>dl(id)}>{busy===id?"…":"Download"}</button></td></tr>)}
     </tbody></table>
-  </Panel>);
+  </Panel>
+  </div>);
 }
 
 // ---- quality --------------------------------------------------------------

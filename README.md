@@ -31,8 +31,11 @@ specified (pending-verification) Color Service dispensing integration.
   gap-free numbering, **trial balance** + **account ledger** drill-down.
 - **Financial statements** (Stage 7) — **Profit & Loss**, **Balance Sheet**
   (balances by construction, folding current-year profit into equity),
-  **Cash Flow** (operating/investing/financing, ledger-derived), and **debtor /
-  creditor ageing** (FIFO allocation) — all derived from the posted ledger.
+  **Cash Flow** (operating/investing/financing, ledger-derived), **debtor /
+  creditor ageing** (FIFO allocation), and the **Manufacturing account**
+  (cost of goods manufactured via the WIP account), **Trading account** (sales −
+  COGS → gross profit, using fabric-stock movement) and **Funds Flow statement**
+  (funds from operations + sources/applications) — all from the posted ledger.
 - **Indian GST** (Stage 7) — **sales & purchase registers**, **GSTR-1** summary
   (B2B/B2C, rate-wise, HSN-wise), **GSTR-3B** summary (outward tax, eligible
   ITC, net payable), and a **books-vs-registers reconciliation**; rates come
@@ -170,7 +173,7 @@ specified (pending-verification) Color Service dispensing integration.
 **Platform** — JWT auth + RBAC (15 roles), REST API, Alembic migrations,
 idempotent seed + demo data, Docker Compose.
 
-`171 passing tests` cover the accounting invariants, the nine worked posting
+`175 passing tests` cover the accounting invariants, the nine worked posting
 examples, correction dosing, RBAC, full-cycle trial balance, procurement,
 PO / SO lifecycle (receipt + dispatch roll-up, COGS on delivery), credit /
 debit notes, the greige→finished-goods transfer on finishing, knitting,
@@ -260,7 +263,7 @@ erp/
     │   │                     #   banking, dashboard
     │   └── seed/             # chart of accounts, RBAC, seeder, demo data
     ├── alembic/              # migrations (baseline from metadata)
-    └── tests/                # 171 tests: invariants, posting matrix, TB, procurement,
+    └── tests/                # 175 tests: invariants, posting matrix, TB, procurement,
                               #   knitting, dyeing+dispensing, traceability, statements,
                               #   gst, banking, exports, dashboards, quality, API
 ```

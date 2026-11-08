@@ -74,6 +74,33 @@ def profit_and_loss(
     return _stringify(fs.profit_and_loss(db, user.company_id, frm, to))
 
 
+@router.get("/manufacturing-account")
+def manufacturing_account(
+    date_from: date | None = None, date_to: date | None = None,
+    db: Session = Depends(get_db), user: User = Depends(require_permission("report.financial")),
+) -> dict:
+    to = date_to or date.today(); frm = date_from or _fy_start(to)
+    return _stringify(fs.manufacturing_account(db, user.company_id, frm, to))
+
+
+@router.get("/trading-account")
+def trading_account(
+    date_from: date | None = None, date_to: date | None = None,
+    db: Session = Depends(get_db), user: User = Depends(require_permission("report.financial")),
+) -> dict:
+    to = date_to or date.today(); frm = date_from or _fy_start(to)
+    return _stringify(fs.trading_account(db, user.company_id, frm, to))
+
+
+@router.get("/funds-flow")
+def funds_flow(
+    date_from: date | None = None, date_to: date | None = None,
+    db: Session = Depends(get_db), user: User = Depends(require_permission("report.financial")),
+) -> dict:
+    to = date_to or date.today(); frm = date_from or _fy_start(to)
+    return _stringify(fs.funds_flow(db, user.company_id, frm, to))
+
+
 @router.get("/customer-statement")
 def customer_statement(
     customer_id: uuid.UUID,

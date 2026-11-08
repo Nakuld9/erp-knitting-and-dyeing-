@@ -63,6 +63,115 @@ def profit_and_loss(db: Session, company_id: uuid.UUID, date_from: date, date_to
     }
 
 
+# ---------------- Manufacturing / Trading / Funds Flow ----------------------
+
+def _tb_index(db, company_id, date_from, date_to):
+    tb = trial_balance(db, company_id, date_from=date_from, date_to=date_to)
+    return {r["account_code"]: r for r in tb["rows"]}
+
+
+def _per_debit(idx, code):
+    r = idx.get(code)
+    return (r["period_debit"] - r["period_credit"]) if r else ZERO
+
+
+def _per_credit(idx, code):
+    r = idx.get(code)
+    return (r["period_credit"] - r["period_debit"]) if r else ZERO
+
+
+def _opening(idx, code):
+    r = idx.get(code)
+    return (r["opening_debit"] - r["opening_credit"]) if r else ZERO
+
+
+def _closing(idx, code):
+    r = idx.get(code)
+    return (r["closing_debit"] - r["closing_credit"]) if r else ZERO
+
+
+# Fabric stock = greige + finished goods; WIP = 1080.
+STOCK_ACCOUNTS = ["1070", "1085"]
+
+
+def manufacturing_account(db: Session, company_id: uuid.UUID, date_from: date, date_to: date) -> dict:
+    """Cost of goods manufactured, built from the WIP (1080) account: opening WIP
+    plus everything charged to production (materials, dispensing, overhead) less
+    closing WIP equals the cost transferred out to finished stock."""
+    idx = _tb_index(db, company_id, date_from, date_to)
+    opening_wip = _opening(idx, "1080")
+    closing_wip = _closing(idx, "1080")
+    wip = idx.get("1080")
+    charged = wip["period_debit"] if wip else ZERO     # gross debits into WIP (inputs)
+    cogm = wip["period_credit"] if wip else ZERO       # gross credits out of WIP (to greige/FG)
+    # Supplementary: direct-cost accounts that carry a period balance.
+    DIRECT = ["5010", "5020", "5030", "5040", "5050", "5060", "5070", "5080",
+              "5090", "5100", "5110", "5120", "5130", "5140"]
+    breakdown = [{"account_code": c, "name": idx[c]["account_name"], "amount": _per_debit(idx, c)}
+                 for c in DIRECT if c in idx and _per_debit(idx, c) != ZERO]
+    return {"date_from": date_from, "date_to": date_to,
+            "opening_wip": opening_wip, "charged_to_production": charged,
+            "closing_wip": closing_wip, "cost_of_goods_manufactured": cogm,
+            "direct_cost_breakdown": breakdown}
+
+
+def trading_account(db: Session, company_id: uuid.UUID, date_from: date, date_to: date) -> dict:
+    """Gross profit: sales less cost of goods sold, where COGS = opening fabric
+    stock + cost of goods manufactured − closing fabric stock."""
+    idx = _tb_index(db, company_id, date_from, date_to)
+    sales = _per_credit(idx, "4010")
+    opening_stock = sum((_opening(idx, c) for c in STOCK_ACCOUNTS), ZERO)
+    closing_stock = sum((_closing(idx, c) for c in STOCK_ACCOUNTS), ZERO)
+    cogm = manufacturing_account(db, company_id, date_from, date_to)["cost_of_goods_manufactured"]
+    goods_available = quantize(opening_stock + cogm, MONEY_SCALE)
+    cogs = quantize(goods_available - closing_stock, MONEY_SCALE)
+    gross_profit = quantize(sales - cogs, MONEY_SCALE)
+    return {"date_from": date_from, "date_to": date_to, "sales": sales,
+            "opening_stock": opening_stock, "cost_of_goods_manufactured": cogm,
+            "goods_available": goods_available, "closing_stock": closing_stock,
+            "cost_of_goods_sold": cogs, "gross_profit": gross_profit}
+
+
+def funds_flow(db: Session, company_id: uuid.UUID, date_from: date, date_to: date) -> dict:
+    """Sources and applications of funds for the period (simplified): funds from
+    operations (net profit + depreciation) and the movements in capital, loans
+    and fixed assets; the balance is the net change in working capital."""
+    idx = _tb_index(db, company_id, date_from, date_to)
+    pnl = profit_and_loss(db, company_id, date_from, date_to)
+    depreciation = _per_debit(idx, "6110")
+    ffo = quantize(pnl["net_profit"] + depreciation, MONEY_SCALE)
+
+    capital_introduced = sum((_per_credit(idx, c) for c in ["3010", "3020"]), ZERO)
+    loans_raised = sum((_per_credit(idx, c) for c in ["2510", "2520", "2530"]), ZERO)
+    FIXED = ["1510", "1520", "1530", "1531", "1532", "1533", "1540", "1550", "1560", "1570"]
+    fixed_assets_bought = sum((_per_debit(idx, c) for c in FIXED), ZERO)
+    drawings = _per_debit(idx, "3050")
+
+    sources = []
+    if ffo > 0:
+        sources.append({"item": "Funds from operations", "amount": ffo})
+    if capital_introduced > 0:
+        sources.append({"item": "Capital introduced", "amount": capital_introduced})
+    if loans_raised > 0:
+        sources.append({"item": "Long-term loans raised", "amount": loans_raised})
+    applications = []
+    if ffo < 0:
+        applications.append({"item": "Funds lost in operations", "amount": quantize(-ffo, MONEY_SCALE)})
+    if fixed_assets_bought > 0:
+        applications.append({"item": "Fixed assets purchased", "amount": fixed_assets_bought})
+    if drawings > 0:
+        applications.append({"item": "Drawings", "amount": drawings})
+
+    total_sources = sum((s["amount"] for s in sources), ZERO)
+    total_applications = sum((a["amount"] for a in applications), ZERO)
+    net_working_capital_change = quantize(total_sources - total_applications, MONEY_SCALE)
+    return {"date_from": date_from, "date_to": date_to,
+            "funds_from_operations": ffo, "depreciation_addback": depreciation,
+            "net_profit": pnl["net_profit"], "sources": sources, "applications": applications,
+            "total_sources": total_sources, "total_applications": total_applications,
+            "net_working_capital_change": net_working_capital_change}
+
+
 # --------------------------- Balance Sheet ---------------------------------
 
 def balance_sheet(db: Session, company_id: uuid.UUID, as_of: date,
