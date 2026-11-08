@@ -4042,6 +4042,161 @@ function Approvals() {
     className: "err"
   }, err)));
 }
+
+// ---- GST adjustments & year-end close -------------------------------------
+function AccountingOps() {
+  const [g, setG] = useState({
+    kind: "itc-reversal",
+    reference: genNo("GA"),
+    cgst: "900",
+    sgst: "900",
+    igst: "0"
+  });
+  const [fy, setFy] = useState("2026-2027");
+  const [gRes, setGRes] = useState(null);
+  const [yRes, setYRes] = useState(null);
+  const [gErr, setGErr] = useState("");
+  const [yErr, setYErr] = useState("");
+  const postGst = async e => {
+    e.preventDefault();
+    setGErr("");
+    setGRes(null);
+    try {
+      const r = await api(`/api/accounting/gst-adjustments/${g.kind}`, {
+        method: "POST",
+        body: {
+          vdate: today(),
+          reference: g.reference,
+          cgst: g.cgst || "0",
+          sgst: g.sgst || "0",
+          igst: g.igst || "0"
+        }
+      });
+      setGRes(r);
+      setG({
+        ...g,
+        reference: genNo("GA")
+      });
+    } catch (ex) {
+      setGErr(ex.message);
+    }
+  };
+  const closeYear = async e => {
+    e.preventDefault();
+    setYErr("");
+    setYRes(null);
+    if (!confirm(`Close the books for ${fy}? Income and expense accounts will be moved to retained earnings and every period in the year will be locked.`)) return;
+    try {
+      setYRes(await api("/api/accounting/year-end/close", {
+        method: "POST",
+        body: {
+          fiscal_year: fy
+        }
+      }));
+    } catch (ex) {
+      setYErr(ex.message);
+    }
+  };
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Panel, {
+    title: "GST adjustment voucher"
+  }, /*#__PURE__*/React.createElement("form", {
+    onSubmit: postGst
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "row mb"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Type"), /*#__PURE__*/React.createElement("select", {
+    value: g.kind,
+    onChange: e => setG({
+      ...g,
+      kind: e.target.value
+    })
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "itc-reversal"
+  }, "ITC reversal"), /*#__PURE__*/React.createElement("option", {
+    value: "rcm"
+  }, "Reverse charge (RCM)"))), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Reference"), /*#__PURE__*/React.createElement("input", {
+    value: g.reference,
+    onChange: e => setG({
+      ...g,
+      reference: e.target.value
+    })
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "row"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "CGST"), /*#__PURE__*/React.createElement("input", {
+    value: g.cgst,
+    onChange: e => setG({
+      ...g,
+      cgst: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "SGST"), /*#__PURE__*/React.createElement("input", {
+    value: g.sgst,
+    onChange: e => setG({
+      ...g,
+      sgst: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "IGST"), /*#__PURE__*/React.createElement("input", {
+    value: g.igst,
+    onChange: e => setG({
+      ...g,
+      igst: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field",
+    style: {
+      alignSelf: "end"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Post adjustment"))), /*#__PURE__*/React.createElement("div", {
+    className: "muted",
+    style: {
+      marginTop: 8,
+      fontSize: 12
+    }
+  }, g.kind === "itc-reversal" ? "Dr Reversal expense · Cr Input CGST/SGST/IGST" : "Dr Input CGST/SGST/IGST · Cr Output CGST/SGST/IGST (net-nil to P&L)"), gErr && /*#__PURE__*/React.createElement("div", {
+    className: "err"
+  }, gErr)), /*#__PURE__*/React.createElement(Result, {
+    r: gRes
+  })), /*#__PURE__*/React.createElement(Panel, {
+    title: "Year-end close"
+  }, /*#__PURE__*/React.createElement("form", {
+    onSubmit: closeYear
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "row"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Fiscal year"), /*#__PURE__*/React.createElement("input", {
+    value: fy,
+    onChange: e => setFy(e.target.value),
+    placeholder: "2026-2027"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field",
+    style: {
+      alignSelf: "end"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Close financial year"))), /*#__PURE__*/React.createElement("div", {
+    className: "muted",
+    style: {
+      marginTop: 8,
+      fontSize: 12
+    }
+  }, "Zeroes income & expense accounts into retained earnings and locks every period in the year. Idempotent."), yErr && /*#__PURE__*/React.createElement("div", {
+    className: "err"
+  }, yErr)), /*#__PURE__*/React.createElement(Result, {
+    r: yRes
+  })));
+}
 const PAGES = {
   owner: {
     t: "Owner Dashboard",
@@ -4119,6 +4274,10 @@ const PAGES = {
     t: "Approvals (maker-checker)",
     c: Approvals
   },
+  acctops: {
+    t: "GST Adjustments & Year-End",
+    c: AccountingOps
+  },
   costing: {
     t: "Costing & Profitability",
     c: Costing
@@ -4183,7 +4342,7 @@ function App() {
     className: "group"
   }, "Reports"), navBtn("reports", "Reports"), /*#__PURE__*/React.createElement("div", {
     className: "group"
-  }, "Admin"), navBtn("approvals", "Approvals"), navBtn("admin", "Administration"), /*#__PURE__*/React.createElement("div", {
+  }, "Admin"), navBtn("approvals", "Approvals"), navBtn("acctops", "GST Adj / Year-End"), navBtn("admin", "Administration"), /*#__PURE__*/React.createElement("div", {
     className: "group"
   }, "Session"), /*#__PURE__*/React.createElement("button", {
     onClick: () => {

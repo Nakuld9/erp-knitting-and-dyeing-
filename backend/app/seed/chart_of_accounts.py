@@ -136,6 +136,8 @@ VOUCHER_TYPES: list[tuple[str, str, str, bool]] = [
     ("SJ", "Stock Journal", "SJ", False),
     ("PJ", "Production Journal", "PJ", False),
     ("PRV", "Payroll Voucher", "PRV", True),
+    ("GADJ", "GST Adjustment Voucher", "GADJ", False),
+    ("YEC", "Year-End Closing Voucher", "YEC", False),
     ("DEP", "Depreciation Voucher", "DEP", False),
     ("GADJ", "GST Adjustment Voucher", "GADJ", True),
     ("OB", "Opening Balance Voucher", "OB", True),

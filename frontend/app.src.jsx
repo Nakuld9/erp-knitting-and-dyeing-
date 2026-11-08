@@ -1263,6 +1263,56 @@ function Approvals(){
   </div>);
 }
 
+// ---- GST adjustments & year-end close -------------------------------------
+function AccountingOps(){
+  const [g,setG]=useState({kind:"itc-reversal",reference:genNo("GA"),cgst:"900",sgst:"900",igst:"0"});
+  const [fy,setFy]=useState("2026-2027");
+  const [gRes,setGRes]=useState(null); const [yRes,setYRes]=useState(null);
+  const [gErr,setGErr]=useState(""); const [yErr,setYErr]=useState("");
+  const postGst=async e=>{ e.preventDefault(); setGErr(""); setGRes(null);
+    try{ const r=await api(`/api/accounting/gst-adjustments/${g.kind}`,{method:"POST",body:{
+        vdate:today(), reference:g.reference, cgst:g.cgst||"0", sgst:g.sgst||"0", igst:g.igst||"0"}});
+      setGRes(r); setG({...g,reference:genNo("GA")}); }
+    catch(ex){ setGErr(ex.message); } };
+  const closeYear=async e=>{ e.preventDefault(); setYErr(""); setYRes(null);
+    if(!confirm(`Close the books for ${fy}? Income and expense accounts will be moved to retained earnings and every period in the year will be locked.`)) return;
+    try{ setYRes(await api("/api/accounting/year-end/close",{method:"POST",body:{fiscal_year:fy}})); }
+    catch(ex){ setYErr(ex.message); } };
+  return (<div>
+    <Panel title="GST adjustment voucher">
+      <form onSubmit={postGst}>
+        <div className="row mb">
+          <div className="field"><label>Type</label><select value={g.kind} onChange={e=>setG({...g,kind:e.target.value})}>
+            <option value="itc-reversal">ITC reversal</option>
+            <option value="rcm">Reverse charge (RCM)</option></select></div>
+          <div className="field"><label>Reference</label><input value={g.reference} onChange={e=>setG({...g,reference:e.target.value})}/></div>
+        </div>
+        <div className="row">
+          <div className="field"><label>CGST</label><input value={g.cgst} onChange={e=>setG({...g,cgst:e.target.value})}/></div>
+          <div className="field"><label>SGST</label><input value={g.sgst} onChange={e=>setG({...g,sgst:e.target.value})}/></div>
+          <div className="field"><label>IGST</label><input value={g.igst} onChange={e=>setG({...g,igst:e.target.value})}/></div>
+          <div className="field" style={{alignSelf:"end"}}><button className="btn">Post adjustment</button></div>
+        </div>
+        <div className="muted" style={{marginTop:8,fontSize:12}}>
+          {g.kind==="itc-reversal" ? "Dr Reversal expense · Cr Input CGST/SGST/IGST" : "Dr Input CGST/SGST/IGST · Cr Output CGST/SGST/IGST (net-nil to P&L)"}</div>
+        {gErr && <div className="err">{gErr}</div>}
+      </form>
+      <Result r={gRes}/>
+    </Panel>
+    <Panel title="Year-end close">
+      <form onSubmit={closeYear}>
+        <div className="row">
+          <div className="field"><label>Fiscal year</label><input value={fy} onChange={e=>setFy(e.target.value)} placeholder="2026-2027"/></div>
+          <div className="field" style={{alignSelf:"end"}}><button className="btn">Close financial year</button></div>
+        </div>
+        <div className="muted" style={{marginTop:8,fontSize:12}}>Zeroes income &amp; expense accounts into retained earnings and locks every period in the year. Idempotent.</div>
+        {yErr && <div className="err">{yErr}</div>}
+      </form>
+      <Result r={yRes}/>
+    </Panel>
+  </div>);
+}
+
 const PAGES={
   owner:{t:"Owner Dashboard",c:OwnerDash}, factory:{t:"Factory Dashboard",c:FactoryDash},
   accounts:{t:"Accounts Dashboard",c:AccountsDash}, chemical:{t:"Chemical Dashboard",c:ChemicalDash},
@@ -1277,6 +1327,7 @@ const PAGES={
   assets:{t:"Fixed Assets & Depreciation",c:FixedAssets},
   payroll:{t:"Payroll",c:Payroll},
   approvals:{t:"Approvals (maker-checker)",c:Approvals},
+  acctops:{t:"GST Adjustments & Year-End",c:AccountingOps},
   costing:{t:"Costing & Profitability",c:Costing}, devices:{t:"Devices & Labels",c:Devices},
   masters:{t:"Master Data",c:MastersManager}, vouchers:{t:"Vouchers",c:Vouchers}, admin:{t:"Administration",c:Admin},
   reports:{t:"Reports",c:Reports},
@@ -1304,7 +1355,7 @@ function App(){
         <div className="group">Costing</div>{navBtn("costing","Costing")}
         <div className="group">Devices</div>{navBtn("devices","Devices & Labels")}
         <div className="group">Reports</div>{navBtn("reports","Reports")}
-        <div className="group">Admin</div>{navBtn("approvals","Approvals")}{navBtn("admin","Administration")}
+        <div className="group">Admin</div>{navBtn("approvals","Approvals")}{navBtn("acctops","GST Adj / Year-End")}{navBtn("admin","Administration")}
         <div className="group">Session</div>
         <button onClick={()=>{setToken(null); location.reload();}}>Log out</button>
       </nav>

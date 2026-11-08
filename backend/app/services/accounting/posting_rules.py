@@ -51,6 +51,12 @@ DEFAULT_RULES: dict[str, dict[str, str]] = {
         "salary_payable": "2030", "pf_payable": "2031", "esi_payable": "2032",
         "pt_payable": "2033", "tds_payable": "2050",
     },
+    "GST_ADJUSTMENT": {
+        "input_cgst": "1121", "input_sgst": "1122", "input_igst": "1123",
+        "output_cgst": "2041", "output_sgst": "2042", "output_igst": "2043",
+        "reversal_expense": "6190",
+    },
+    "YEAR_END": {"retained_earnings": "3030"},
     "CUSTOMER_RECEIPT": {"bank": "1020", "receivable": "1040"},
     "SUPPLIER_PAYMENT": {"payable": "2010", "bank": "1020"},
     # Fixed assets. Capitalisation debits the asset's own account; the credit

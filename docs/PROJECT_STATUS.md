@@ -1,7 +1,7 @@
 # Project status & pending list
 
 Audit of the implementation against the master specification (the 24-section
-brief). Updated **2026-11-08**. Test suite: **138 passing**
+brief). Updated **2026-11-08**. Test suite: **144 passing**
 (`cd backend && pytest`).
 
 Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ not built.
@@ -17,7 +17,8 @@ Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ no
 | General ledger | GL + customer/supplier/bank sub-ledgers, drill-down to source |
 | Trial balance | automatic, debit=credit validation, period/branch scoped |
 | Financial statements | P&L, Balance Sheet, Cash Flow, Debtors & Creditors ageing |
-| GST | CGST/SGST/IGST, configurable rates, purchase/sales registers, GSTR-1, GSTR-3B, book-vs-register reconciliation |
+| GST | CGST/SGST/IGST, configurable rates, purchase/sales registers, GSTR-1, GSTR-3B, book-vs-register reconciliation, **adjustment vouchers (ITC reversal / RCM / manual)** |
+| **Year-end close** | closing voucher zeroes income/expense into retained earnings + locks the year's periods (idempotent) |
 | Banking | receipts/payments/contra, CSV statement import, reconciliation |
 | Procurement | chemical/dye GRN → FIFO stock + GST purchase voucher |
 | **PO / SO lifecycle** | PO place/confirm → GRN roll-up (PARTIAL/COMPLETED); SO place/confirm → delivery challan → **COGS**; invoice |
@@ -47,15 +48,14 @@ Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ no
 - Greige → Finished-Goods transfer on finishing (Acceptance Test 12)
 - Payroll (structures, statutory deductions, balanced run)
 - Maker-checker approval workflows (supplier-payment gate)
+- GST adjustment vouchers (ITC reversal / RCM / manual) + year-end closing
 
 ---
 
 ## ❌ Pending
 
 ### Accounting
-1. **GST Adjustment Voucher** workflow (ITC reversals, RCM entries)
-2. **Funds Flow**, **Trading Account**, **Manufacturing Account** (3 of the 10 statements)
-3. **Year-end closing** → retained-earnings roll-forward routine
+1. **Funds Flow**, **Trading Account**, **Manufacturing Account** (3 of the 10 statements)
 
 ### Workflow / controls
 4. **Approval coverage beyond payments** — the maker-checker engine is built and
@@ -92,9 +92,9 @@ Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ no
 - All ledger, inventory, GST, costing and traceability tests (1–4, 7–17, 19–20) pass, including **Test 12** (WIP→FG) now that finishing posts the greige→FG transfer.
 
 ## Suggested priority order for remaining work
-1. GST adjustment voucher + year-end close
-2. Roll split/merge, stock transfers, FEFO/weighted-average
-3. Enquiries/quotations + credit limits + party statements
+1. Roll split/merge, stock transfers, FEFO/weighted-average
+2. Enquiries/quotations + credit limits + party statements
+3. Funds Flow / Trading / Manufacturing accounts
 4. Extend approvals to vouchers/POs/journals + notifications/attachments
 5. Live external integrations (when vendor credentials/hardware are available)
 6. Operational docs, backups, monitoring
