@@ -14,6 +14,7 @@ from app.models.approvals import ApprovalRequest
 
 PAYMENT = "PAYMENT"
 PURCHASE_ORDER = "PURCHASE_ORDER"
+VOUCHER = "VOUCHER"
 
 
 def execute_approved(db: Session, request: ApprovalRequest, *, created_by: uuid.UUID | None = None):
@@ -30,6 +31,10 @@ def execute_approved(db: Session, request: ApprovalRequest, *, created_by: uuid.
             ol.confirm_purchase_order(db, po)
             return po.number
         return po.number if po is not None else None
+    if request.doc_type == VOUCHER:
+        from app.services import voucher_approvals
+        v = voucher_approvals.post_approved_voucher(db, request, created_by=created_by)
+        return v.number if v else None
     return None
 
 
@@ -37,4 +42,7 @@ def on_rejected(db: Session, request: ApprovalRequest) -> None:
     if request.doc_type == PAYMENT:
         from app.services import payments
         payments.reject_payment(db, request)
+    elif request.doc_type == VOUCHER:
+        from app.services import voucher_approvals
+        voucher_approvals.reject_voucher(db, request)
     # Purchase orders simply stay in DRAFT when rejected.

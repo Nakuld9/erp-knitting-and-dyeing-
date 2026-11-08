@@ -52,6 +52,31 @@ def create_voucher(
     return voucher
 
 
+@router.post("/submit-approval", status_code=status.HTTP_201_CREATED)
+def submit_voucher_approval(
+    payload: VoucherCreate,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("voucher.create")),
+):
+    """Route a journal / voucher through maker-checker: at or above the
+    configured ``VOUCHER`` threshold it is held for approval and posted on
+    approval; below it (or with no rule) it posts straight away."""
+    from app.services import voucher_approvals as va
+    lines = [{"account_code": ln.account_code, "debit": ln.debit, "credit": ln.credit,
+              "narration": ln.narration, "cost_centre_id": ln.cost_centre_id}
+             for ln in payload.lines]
+    try:
+        res = va.submit_voucher(
+            db, company_id=user.company_id, voucher_type_code=payload.voucher_type_code,
+            voucher_date=payload.voucher_date, lines=lines, narration=payload.narration,
+            branch_id=payload.branch_id, requested_by=user.id)
+        db.commit()
+    except (va.VoucherApprovalError, pe.PostingError) as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    return res
+
+
 @router.get("/{voucher_id}", response_model=VoucherOut)
 def get_voucher(
     voucher_id: uuid.UUID,

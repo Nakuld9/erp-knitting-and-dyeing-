@@ -110,6 +110,8 @@ from app.models.approvals import (  # noqa: F401
     ApprovalStatus,
     PaymentApproval,
     PaymentStatus,
+    PendingVoucher,
+    PendingVoucherStatus,
 )
 from app.models.notifications import Attachment, Notification  # noqa: F401
 from app.models.banking import BankReconciliation, BankStatementLine  # noqa: F401

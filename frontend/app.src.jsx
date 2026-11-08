@@ -1081,6 +1081,15 @@ function Vouchers(){
       setH({...h,posting_reference:genNo("JV")});
       setLines([{account_code:"",debit:"",credit:"",narration:""},{account_code:"",debit:"",credit:"",narration:""}]); loadRecent(); }
     catch(ex){ setErr(ex.message); } };
+  const buildBody=()=>({...h, lines:lines.filter(l=>l.account_code && (num(l.debit)||num(l.credit)))
+      .map(l=>({account_code:l.account_code, debit:l.debit||"0", credit:l.credit||"0", narration:l.narration||null}))});
+  const submitApproval=async()=>{ setErr(""); setRes(null);
+    try{ const r=await api("/api/vouchers/submit-approval",{method:"POST",body:buildBody()});
+      setRes(r.approval_required ? {status:"HELD", approval:"Routed for approval ("+r.approvals_required+" needed)"}
+                                 : {voucher:r.voucher_number, status:"POSTED", note:"Below threshold — posted directly"});
+      setH({...h,posting_reference:genNo("JV")});
+      setLines([{account_code:"",debit:"",credit:"",narration:""},{account_code:"",debit:"",credit:"",narration:""}]); loadRecent(); }
+    catch(ex){ setErr(ex.message); } };
   return (<div>
     <Panel title="Post a voucher">
       <form onSubmit={submit}>
@@ -1107,6 +1116,7 @@ function Vouchers(){
           <th colSpan="2"><span className={"badge "+(balanced?"ok":"bad")}>{balanced?"Balanced":"Dr ≠ Cr"}</span></th></tr></tfoot></table>
         <div className="row" style={{marginTop:12}}>
           <button type="button" className="btn sec" onClick={()=>setLines(ls=>[...ls,{account_code:"",debit:"",credit:"",narration:""}])}>+ Add line</button>
+          <button type="button" className="btn sec" disabled={!balanced} onClick={submitApproval}>Submit for approval</button>
           <button className="btn">Post voucher</button>
         </div>
         {err && <div className="err">{err}</div>}

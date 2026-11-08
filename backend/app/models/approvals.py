@@ -14,7 +14,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, Uuid
+from sqlalchemy import JSON, Boolean, Date, DateTime, ForeignKey, Integer, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.types import Money
@@ -32,6 +32,12 @@ class PaymentStatus(str, enum.Enum):
     PENDING = "PENDING"
     REJECTED = "REJECTED"
     PAID = "PAID"
+
+
+class PendingVoucherStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    REJECTED = "REJECTED"
+    POSTED = "POSTED"
 
 
 class ApprovalAction(str, enum.Enum):
@@ -94,4 +100,24 @@ class PaymentApproval(AuditMixin, Base):
     note: Mapped[str | None] = mapped_column(String(200), nullable=True)
     status: Mapped[PaymentStatus] = mapped_column(String(10), default=PaymentStatus.PENDING, index=True)
     approval_request_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("approval_requests.id"), nullable=True)
+    posting_reference: Mapped[str | None] = mapped_column(String(120), index=True)
+
+
+class PendingVoucher(AuditMixin, Base):
+    """A journal / voucher held for approval. Its posting payload (type, date,
+    narration, lines) is stored verbatim and posted unchanged once approved, so
+    no unbalanced or unauthorised entry ever reaches the ledger early."""
+    __tablename__ = "pending_vouchers"
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"), index=True)
+    voucher_type_code: Mapped[str] = mapped_column(String(10))
+    voucher_date: Mapped[object] = mapped_column(Date)
+    narration: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    branch_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    lines: Mapped[list] = mapped_column(JSON, default=list)
+    amount: Mapped[object] = mapped_column(Money, default=0)
+    status: Mapped[PendingVoucherStatus] = mapped_column(
+        String(10), default=PendingVoucherStatus.PENDING, index=True)
+    approval_request_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("approval_requests.id"), nullable=True)
+    posted_voucher_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     posting_reference: Mapped[str | None] = mapped_column(String(120), index=True)

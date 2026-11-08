@@ -3200,6 +3200,51 @@ function Vouchers() {
       setErr(ex.message);
     }
   };
+  const buildBody = () => ({
+    ...h,
+    lines: lines.filter(l => l.account_code && (num(l.debit) || num(l.credit))).map(l => ({
+      account_code: l.account_code,
+      debit: l.debit || "0",
+      credit: l.credit || "0",
+      narration: l.narration || null
+    }))
+  });
+  const submitApproval = async () => {
+    setErr("");
+    setRes(null);
+    try {
+      const r = await api("/api/vouchers/submit-approval", {
+        method: "POST",
+        body: buildBody()
+      });
+      setRes(r.approval_required ? {
+        status: "HELD",
+        approval: "Routed for approval (" + r.approvals_required + " needed)"
+      } : {
+        voucher: r.voucher_number,
+        status: "POSTED",
+        note: "Below threshold — posted directly"
+      });
+      setH({
+        ...h,
+        posting_reference: genNo("JV")
+      });
+      setLines([{
+        account_code: "",
+        debit: "",
+        credit: "",
+        narration: ""
+      }, {
+        account_code: "",
+        debit: "",
+        credit: "",
+        narration: ""
+      }]);
+      loadRecent();
+    } catch (ex) {
+      setErr(ex.message);
+    }
+  };
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Panel, {
     title: "Post a voucher"
   }, /*#__PURE__*/React.createElement("form", {
@@ -3305,6 +3350,11 @@ function Vouchers() {
       narration: ""
     }])
   }, "+ Add line"), /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "btn sec",
+    disabled: !balanced,
+    onClick: submitApproval
+  }, "Submit for approval"), /*#__PURE__*/React.createElement("button", {
     className: "btn"
   }, "Post voucher")), err && /*#__PURE__*/React.createElement("div", {
     className: "err"
