@@ -6392,6 +6392,157 @@ function Notifications({
     className: "badge " + (kindCls[n.kind] || "")
   }, n.kind))));
 }
+const ACCT_TYPES = [["ASSET", "Asset"], ["LIABILITY", "Liability"], ["EQUITY", "Equity"], ["INCOME", "Income"], ["EXPENSE", "Expense"]];
+function ChartOfAccounts() {
+  const [rows, setRows] = useState([]);
+  const [err, setErr] = useState("");
+  const [ok, setOk] = useState("");
+  const [f, setF] = useState({
+    code: "",
+    name: "",
+    account_type: "EXPENSE",
+    parent_code: "",
+    is_group: false
+  });
+  const load = useCallback(() => api("/api/accounts").then(setRows).catch(e => setErr(e.message)), []);
+  useEffect(() => {
+    load();
+  }, [load]);
+  const groups = rows.filter(a => a.is_group && a.account_type === f.account_type);
+  const byCode = Object.fromEntries(rows.map(a => [a.id, a.code]));
+  const add = async e => {
+    e.preventDefault();
+    setErr("");
+    setOk("");
+    try {
+      await api("/api/accounts", {
+        method: "POST",
+        body: {
+          code: f.code,
+          name: f.name,
+          account_type: f.account_type,
+          parent_code: f.parent_code || null,
+          is_group: f.is_group
+        }
+      });
+      setOk(`Account ${f.code} created`);
+      setF({
+        code: "",
+        name: "",
+        account_type: f.account_type,
+        parent_code: "",
+        is_group: false
+      });
+      load();
+    } catch (ex) {
+      setErr(ex.message);
+    }
+  };
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Panel, {
+    title: "Add account"
+  }, /*#__PURE__*/React.createElement("form", {
+    onSubmit: add
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "row mb"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Code"), /*#__PURE__*/React.createElement("input", {
+    required: true,
+    value: f.code,
+    onChange: e => setF({
+      ...f,
+      code: e.target.value
+    }),
+    placeholder: "e.g. 2511",
+    style: {
+      width: 120
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field",
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("label", null, "Name"), /*#__PURE__*/React.createElement("input", {
+    required: true,
+    value: f.name,
+    onChange: e => setF({
+      ...f,
+      name: e.target.value
+    }),
+    placeholder: "e.g. HDFC Term Loan A/c 1234"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Type"), /*#__PURE__*/React.createElement("select", {
+    value: f.account_type,
+    onChange: e => setF({
+      ...f,
+      account_type: e.target.value,
+      parent_code: ""
+    })
+  }, ACCT_TYPES.map(([v, l]) => /*#__PURE__*/React.createElement("option", {
+    key: v,
+    value: v
+  }, l)))), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Under group"), /*#__PURE__*/React.createElement("select", {
+    value: f.parent_code,
+    onChange: e => setF({
+      ...f,
+      parent_code: e.target.value
+    })
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "\u2014 top level \u2014"), groups.map(g => /*#__PURE__*/React.createElement("option", {
+    key: g.id,
+    value: g.code
+  }, g.code, " \xB7 ", g.name)))), /*#__PURE__*/React.createElement("div", {
+    className: "field",
+    style: {
+      alignSelf: "end"
+    }
+  }, /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: "flex",
+      gap: 6,
+      alignItems: "center",
+      fontSize: 12.5
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: f.is_group,
+    onChange: e => setF({
+      ...f,
+      is_group: e.target.checked
+    })
+  }), " is a heading")), /*#__PURE__*/React.createElement("div", {
+    className: "field",
+    style: {
+      alignSelf: "end"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Add"))), err && /*#__PURE__*/React.createElement("div", {
+    className: "err"
+  }, err), ok && /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: "#16a34a",
+      fontSize: 12.5
+    }
+  }, ok)), /*#__PURE__*/React.createElement("div", {
+    className: "muted",
+    style: {
+      fontSize: 12
+    }
+  }, "Direct expenses sit under ", /*#__PURE__*/React.createElement("b", null, "5000 Direct Expenses & COGS"), ", indirect under ", /*#__PURE__*/React.createElement("b", null, "6000 Indirect Expenses"), ", loans under ", /*#__PURE__*/React.createElement("b", null, "2500 Long-term Liabilities"), " or ", /*#__PURE__*/React.createElement("b", null, "2000 Current Liabilities"), ". A heading cannot receive postings.")), /*#__PURE__*/React.createElement(Panel, {
+    title: "Chart of accounts"
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Code"), /*#__PURE__*/React.createElement("th", null, "Name"), /*#__PURE__*/React.createElement("th", null, "Type"), /*#__PURE__*/React.createElement("th", null, "Under"), /*#__PURE__*/React.createElement("th", null, "Postable"))), /*#__PURE__*/React.createElement("tbody", null, rows.map(a => /*#__PURE__*/React.createElement("tr", {
+    key: a.id,
+    style: a.is_group ? {
+      fontWeight: 700,
+      background: "#f8fafc"
+    } : {}
+  }, /*#__PURE__*/React.createElement("td", null, a.code), /*#__PURE__*/React.createElement("td", null, a.name), /*#__PURE__*/React.createElement("td", null, a.account_type), /*#__PURE__*/React.createElement("td", null, a.parent_id ? byCode[a.parent_id] : "—"), /*#__PURE__*/React.createElement("td", null, a.is_group ? "heading" : a.allow_posting ? "yes" : "no")))))));
+}
 const PAGES = {
   owner: {
     t: "Owner Dashboard",
@@ -6497,6 +6648,10 @@ const PAGES = {
     t: "Master Data",
     c: MastersManager
   },
+  coa: {
+    t: "Chart of Accounts",
+    c: ChartOfAccounts
+  },
   vouchers: {
     t: "Vouchers",
     c: Vouchers
@@ -6526,6 +6681,7 @@ const NAV_ICON = {
   vouchers: "📒",
   inventoryops: "🔁",
   masters: "🗃️",
+  coa: "📚",
   customers: "👤",
   suppliers: "🏢",
   warehouses: "🏬",
@@ -6577,7 +6733,7 @@ function App() {
     className: "group"
   }, "Transactions"), navBtn("purchaseorders", "Purchase Orders"), navBtn("purchase", "Purchase (GRN)"), navBtn("knitting", "Knitting"), navBtn("batching", "Batching"), navBtn("pipeline", "Sales Pipeline"), navBtn("salesorders", "Sales Orders"), navBtn("sales", "Sales Invoice"), navBtn("dyeing", "Dyeing & Dispensing"), navBtn("vouchers", "Vouchers"), navBtn("inventoryops", "Inventory Ops"), /*#__PURE__*/React.createElement("div", {
     className: "group"
-  }, "Masters"), navBtn("masters", "Master Data"), navBtn("customers", "Customers"), navBtn("suppliers", "Suppliers"), navBtn("warehouses", "Warehouses"), /*#__PURE__*/React.createElement("div", {
+  }, "Masters"), navBtn("masters", "Master Data"), navBtn("coa", "Chart of Accounts"), navBtn("customers", "Customers"), navBtn("suppliers", "Suppliers"), navBtn("warehouses", "Warehouses"), /*#__PURE__*/React.createElement("div", {
     className: "group"
   }, "Quality"), navBtn("quality", "Quality"), /*#__PURE__*/React.createElement("div", {
     className: "group"

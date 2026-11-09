@@ -1986,6 +1986,51 @@ function Notifications({onChange}){
   </Panel>);
 }
 
+const ACCT_TYPES=[["ASSET","Asset"],["LIABILITY","Liability"],["EQUITY","Equity"],["INCOME","Income"],["EXPENSE","Expense"]];
+function ChartOfAccounts(){
+  const [rows,setRows]=useState([]); const [err,setErr]=useState(""); const [ok,setOk]=useState("");
+  const [f,setF]=useState({code:"",name:"",account_type:"EXPENSE",parent_code:"",is_group:false});
+  const load=useCallback(()=>api("/api/accounts").then(setRows).catch(e=>setErr(e.message)),[]);
+  useEffect(()=>{load()},[load]);
+  const groups=rows.filter(a=>a.is_group && a.account_type===f.account_type);
+  const byCode=Object.fromEntries(rows.map(a=>[a.id,a.code]));
+  const add=async e=>{ e.preventDefault(); setErr(""); setOk("");
+    try{ await api("/api/accounts",{method:"POST",body:{code:f.code,name:f.name,account_type:f.account_type,
+        parent_code:f.parent_code||null, is_group:f.is_group}});
+      setOk(`Account ${f.code} created`); setF({code:"",name:"",account_type:f.account_type,parent_code:"",is_group:false}); load(); }
+    catch(ex){ setErr(ex.message); } };
+  return (<div>
+    <Panel title="Add account">
+      <form onSubmit={add}>
+        <div className="row mb">
+          <div className="field"><label>Code</label><input required value={f.code} onChange={e=>setF({...f,code:e.target.value})} placeholder="e.g. 2511" style={{width:120}}/></div>
+          <div className="field" style={{flex:1}}><label>Name</label><input required value={f.name} onChange={e=>setF({...f,name:e.target.value})} placeholder="e.g. HDFC Term Loan A/c 1234"/></div>
+          <div className="field"><label>Type</label>
+            <select value={f.account_type} onChange={e=>setF({...f,account_type:e.target.value,parent_code:""})}>
+              {ACCT_TYPES.map(([v,l])=><option key={v} value={v}>{l}</option>)}</select></div>
+          <div className="field"><label>Under group</label>
+            <select value={f.parent_code} onChange={e=>setF({...f,parent_code:e.target.value})}>
+              <option value="">— top level —</option>
+              {groups.map(g=><option key={g.id} value={g.code}>{g.code} · {g.name}</option>)}</select></div>
+          <div className="field" style={{alignSelf:"end"}}><label style={{display:"flex",gap:6,alignItems:"center",fontSize:12.5}}>
+            <input type="checkbox" checked={f.is_group} onChange={e=>setF({...f,is_group:e.target.checked})}/> is a heading</label></div>
+          <div className="field" style={{alignSelf:"end"}}><button className="btn">Add</button></div>
+        </div>
+        {err && <div className="err">{err}</div>}
+        {ok && <div style={{color:"#16a34a",fontSize:12.5}}>{ok}</div>}
+      </form>
+      <div className="muted" style={{fontSize:12}}>Direct expenses sit under <b>5000 Direct Expenses &amp; COGS</b>, indirect under <b>6000 Indirect Expenses</b>, loans under <b>2500 Long-term Liabilities</b> or <b>2000 Current Liabilities</b>. A heading cannot receive postings.</div>
+    </Panel>
+    <Panel title="Chart of accounts">
+      <table><thead><tr><th>Code</th><th>Name</th><th>Type</th><th>Under</th><th>Postable</th></tr></thead>
+      <tbody>{rows.map(a=><tr key={a.id} style={a.is_group?{fontWeight:700,background:"#f8fafc"}:{}}>
+        <td>{a.code}</td><td>{a.name}</td><td>{a.account_type}</td>
+        <td>{a.parent_id?byCode[a.parent_id]:"—"}</td>
+        <td>{a.is_group?"heading":(a.allow_posting?"yes":"no")}</td></tr>)}</tbody></table>
+    </Panel>
+  </div>);
+}
+
 const PAGES={
   owner:{t:"Owner Dashboard",c:OwnerDash}, factory:{t:"Factory Dashboard",c:FactoryDash},
   accounts:{t:"Accounts Dashboard",c:AccountsDash}, chemical:{t:"Chemical Dashboard",c:ChemicalDash},
@@ -2005,12 +2050,13 @@ const PAGES={
   notifications:{t:"Notifications",c:Notifications},
   acctops:{t:"GST Adjustments & Year-End",c:AccountingOps},
   costing:{t:"Costing & Profitability",c:Costing}, devices:{t:"Devices & Labels",c:Devices},
-  masters:{t:"Master Data",c:MastersManager}, vouchers:{t:"Vouchers",c:Vouchers}, admin:{t:"Administration",c:Admin},
+  masters:{t:"Master Data",c:MastersManager}, coa:{t:"Chart of Accounts",c:ChartOfAccounts},
+  vouchers:{t:"Vouchers",c:Vouchers}, admin:{t:"Administration",c:Admin},
   reports:{t:"Reports",c:Reports},
 };
 const NAV_ICON={owner:"📊",factory:"🏭",accounts:"💼",chemical:"🧪",purchaseorders:"📝",purchase:"📥",
   knitting:"🧶",batching:"🧺",pipeline:"🎯",salesorders:"🛒",sales:"🧾",dyeing:"🎨",vouchers:"📒",
-  inventoryops:"🔁",masters:"🗃️",customers:"👤",suppliers:"🏢",warehouses:"🏬",quality:"🔍",assets:"🏗️",
+  inventoryops:"🔁",masters:"🗃️",coa:"📚",customers:"👤",suppliers:"🏢",warehouses:"🏬",quality:"🔍",assets:"🏗️",
   payroll:"💰",costing:"📐",devices:"🖨️",reports:"📈",approvals:"✔️",notifications:"🔔",acctops:"🧮",admin:"⚙️"};
 function fyLabel(){ const d=new Date(); const y=d.getMonth()>=3?d.getFullYear():d.getFullYear()-1; return `FY ${y}–${(y+1)%100}`; }
 
@@ -2035,7 +2081,7 @@ function App(){
         {navBtn("batching","Batching")}{navBtn("pipeline","Sales Pipeline")}{navBtn("salesorders","Sales Orders")}{navBtn("sales","Sales Invoice")}{navBtn("dyeing","Dyeing & Dispensing")}{navBtn("vouchers","Vouchers")}
         {navBtn("inventoryops","Inventory Ops")}
         <div className="group">Masters</div>
-        {navBtn("masters","Master Data")}{navBtn("customers","Customers")}{navBtn("suppliers","Suppliers")}{navBtn("warehouses","Warehouses")}
+        {navBtn("masters","Master Data")}{navBtn("coa","Chart of Accounts")}{navBtn("customers","Customers")}{navBtn("suppliers","Suppliers")}{navBtn("warehouses","Warehouses")}
         <div className="group">Quality</div>{navBtn("quality","Quality")}
         <div className="group">Assets</div>{navBtn("assets","Fixed Assets")}
         <div className="group">Payroll</div>{navBtn("payroll","Payroll")}
