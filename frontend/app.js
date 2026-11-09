@@ -6392,6 +6392,114 @@ function Notifications({
     className: "badge " + (kindCls[n.kind] || "")
   }, n.kind))));
 }
+function StockOnHand() {
+  const warehouses = useList("/api/masters/warehouses");
+  const [wh, setWh] = useState("");
+  const [it, setIt] = useState("");
+  const [rows, setRows] = useState([]);
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(async () => {
+    setErr("");
+    setBusy(true);
+    try {
+      const p = [];
+      if (wh) p.push("warehouse_id=" + wh);
+      if (it) p.push("item_type=" + it);
+      setRows(await api("/api/inventory/stock-on-hand" + (p.length ? "?" + p.join("&") : "")));
+    } catch (ex) {
+      setErr(ex.message);
+    } finally {
+      setBusy(false);
+    }
+  }, [wh, it]);
+  useEffect(() => {
+    load();
+  }, [wh, it]);
+  const totVal = rows.reduce((s, r) => s + Number(r.value || 0), 0);
+  const typeBadge = {
+    YARN: "",
+    CHEMICAL: "info",
+    FABRIC: "ok"
+  };
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Panel, {
+    title: "Stock on hand (live)"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "row mb",
+    style: {
+      alignItems: "end",
+      gap: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Warehouse"), /*#__PURE__*/React.createElement("select", {
+    value: wh,
+    onChange: e => setWh(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "All warehouses"), warehouses.map(w => /*#__PURE__*/React.createElement("option", {
+    key: w.id,
+    value: w.id
+  }, w.code, " \xB7 ", w.name)))), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Item type"), /*#__PURE__*/React.createElement("select", {
+    value: it,
+    onChange: e => setIt(e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "All"), /*#__PURE__*/React.createElement("option", {
+    value: "YARN"
+  }, "Yarn"), /*#__PURE__*/React.createElement("option", {
+    value: "CHEMICAL"
+  }, "Chemical / Dye"), /*#__PURE__*/React.createElement("option", {
+    value: "FABRIC"
+  }, "Fabric"))), /*#__PURE__*/React.createElement("button", {
+    className: "btn sec",
+    disabled: busy,
+    onClick: load
+  }, "Refresh"), /*#__PURE__*/React.createElement("span", {
+    style: {
+      flex: 1
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      textAlign: "right"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "muted",
+    style: {
+      fontSize: 12
+    }
+  }, "Total stock value"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontWeight: 700,
+      fontSize: 16
+    }
+  }, inr2(totVal)))), err && /*#__PURE__*/React.createElement("div", {
+    className: "err"
+  }, err), /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Type"), /*#__PURE__*/React.createElement("th", null, "Code"), /*#__PURE__*/React.createElement("th", null, "Item"), /*#__PURE__*/React.createElement("th", null, "Warehouse"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Qty"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Value"))), /*#__PURE__*/React.createElement("tbody", null, rows.length === 0 ? /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+    colSpan: "6",
+    className: "muted"
+  }, "No stock on hand for this filter.")) : rows.map((r, i) => /*#__PURE__*/React.createElement("tr", {
+    key: i
+  }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", {
+    className: "badge " + (typeBadge[r.item_type] || "")
+  }, r.item_type)), /*#__PURE__*/React.createElement("td", null, r.item_code || "—"), /*#__PURE__*/React.createElement("td", null, r.item_name), /*#__PURE__*/React.createElement("td", null, r.warehouse), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(r.qty)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(r.value)))))), /*#__PURE__*/React.createElement("div", {
+    className: "muted",
+    style: {
+      fontSize: 12,
+      marginTop: 6
+    }
+  }, "Live from open FIFO cost layers \xB7 fabric grouped by type & greige/finished.")));
+}
 const ACCT_TYPES = [["ASSET", "Asset"], ["LIABILITY", "Liability"], ["EQUITY", "Equity"], ["INCOME", "Income"], ["EXPENSE", "Expense"]];
 function ChartOfAccounts() {
   const [rows, setRows] = useState([]);
@@ -6580,6 +6688,10 @@ const PAGES = {
     t: "Inventory Ops (transfer / split / merge)",
     c: InventoryOps
   },
+  stock: {
+    t: "Stock on Hand",
+    c: StockOnHand
+  },
   pipeline: {
     t: "Sales Pipeline (enquiry → quote → SO)",
     c: SalesPipeline
@@ -6680,6 +6792,7 @@ const NAV_ICON = {
   dyeing: "🎨",
   vouchers: "📒",
   inventoryops: "🔁",
+  stock: "📦",
   masters: "🗃️",
   coa: "📚",
   customers: "👤",
@@ -6731,7 +6844,7 @@ function App() {
     className: "group"
   }, "Dashboards"), navBtn("owner", "Owner"), navBtn("factory", "Factory"), navBtn("accounts", "Accounts"), navBtn("chemical", "Chemical"), /*#__PURE__*/React.createElement("div", {
     className: "group"
-  }, "Transactions"), navBtn("purchaseorders", "Purchase Orders"), navBtn("purchase", "Purchase (GRN)"), navBtn("knitting", "Knitting"), navBtn("batching", "Batching"), navBtn("pipeline", "Sales Pipeline"), navBtn("salesorders", "Sales Orders"), navBtn("sales", "Sales Invoice"), navBtn("dyeing", "Dyeing & Dispensing"), navBtn("vouchers", "Vouchers"), navBtn("inventoryops", "Inventory Ops"), /*#__PURE__*/React.createElement("div", {
+  }, "Transactions"), navBtn("purchaseorders", "Purchase Orders"), navBtn("purchase", "Purchase (GRN)"), navBtn("knitting", "Knitting"), navBtn("batching", "Batching"), navBtn("pipeline", "Sales Pipeline"), navBtn("salesorders", "Sales Orders"), navBtn("sales", "Sales Invoice"), navBtn("dyeing", "Dyeing & Dispensing"), navBtn("vouchers", "Vouchers"), navBtn("inventoryops", "Inventory Ops"), navBtn("stock", "Stock on Hand"), /*#__PURE__*/React.createElement("div", {
     className: "group"
   }, "Masters"), navBtn("masters", "Master Data"), navBtn("coa", "Chart of Accounts"), navBtn("customers", "Customers"), navBtn("suppliers", "Suppliers"), navBtn("warehouses", "Warehouses"), /*#__PURE__*/React.createElement("div", {
     className: "group"

@@ -23,6 +23,25 @@ from app.services.sequences import next_document_number
 router = APIRouter(prefix="/api/inventory", tags=["inventory-ops"])
 
 
+# ------------------------------ stock on hand -------------------------------
+
+@router.get("/stock-on-hand")
+def stock_on_hand(warehouse_id: uuid.UUID | None = None, item_type: str | None = None,
+                  db: Session = Depends(get_db),
+                  user: User = Depends(require_permission("report.read"))):
+    """Live stock position (qty + value) by item and warehouse, from open FIFO
+    layers. Optionally filter to one warehouse and/or item type."""
+    it = None
+    if item_type:
+        try:
+            it = ItemType(item_type.upper())
+        except ValueError:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                f"item_type must be one of {[t.value for t in ItemType]}")
+    rows = inventory.stock_on_hand(db, user.company_id, warehouse_id=warehouse_id, item_type=it)
+    return [{**r, "qty": str(r["qty"]), "value": str(r["value"])} for r in rows]
+
+
 # ------------------------------ stock transfers -----------------------------
 
 class TransferIn(BaseModel):

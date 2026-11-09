@@ -207,3 +207,64 @@ def transfer_stock(db: Session, *, company_id: uuid.UUID, item_type: ItemType, i
             unit_cost=unit, warehouse_id=to_warehouse_id, event_type="TRANSFER_IN",
             source_module=source_module, source_id=source_id)
     return {"qty": moved_qty, "cost_value": cost, "unit_cost": unit}
+
+
+def stock_on_hand(db: Session, company_id: uuid.UUID, *,
+                  warehouse_id: uuid.UUID | None = None,
+                  item_type: ItemType | None = None) -> list[dict]:
+    """Live on-hand stock from open FIFO layers, grouped by item and warehouse.
+
+    Yarn and chemicals group by their master; fabric groups by type + kind
+    (greige/finished) so individual rolls collapse into a readable line. Returns
+    rows with quantity and value, ready for a stock-position screen.
+    """
+    from app.models.manufacturing import FabricRoll
+    from app.models.masters import Chemical, FabricType, Warehouse, YarnMaster
+
+    stmt = select(StockLayer).where(
+        StockLayer.company_id == company_id, StockLayer.qty_remaining > QZERO)
+    if warehouse_id is not None:
+        stmt = stmt.where(StockLayer.warehouse_id == warehouse_id)
+    if item_type is not None:
+        stmt = stmt.where(StockLayer.item_type == item_type.value)
+    layers = db.execute(stmt).scalars().all()
+
+    chem = {c.id: (c.code, c.name) for c in db.execute(
+        select(Chemical).where(Chemical.company_id == company_id)).scalars()}
+    yarn = {y.id: (y.code, y.name) for y in db.execute(
+        select(YarnMaster).where(YarnMaster.company_id == company_id)).scalars()}
+    rolls = {r.id: (r.fabric_type_id, r.kind) for r in db.execute(
+        select(FabricRoll).where(FabricRoll.company_id == company_id)).scalars()}
+    ftypes = {f.id: f.name for f in db.execute(
+        select(FabricType).where(FabricType.company_id == company_id)).scalars()}
+    whs = {w.id: (w.code, w.name) for w in db.execute(
+        select(Warehouse).where(Warehouse.company_id == company_id)).scalars()}
+
+    agg: dict = {}
+    for ly in layers:
+        it = ly.item_type.value if hasattr(ly.item_type, "value") else ly.item_type
+        if it == ItemType.CHEMICAL.value:
+            code, name = chem.get(ly.item_id, ("", "Chemical/Dye"))
+            gid = ("CHEMICAL", str(ly.item_id))
+        elif it == ItemType.YARN.value:
+            code, name = yarn.get(ly.item_id, ("", "Yarn"))
+            gid = ("YARN", str(ly.item_id))
+        else:  # FABRIC — collapse rolls into type + kind
+            ft, kind = rolls.get(ly.item_id, (None, "GREIGE"))
+            kind = kind.value if hasattr(kind, "value") else (kind or "GREIGE")
+            code = kind
+            name = f"{kind.title()} — {ftypes.get(ft, 'Fabric')}"
+            gid = ("FABRIC", f"{ft}:{kind}")
+        wcode, wname = whs.get(ly.warehouse_id, ("", "— unassigned —"))
+        key = (gid, str(ly.warehouse_id))
+        row = agg.setdefault(key, {
+            "item_type": it, "item_code": code, "item_name": name,
+            "warehouse_id": str(ly.warehouse_id) if ly.warehouse_id else None,
+            "warehouse_code": wcode, "warehouse": wname,
+            "qty": QZERO, "value": MZERO})
+        row["qty"] = quantize(row["qty"] + (ly.qty_remaining or QZERO), QTY_SCALE)
+        row["value"] = quantize(row["value"] + (ly.value_remaining or MZERO), MONEY_SCALE)
+
+    rows = list(agg.values())
+    rows.sort(key=lambda r: (r["item_type"], r["item_name"], r["warehouse"]))
+    return rows

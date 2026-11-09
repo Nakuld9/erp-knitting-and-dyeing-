@@ -4,6 +4,7 @@ from app.services.inventory.service import (  # noqa: F401
     balance,
     consume,
     receive,
+    stock_on_hand,
     transfer_stock,
     weighted_average_cost,
 )

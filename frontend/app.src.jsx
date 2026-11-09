@@ -1986,6 +1986,46 @@ function Notifications({onChange}){
   </Panel>);
 }
 
+function StockOnHand(){
+  const warehouses=useList("/api/masters/warehouses");
+  const [wh,setWh]=useState(""); const [it,setIt]=useState("");
+  const [rows,setRows]=useState([]); const [err,setErr]=useState(""); const [busy,setBusy]=useState(false);
+  const load=useCallback(async()=>{ setErr(""); setBusy(true);
+    try{ const p=[]; if(wh) p.push("warehouse_id="+wh); if(it) p.push("item_type="+it);
+      setRows(await api("/api/inventory/stock-on-hand"+(p.length?"?"+p.join("&"):""))); }
+    catch(ex){ setErr(ex.message); } finally{ setBusy(false); } },[wh,it]);
+  useEffect(()=>{load()},[wh,it]);
+  const totVal=rows.reduce((s,r)=>s+Number(r.value||0),0);
+  const typeBadge={YARN:"",CHEMICAL:"info",FABRIC:"ok"};
+  return (<div>
+    <Panel title="Stock on hand (live)">
+      <div className="row mb" style={{alignItems:"end",gap:10}}>
+        <div className="field"><label>Warehouse</label>
+          <select value={wh} onChange={e=>setWh(e.target.value)}>
+            <option value="">All warehouses</option>
+            {warehouses.map(w=><option key={w.id} value={w.id}>{w.code} · {w.name}</option>)}</select></div>
+        <div className="field"><label>Item type</label>
+          <select value={it} onChange={e=>setIt(e.target.value)}>
+            <option value="">All</option><option value="YARN">Yarn</option>
+            <option value="CHEMICAL">Chemical / Dye</option><option value="FABRIC">Fabric</option></select></div>
+        <button className="btn sec" disabled={busy} onClick={load}>Refresh</button>
+        <span style={{flex:1}}/>
+        <div style={{textAlign:"right"}}><div className="muted" style={{fontSize:12}}>Total stock value</div>
+          <div style={{fontWeight:700,fontSize:16}}>{inr2(totVal)}</div></div>
+      </div>
+      {err && <div className="err">{err}</div>}
+      <table><thead><tr><th>Type</th><th>Code</th><th>Item</th><th>Warehouse</th>
+        <th className="num">Qty</th><th className="num">Value</th></tr></thead>
+      <tbody>{rows.length===0?<tr><td colSpan="6" className="muted">No stock on hand for this filter.</td></tr>:
+        rows.map((r,i)=><tr key={i}><td><span className={"badge "+(typeBadge[r.item_type]||"")}>{r.item_type}</span></td>
+          <td>{r.item_code||"—"}</td><td>{r.item_name}</td><td>{r.warehouse}</td>
+          <td className="num">{inr2(r.qty)}</td><td className="num">{inr2(r.value)}</td></tr>)}</tbody>
+      </table>
+      <div className="muted" style={{fontSize:12,marginTop:6}}>Live from open FIFO cost layers · fabric grouped by type &amp; greige/finished.</div>
+    </Panel>
+  </div>);
+}
+
 const ACCT_TYPES=[["ASSET","Asset"],["LIABILITY","Liability"],["EQUITY","Equity"],["INCOME","Income"],["EXPENSE","Expense"]];
 function ChartOfAccounts(){
   const [rows,setRows]=useState([]); const [err,setErr]=useState(""); const [ok,setOk]=useState("");
@@ -2038,6 +2078,7 @@ const PAGES={
   purchase:{t:"Purchase (GRN)",c:Purchase}, knitting:{t:"Knitting Production",c:Knitting},
   batching:{t:"Batching",c:Batching},
   inventoryops:{t:"Inventory Ops (transfer / split / merge)",c:InventoryOps},
+  stock:{t:"Stock on Hand",c:StockOnHand},
   pipeline:{t:"Sales Pipeline (enquiry → quote → SO)",c:SalesPipeline},
   salesorders:{t:"Sales Orders & Dispatch",c:SalesOrders},
   sales:{t:"Sales Invoice",c:Sales}, dyeing:{t:"Dyeing & Dispensing",c:Dyeing},
@@ -2056,7 +2097,7 @@ const PAGES={
 };
 const NAV_ICON={owner:"📊",factory:"🏭",accounts:"💼",chemical:"🧪",purchaseorders:"📝",purchase:"📥",
   knitting:"🧶",batching:"🧺",pipeline:"🎯",salesorders:"🛒",sales:"🧾",dyeing:"🎨",vouchers:"📒",
-  inventoryops:"🔁",masters:"🗃️",coa:"📚",customers:"👤",suppliers:"🏢",warehouses:"🏬",quality:"🔍",assets:"🏗️",
+  inventoryops:"🔁",stock:"📦",masters:"🗃️",coa:"📚",customers:"👤",suppliers:"🏢",warehouses:"🏬",quality:"🔍",assets:"🏗️",
   payroll:"💰",costing:"📐",devices:"🖨️",reports:"📈",approvals:"✔️",notifications:"🔔",acctops:"🧮",admin:"⚙️"};
 function fyLabel(){ const d=new Date(); const y=d.getMonth()>=3?d.getFullYear():d.getFullYear()-1; return `FY ${y}–${(y+1)%100}`; }
 
@@ -2079,7 +2120,7 @@ function App(){
         <div className="group">Transactions</div>
         {navBtn("purchaseorders","Purchase Orders")}{navBtn("purchase","Purchase (GRN)")}{navBtn("knitting","Knitting")}
         {navBtn("batching","Batching")}{navBtn("pipeline","Sales Pipeline")}{navBtn("salesorders","Sales Orders")}{navBtn("sales","Sales Invoice")}{navBtn("dyeing","Dyeing & Dispensing")}{navBtn("vouchers","Vouchers")}
-        {navBtn("inventoryops","Inventory Ops")}
+        {navBtn("inventoryops","Inventory Ops")}{navBtn("stock","Stock on Hand")}
         <div className="group">Masters</div>
         {navBtn("masters","Master Data")}{navBtn("coa","Chart of Accounts")}{navBtn("customers","Customers")}{navBtn("suppliers","Suppliers")}{navBtn("warehouses","Warehouses")}
         <div className="group">Quality</div>{navBtn("quality","Quality")}
