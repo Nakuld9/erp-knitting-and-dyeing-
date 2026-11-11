@@ -82,6 +82,16 @@ app.include_router(stores.router)
 observability.install_observability(app)
 
 
+from fastapi import Request  # noqa: E402
+from app.core.tenancy import CompanyOwnershipError  # noqa: E402
+
+
+@app.exception_handler(CompanyOwnershipError)
+def _ownership_handler(request: Request, exc: CompanyOwnershipError):
+    """A referenced record is missing or outside the caller's company → 422."""
+    return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+
 @app.get("/health", tags=["system"])
 def health() -> dict:
     """Liveness: the process is up and serving."""

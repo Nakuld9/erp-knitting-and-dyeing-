@@ -55,6 +55,13 @@ def receive(db: Session, *, company_id: uuid.UUID, store_item_id: uuid.UUID, qty
     q = Decimal(str(qty or 0)); c = Decimal(str(unit_cost or 0))
     if q <= 0 or c < 0:
         raise StoreError("Quantity must be positive and cost non-negative")
+    from app.core.tenancy import CompanyOwnershipError, require_company_record
+    from app.models.masters import Supplier, Warehouse
+    try:
+        require_company_record(db, Warehouse, warehouse_id, company_id, label="Warehouse", optional=True)
+        require_company_record(db, Supplier, supplier_id, company_id, label="Supplier", optional=True)
+    except CompanyOwnershipError as exc:
+        raise StoreError(str(exc)) from exc
     value = quantize(q * c, MONEY_SCALE)
     vdate = vdate or date.today()
     ref = f"STRCV:{number or item.code}:{vdate.isoformat()}:{value}"

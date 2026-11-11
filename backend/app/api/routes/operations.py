@@ -62,6 +62,17 @@ class GRNIn(BaseModel):
 @router.post("/procurement/grn", status_code=status.HTTP_201_CREATED)
 def post_grn(payload: GRNIn, db: Session = Depends(get_db),
             user: User = Depends(require_permission("purchase.manage"))):
+    from app.core.tenancy import require_company_record
+    from app.models.commercial import PurchaseOrder as _PO
+    from app.models.masters import Chemical, Supplier, TaxCode, Warehouse
+    require_company_record(db, Supplier, payload.supplier_id, user.company_id, label="Supplier")
+    require_company_record(db, _PO, payload.purchase_order_id, user.company_id,
+                           label="Purchase order", optional=True)
+    for ln in payload.lines:
+        d = ln.model_dump()
+        require_company_record(db, Chemical, d.get("chemical_id"), user.company_id, label="Chemical", optional=True)
+        require_company_record(db, Warehouse, d.get("warehouse_id"), user.company_id, label="Warehouse", optional=True)
+        require_company_record(db, TaxCode, d.get("tax_code_id"), user.company_id, label="Tax code", optional=True)
     grn = GoodsReceiptNote(company_id=user.company_id, supplier_id=payload.supplier_id,
                            number=payload.number, grn_date=payload.grn_date,
                            supplier_invoice_no=payload.supplier_invoice_no,
@@ -101,6 +112,15 @@ class SalesInvoiceIn(BaseModel):
 @router.post("/sales/invoices", status_code=status.HTTP_201_CREATED)
 def post_sales_invoice(payload: SalesInvoiceIn, db: Session = Depends(get_db),
                        user: User = Depends(require_permission("sales.manage"))):
+    from app.core.tenancy import require_company_record
+    from app.models.commercial import SalesOrder as _SO
+    from app.models.masters import Customer, TaxCode
+    require_company_record(db, Customer, payload.customer_id, user.company_id, label="Customer")
+    require_company_record(db, _SO, payload.sales_order_id, user.company_id,
+                           label="Sales order", optional=True)
+    for ln in payload.lines:
+        require_company_record(db, TaxCode, ln.model_dump().get("tax_code_id"), user.company_id,
+                               label="Tax code", optional=True)
     inv = SalesInvoice(company_id=user.company_id, customer_id=payload.customer_id,
                        number=payload.number, invoice_date=payload.invoice_date,
                        sales_order_id=payload.sales_order_id, created_by=user.id)

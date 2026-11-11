@@ -59,6 +59,13 @@ def create(db: Session, *, company_id: uuid.UUID, number: str, direction: str, p
     p = JobWorkProcess(process)
     if Decimal(str(qty_kg or 0)) <= 0:
         raise JobWorkError("Quantity (kg) must be positive")
+    from app.core.tenancy import require_company_record
+    from app.models.masters import FabricType, TaxCode
+    party_model = Customer if d == JobWorkDirection.INWARD else Supplier
+    require_company_record(db, party_model, party_id, company_id,
+                           label="Customer" if d == JobWorkDirection.INWARD else "Subcontractor")
+    require_company_record(db, FabricType, fabric_type_id, company_id, label="Fabric type", optional=True)
+    require_company_record(db, TaxCode, tax_code_id, company_id, label="Tax code", optional=True)
     jw = JobWork(
         company_id=company_id, number=number, direction=d, process=p, order_date=order_date,
         party_type="customer" if d == JobWorkDirection.INWARD else "supplier", party_id=party_id,

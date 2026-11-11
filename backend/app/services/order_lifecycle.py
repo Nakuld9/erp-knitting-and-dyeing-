@@ -55,6 +55,14 @@ def create_purchase_order(
     db: Session, *, company_id: uuid.UUID, supplier_id: uuid.UUID,
     number: str, order_date, lines: list[dict], created_by: uuid.UUID | None = None,
 ) -> PurchaseOrder:
+    from app.core.tenancy import require_company_record
+    from app.models.masters import Chemical, Supplier, TaxCode
+    require_company_record(db, Supplier, supplier_id, company_id, label="Supplier")
+    for ln in lines:
+        require_company_record(db, Chemical, ln.get("chemical_id"), company_id,
+                               label="Chemical", optional=True)
+        require_company_record(db, TaxCode, ln.get("tax_code_id"), company_id,
+                               label="Tax code", optional=True)
     po = PurchaseOrder(company_id=company_id, supplier_id=supplier_id, number=number,
                        order_date=order_date, status=DocStatus.DRAFT, created_by=created_by)
     for i, ln in enumerate(lines, start=1):
@@ -122,6 +130,14 @@ def create_sales_order(
     db: Session, *, company_id: uuid.UUID, customer_id: uuid.UUID, number: str,
     order_date, delivery_date=None, lines: list[dict], created_by: uuid.UUID | None = None,
 ) -> SalesOrder:
+    from app.core.tenancy import require_company_record
+    from app.models.masters import Customer, FabricType, TaxCode
+    require_company_record(db, Customer, customer_id, company_id, label="Customer")
+    for ln in lines:
+        require_company_record(db, FabricType, ln.get("fabric_type_id"), company_id,
+                               label="Fabric type", optional=True)
+        require_company_record(db, TaxCode, ln.get("tax_code_id"), company_id,
+                               label="Tax code", optional=True)
     so = SalesOrder(company_id=company_id, customer_id=customer_id, number=number,
                     order_date=order_date, delivery_date=delivery_date,
                     status=DocStatus.DRAFT, created_by=created_by)
