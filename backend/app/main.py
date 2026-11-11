@@ -81,6 +81,9 @@ app.include_router(stores.router)
 
 observability.install_observability(app)
 
+from app.core.ratelimit import install_rate_limiting  # noqa: E402
+install_rate_limiting(app, settings)
+
 
 from fastapi import Request  # noqa: E402
 from app.core.tenancy import CompanyOwnershipError  # noqa: E402

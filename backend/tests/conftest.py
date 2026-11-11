@@ -12,6 +12,9 @@ import os
 
 os.environ.setdefault("DATABASE_URL", "sqlite://")
 os.environ.setdefault("SECRET_KEY", "test-secret-key-0123456789abcdef0123456789")
+# The test suite shares one client IP and logs in many times; the per-IP limiter
+# is proven in its own test, so disable the global one here to avoid 429s.
+os.environ.setdefault("RATE_LIMIT_ENABLED", "false")
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

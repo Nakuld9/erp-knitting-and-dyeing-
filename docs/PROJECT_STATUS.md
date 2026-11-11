@@ -1,7 +1,7 @@
 # Project status & pending list
 
 Audit of the implementation against the master specification (the 24-section
-brief). Updated **2026-11-11**. Test suite: **253 passing**
+brief). Updated **2026-11-11**. Test suite: **259 passing**
 (`cd backend && pytest`).
 
 Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ not built.
@@ -43,7 +43,7 @@ Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ no
 | Hardware | weighing-scale + knitting-machine integration (simulated), efficiency |
 | Dashboards | Owner / Factory / Accounts / Chemical |
 | Reports | Excel + PDF exports |
-| Security | JWT, 15 RBAC roles, granular permissions, immutable posted entries; **company-ownership guard** on referenced ids (no cross-tenant supplier/customer/account/warehouse refs); **fail-closed GST place-of-supply**; **production config guard** (rejects debug / weak secret / default DB creds in prod); PostgreSQL FIFO consumption serialized by advisory lock |
+| Security | JWT, 15 RBAC roles, granular permissions, immutable posted entries; **company-ownership guard** on referenced ids (no cross-tenant supplier/customer/account/warehouse refs); **fail-closed GST place-of-supply**; **production config guard** (rejects debug / weak secret / default DB creds in prod); **per-IP rate limiting** (tight login bucket, health exempt); PostgreSQL FIFO consumption serialized by advisory lock + FOR UPDATE, **proven by a real-Postgres concurrency test** |
 | Traceability | order → yarn → roll → batch → bath → dispensing → inventory → GL |
 | **Observability / ops** | readiness probe (`/health/ready`, DB-checked), in-process metrics (`/health/metrics`), structured per-request logging with correlation id (`X-Request-ID`), unhandled-error capture → clean JSON 500; committed backup / restore / health-probe scripts + cron example; Docker/compose `HEALTHCHECK` |
 | **E-invoice (IRN)** | canonical NIC payload (v1.1) from a posted sales invoice with intra/inter-state CGST-SGST/IGST split; pluggable adapter (offline **simulator** + configurable **GSP** REST adapter for Webtel / Pinnacle, with subscription-key header); IRN/Ack/signed-QR stored, idempotent generate, cancel, `integration_events` audit; generate/cancel from the Sales Invoice page |
