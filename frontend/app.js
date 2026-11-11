@@ -253,13 +253,15 @@ function LineItems({
   newRow,
   amount,
   amountLabel = "Taxable subtotal",
-  note
+  note,
+  minRows = 1,
+  footer
 }) {
   const set = (i, k, v) => setRows(rs => rs.map((r, j) => j === i ? {
     ...r,
     [k]: v
   } : r));
-  const del = i => setRows(rs => rs.length > 1 ? rs.filter((_, j) => j !== i) : rs);
+  const del = i => setRows(rs => rs.length > minRows ? rs.filter((_, j) => j !== i) : rs);
   const subtotal = amount ? rows.reduce((s, r) => s + Number(amount(r) || 0), 0) : null;
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, columns.map(c => /*#__PURE__*/React.createElement("th", {
     key: c.key,
@@ -295,16 +297,16 @@ function LineItems({
     placeholder: c.placeholder
   }))), amount && /*#__PURE__*/React.createElement("td", {
     className: "num"
-  }, inr2(amount(r))), /*#__PURE__*/React.createElement("td", null, rows.length > 1 && /*#__PURE__*/React.createElement("button", {
+  }, inr2(amount(r))), /*#__PURE__*/React.createElement("td", null, rows.length > minRows && /*#__PURE__*/React.createElement("button", {
     type: "button",
     className: "btn sec",
     title: "Remove",
     onClick: () => del(i)
-  }, "\u2715"))))), amount && /*#__PURE__*/React.createElement("tfoot", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+  }, "\u2715"))))), footer ? /*#__PURE__*/React.createElement("tfoot", null, footer(rows)) : amount ? /*#__PURE__*/React.createElement("tfoot", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
     colSpan: columns.length
   }, amountLabel), /*#__PURE__*/React.createElement("th", {
     className: "num"
-  }, inr2(subtotal)), /*#__PURE__*/React.createElement("th", null)))), /*#__PURE__*/React.createElement("div", {
+  }, inr2(subtotal)), /*#__PURE__*/React.createElement("th", null))) : null), /*#__PURE__*/React.createElement("div", {
     className: "row",
     style: {
       marginTop: 10,
@@ -4353,65 +4355,51 @@ function Vouchers() {
       narration: e.target.value
     }),
     placeholder: "Description"
-  }))), /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Account"), /*#__PURE__*/React.createElement("th", {
-    className: "num"
-  }, "Debit"), /*#__PURE__*/React.createElement("th", {
-    className: "num"
-  }, "Credit"), /*#__PURE__*/React.createElement("th", null, "Narration"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, lines.map((l, i) => /*#__PURE__*/React.createElement("tr", {
-    key: i
-  }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Opts, {
-    items: acctOpts,
-    value: l.account_code,
-    onChange: e => setLine(i, "account_code", e.target.value)
-  })), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, /*#__PURE__*/React.createElement("input", {
-    style: {
+  }))), /*#__PURE__*/React.createElement(LineItems, {
+    rows: lines,
+    setRows: setLines,
+    minRows: 2,
+    newRow: () => ({
+      account_code: "",
+      debit: "",
+      credit: "",
+      narration: ""
+    }),
+    columns: [{
+      key: "account_code",
+      label: "Account",
+      type: "opts",
+      items: acctOpts
+    }, {
+      key: "debit",
+      label: "Debit",
+      num: true,
       width: 100
-    },
-    value: l.debit,
-    onChange: e => setLine(i, "debit", e.target.value)
-  })), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, /*#__PURE__*/React.createElement("input", {
-    style: {
+    }, {
+      key: "credit",
+      label: "Credit",
+      num: true,
       width: 100
-    },
-    value: l.credit,
-    onChange: e => setLine(i, "credit", e.target.value)
-  })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("input", {
-    style: {
+    }, {
+      key: "narration",
+      label: "Narration",
       width: 150
-    },
-    value: l.narration,
-    onChange: e => setLine(i, "narration", e.target.value)
-  })), /*#__PURE__*/React.createElement("td", null, lines.length > 2 && /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    className: "btn sec",
-    onClick: () => setLines(ls => ls.filter((_, j) => j !== i))
-  }, "\u2715"))))), /*#__PURE__*/React.createElement("tfoot", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Totals"), /*#__PURE__*/React.createElement("th", {
-    className: "num"
-  }, inr2(totDr)), /*#__PURE__*/React.createElement("th", {
-    className: "num"
-  }, inr2(totCr)), /*#__PURE__*/React.createElement("th", {
-    colSpan: "2"
-  }, /*#__PURE__*/React.createElement("span", {
-    className: "badge " + (balanced ? "ok" : "bad")
-  }, balanced ? "Balanced" : "Dr ≠ Cr"))))), /*#__PURE__*/React.createElement("div", {
+    }],
+    footer: () => /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Totals"), /*#__PURE__*/React.createElement("th", {
+      className: "num"
+    }, inr2(totDr)), /*#__PURE__*/React.createElement("th", {
+      className: "num"
+    }, inr2(totCr)), /*#__PURE__*/React.createElement("th", {
+      colSpan: "2"
+    }, /*#__PURE__*/React.createElement("span", {
+      className: "badge " + (balanced ? "ok" : "bad")
+    }, balanced ? "Balanced" : "Dr ≠ Cr")))
+  }), /*#__PURE__*/React.createElement("div", {
     className: "row",
     style: {
       marginTop: 12
     }
   }, /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    className: "btn sec",
-    onClick: () => setLines(ls => [...ls, {
-      account_code: "",
-      debit: "",
-      credit: "",
-      narration: ""
-    }])
-  }, "+ Add line"), /*#__PURE__*/React.createElement("button", {
     type: "button",
     className: "btn sec",
     disabled: !balanced,

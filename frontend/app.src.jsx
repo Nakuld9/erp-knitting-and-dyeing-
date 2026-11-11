@@ -101,9 +101,9 @@ function DataTable({columns, rows, searchKeys, pageSize=10, empty="Nothing to sh
 // add/remove rows, an optional computed per-row amount and a live subtotal.
 // NOTE: statutory GST/total are posted by the backend — the subtotal here is the
 // taxable (qty x rate) figure only, shown for data entry, never as the tax source.
-function LineItems({columns, rows, setRows, newRow, amount, amountLabel="Taxable subtotal", note}){
+function LineItems({columns, rows, setRows, newRow, amount, amountLabel="Taxable subtotal", note, minRows=1, footer}){
   const set=(i,k,v)=>setRows(rs=>rs.map((r,j)=>j===i?{...r,[k]:v}:r));
-  const del=i=>setRows(rs=>rs.length>1?rs.filter((_,j)=>j!==i):rs);
+  const del=i=>setRows(rs=>rs.length>minRows?rs.filter((_,j)=>j!==i):rs);
   const subtotal = amount? rows.reduce((s,r)=>s+Number(amount(r)||0),0) : null;
   return (<div>
     <table><thead><tr>
@@ -116,9 +116,10 @@ function LineItems({columns, rows, setRows, newRow, amount, amountLabel="Taxable
          : <input style={{width:c.width||120}} value={r[c.key]} onChange={e=>set(i,c.key,e.target.value)} placeholder={c.placeholder}/>}
       </td>)}
       {amount && <td className="num">{inr2(amount(r))}</td>}
-      <td>{rows.length>1 && <button type="button" className="btn sec" title="Remove" onClick={()=>del(i)}>✕</button>}</td>
+      <td>{rows.length>minRows && <button type="button" className="btn sec" title="Remove" onClick={()=>del(i)}>✕</button>}</td>
     </tr>)}</tbody>
-    {amount && <tfoot><tr><th colSpan={columns.length}>{amountLabel}</th><th className="num">{inr2(subtotal)}</th><th></th></tr></tfoot>}
+    {footer? <tfoot>{footer(rows)}</tfoot>
+      : amount? <tfoot><tr><th colSpan={columns.length}>{amountLabel}</th><th className="num">{inr2(subtotal)}</th><th></th></tr></tfoot> : null}
     </table>
     <div className="row" style={{marginTop:10,alignItems:"center",gap:12}}>
       <button type="button" className="btn sec" onClick={()=>setRows(rs=>[...rs,newRow()])}>+ Add line</button>
@@ -1461,18 +1462,17 @@ function Vouchers(){
           <div className="field" style={{flex:1}}><label>Narration</label><input value={h.narration}
             onChange={e=>setH({...h,narration:e.target.value})} placeholder="Description"/></div>
         </div>
-        <table><thead><tr><th>Account</th><th className="num">Debit</th><th className="num">Credit</th><th>Narration</th><th></th></tr></thead>
-        <tbody>{lines.map((l,i)=><tr key={i}>
-          <td><Opts items={acctOpts} value={l.account_code} onChange={e=>setLine(i,"account_code",e.target.value)}/></td>
-          <td className="num"><input style={{width:100}} value={l.debit} onChange={e=>setLine(i,"debit",e.target.value)}/></td>
-          <td className="num"><input style={{width:100}} value={l.credit} onChange={e=>setLine(i,"credit",e.target.value)}/></td>
-          <td><input style={{width:150}} value={l.narration} onChange={e=>setLine(i,"narration",e.target.value)}/></td>
-          <td>{lines.length>2 && <button type="button" className="btn sec" onClick={()=>setLines(ls=>ls.filter((_,j)=>j!==i))}>✕</button>}</td>
-        </tr>)}</tbody>
-        <tfoot><tr><th>Totals</th><th className="num">{inr2(totDr)}</th><th className="num">{inr2(totCr)}</th>
-          <th colSpan="2"><span className={"badge "+(balanced?"ok":"bad")}>{balanced?"Balanced":"Dr ≠ Cr"}</span></th></tr></tfoot></table>
+        <LineItems rows={lines} setRows={setLines} minRows={2}
+          newRow={()=>({account_code:"",debit:"",credit:"",narration:""})}
+          columns={[
+            {key:"account_code",label:"Account",type:"opts",items:acctOpts},
+            {key:"debit",label:"Debit",num:true,width:100},
+            {key:"credit",label:"Credit",num:true,width:100},
+            {key:"narration",label:"Narration",width:150},
+          ]}
+          footer={()=><tr><th>Totals</th><th className="num">{inr2(totDr)}</th><th className="num">{inr2(totCr)}</th>
+            <th colSpan="2"><span className={"badge "+(balanced?"ok":"bad")}>{balanced?"Balanced":"Dr ≠ Cr"}</span></th></tr>}/>
         <div className="row" style={{marginTop:12}}>
-          <button type="button" className="btn sec" onClick={()=>setLines(ls=>[...ls,{account_code:"",debit:"",credit:"",narration:""}])}>+ Add line</button>
           <button type="button" className="btn sec" disabled={!balanced} onClick={submitApproval}>Submit for approval</button>
           <button className="btn">Post voucher</button>
         </div>
