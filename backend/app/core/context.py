@@ -25,6 +25,11 @@ from app.models.core import Branch, User
 from app.models.tenancy import UserCompanyMembership, UserFactoryMembership
 
 
+# Company-wide factory access permission: a role holding this reaches any
+# factory of its acting company without per-factory membership rows.
+FACTORY_ACCESS_ALL = "factory.access_all"
+
+
 class TenantScopeError(HTTPException):
     def __init__(self, detail: str):
         super().__init__(status.HTTP_403_FORBIDDEN, detail)
@@ -103,17 +108,23 @@ def resolve_tenant_context(
         if branch is None or branch.company_id != company_id:
             raise TenantScopeError("Factory not found in the acting company")
         if not is_super:
-            factory_rows = db.execute(
-                select(UserFactoryMembership.branch_id).where(
-                    UserFactoryMembership.user_id == user.id,
-                    UserFactoryMembership.company_id == company_id,
-                    UserFactoryMembership.is_active.is_(True),
-                )
-            ).scalars().all()
-            # Policy: if the user has explicit factory rows, they are restricted
-            # to them; if they have none, company membership implies all factories.
-            if factory_rows and requested_factory_id not in set(factory_rows):
-                raise TenantScopeError("Not authorized for the requested factory")
+            # Policy (business rule 3): factory access requires EXPLICIT factory
+            # membership. Company membership alone does NOT grant access to every
+            # factory. A designated role may hold the company-wide override
+            # permission ``factory.access_all`` to reach any factory of the
+            # acting company without per-factory rows.
+            if not user.has_permission(FACTORY_ACCESS_ALL):
+                factory_rows = set(db.execute(
+                    select(UserFactoryMembership.branch_id).where(
+                        UserFactoryMembership.user_id == user.id,
+                        UserFactoryMembership.company_id == company_id,
+                        UserFactoryMembership.is_active.is_(True),
+                    )
+                ).scalars().all())
+                if requested_factory_id not in factory_rows:
+                    raise TenantScopeError(
+                        "Not authorized for the requested factory "
+                        "(explicit factory membership or factory.access_all required)")
         factory_id = requested_factory_id
 
     return TenantContext(user=user, company_id=company_id, factory_id=factory_id)

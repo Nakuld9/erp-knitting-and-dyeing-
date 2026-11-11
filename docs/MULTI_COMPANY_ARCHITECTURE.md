@@ -157,8 +157,18 @@ running system behaving exactly as it does today.
 - **API** `app/api/routes/tenancy.py` — `GET /api/me/context` (authorized
   companies/factories + resolved active scope), and `admin.manage`-guarded CRUD
   for organizations, company/factory memberships, and GST registrations.
-- **Tests** — foundation (7), migrations (4), tenancy API (6) incl. forged
-  `X-Company-Id` → 403 for a scoped non-superuser.
+- **Acting-company route wiring** — `get_current_user` resolves and stamps the
+  acting company per request (`set_committed_value`, never persisted); switching
+  `X-Company-Id` changes the real dataset. See `docs/ROUTE_WIRING_REPORT.md`.
+- **Factory access policy (rule 3)** — explicit `UserFactoryMembership` or the
+  company-wide `factory.access_all` permission required; company membership alone
+  does not grant factory access.
+- **GST (confirmed rule: one active GSTIN per company)** — `GSTRegistration` is
+  extensible to many, but the create endpoint enforces one *active* registration
+  per company and validates GSTIN format. GST transactions remain company-scoped;
+  cross-company GST register isolation is tested.
+- **Tests** — foundation (8), migrations (4), tenancy API (9), company switching
+  (4). Full suite green.
 
 ### Still to do (safe, next)
 - Wire the resolved acting-company into the existing routes so switching

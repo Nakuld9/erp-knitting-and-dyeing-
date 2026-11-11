@@ -13,8 +13,8 @@ import uuid
 
 import pytest
 
-from app.core.context import TenantScopeError, resolve_tenant_context
-from app.models.core import Branch, Company, User
+from app.core.context import FACTORY_ACCESS_ALL, TenantScopeError, resolve_tenant_context
+from app.models.core import Branch, Company, Permission, Role, User
 from app.models.tenancy import UserCompanyMembership, UserFactoryMembership
 
 
@@ -120,11 +120,30 @@ def test_factory_from_other_company_rejected(db):
         resolve_tenant_context(db, u, requested_factory_id=other_factory.id)
 
 
-def test_no_factory_rows_implies_all_factories(db):
-    """Company membership with no explicit factory rows permits any factory."""
+def test_no_factory_rows_denied_without_permission(db):
+    """Business rule 3: company membership alone does NOT grant factory access."""
     c = _company(db, "AF")
     f1 = _branch(db, c.id, "X1")
     u = _user(db, "allfac", company_id=c.id)
+    db.add(UserCompanyMembership(user_id=u.id, company_id=c.id, is_default=True))
+    db.flush()
+
+    with pytest.raises(TenantScopeError):
+        resolve_tenant_context(db, u, requested_factory_id=f1.id)
+
+
+def test_factory_access_all_permission_bypasses_membership(db):
+    """A role holding factory.access_all reaches any factory of its company."""
+    from sqlalchemy import select
+    c = _company(db, "FA")
+    f1 = _branch(db, c.id, "Y1")
+    u = _user(db, "supervisor", company_id=c.id)
+    # reuse the seeded permission rather than create a duplicate code
+    perm = db.execute(select(Permission).where(Permission.code == FACTORY_ACCESS_ALL)).scalar_one()
+    role = Role(code="plant-head", name="Plant Head")
+    role.permissions.append(perm)
+    u.roles.append(role)
+    db.add(role)
     db.add(UserCompanyMembership(user_id=u.id, company_id=c.id, is_default=True))
     db.flush()
 

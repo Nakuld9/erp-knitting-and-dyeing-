@@ -29,6 +29,7 @@ PERMISSIONS: list[tuple[str, str, str]] = [
     ("report.read", "reports", "View reports and dashboards"),
     ("report.financial", "reports", "View financial statements"),
     ("admin.manage", "admin", "Manage users, roles and configuration"),
+    ("factory.access_all", "tenancy", "Access every factory of the acting company (company-wide)"),
 ]
 
 # role_code -> (name, [permission codes]); "*" means all permissions.
@@ -37,7 +38,8 @@ ROLES: dict[str, tuple[str, list[str]]] = {
     "SUPER_ADMIN": ("Super Administrator", ["*"]),
     "GENERAL_MANAGER": (
         "General Manager",
-        ["master.read", "report.read", "report.financial", "sales.manage", "purchase.manage"],
+        ["master.read", "report.read", "report.financial", "sales.manage", "purchase.manage",
+         "factory.access_all"],
     ),
     "PRODUCTION_MANAGER": (
         "Production Manager",
