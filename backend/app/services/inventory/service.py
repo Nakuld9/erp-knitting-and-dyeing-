@@ -100,6 +100,21 @@ def consume(
         raise ValueError("Consumption quantity must be positive")
     itype = item_type.value if isinstance(item_type, ItemType) else item_type
 
+    # Serialize consumption per company/item on PostgreSQL so two concurrent
+    # issues cannot both draw the same FIFO layer. The advisory lock also covers
+    # the zero-layer race (SELECT ... FOR UPDATE has no rows to lock); the row
+    # locks below protect the layers themselves. No-op on SQLite (tests).
+    bind = db.get_bind()
+    if bind is not None and bind.dialect.name == "postgresql":
+        import hashlib
+
+        from sqlalchemy import text
+        material = f"{company_id}:{itype}:{item_id}".encode("utf-8")
+        lock_key = int.from_bytes(hashlib.sha256(material).digest()[:8], "big", signed=False)
+        if lock_key >= 2**63:
+            lock_key -= 2**64
+        db.execute(text("SELECT pg_advisory_xact_lock(:k)"), {"k": lock_key})
+
     stmt = select(StockLayer).where(
         StockLayer.company_id == company_id,
         StockLayer.item_type == itype,
@@ -111,6 +126,8 @@ def consume(
     if warehouse_id is not None:
         stmt = stmt.where(StockLayer.warehouse_id == warehouse_id)
     stmt = stmt.order_by(StockLayer.received_at, StockLayer.id)
+    if bind is not None and bind.dialect.name == "postgresql":
+        stmt = stmt.with_for_update()
 
     layers = db.execute(stmt).scalars().all()
     if method.upper() == "FEFO":
