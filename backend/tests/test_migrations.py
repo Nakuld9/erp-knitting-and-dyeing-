@@ -121,6 +121,17 @@ def test_roundtrip_is_repeatable(temp_db):
     assert _has_org_column(path)
 
 
+def test_branch_legacy_flag_added_and_reversible(temp_db):
+    """0004 adds branches.is_legacy_unassigned; downgrade to 0003 removes it."""
+    url, path = temp_db
+    cfg = _alembic_cfg(url)
+    command.upgrade(cfg, "head")
+    assert _has_column(path, "branches", "is_legacy_unassigned")
+    command.downgrade(cfg, "0003_factory_ownership_columns")
+    assert not _has_column(path, "branches", "is_legacy_unassigned")
+    assert _has_table(path, "branches")
+
+
 def test_factory_columns_added_and_reversible(temp_db):
     """0003 adds nullable factory_id to factory-owned tables; downgrade to 0002
     removes only those columns, leaving the tables intact."""

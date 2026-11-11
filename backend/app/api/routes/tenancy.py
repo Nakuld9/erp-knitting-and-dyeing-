@@ -39,6 +39,18 @@ from app.models.tenancy import (
 router = APIRouter(tags=["tenancy"])
 
 
+# --- legacy-factory reconciliation (read-only visibility) -------------------
+
+@router.get("/api/admin/factory-reconciliation")
+def factory_reconciliation(db: Session = Depends(get_db),
+                           user: User = Depends(require_permission("report.read"))):
+    """Historical operational rows still sitting on a Legacy/Unassigned factory,
+    i.e. pending reconciliation to a real factory. Backfill itself is a deliberate
+    CLI step (scripts/backfill_legacy_factory.py), never run from the API."""
+    from app.services.tenancy_backfill import reconciliation_report
+    return reconciliation_report(db)
+
+
 # --- caller scope -----------------------------------------------------------
 
 @router.get("/api/me/context")

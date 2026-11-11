@@ -61,6 +61,11 @@ class Branch(AuditMixin, Base):
     state_code: Mapped[str | None] = mapped_column(String(2), nullable=True)
     address: Mapped[str | None] = mapped_column(String(500), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Marks the explicit "Legacy / Unassigned" bucket factory used to hold
+    # historical operational rows whose real factory could not be established.
+    # Rows pointing at such a branch are, by definition, pending reconciliation.
+    # This is NOT an operational factory.
+    is_legacy_unassigned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
     company: Mapped[Company] = relationship(back_populates="branches")
 
