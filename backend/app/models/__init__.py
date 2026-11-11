@@ -146,6 +146,7 @@ from app.models.tenancy import (  # noqa: F401
     UserCompanyMembership,
     UserFactoryMembership,
 )
+from app.models.transfers import FactoryStockTransfer, TransferStatus  # noqa: F401
 
 # Registering the guard activates the immutable-ledger Session listeners.
 from app.core import ledger_guard  # noqa: E402,F401

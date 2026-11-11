@@ -35,6 +35,7 @@ from app.api.routes import (
     rolls,
     stores,
     tenancy,
+    transfers,
     vouchers,
 )
 from app.core.config import settings
@@ -80,6 +81,7 @@ app.include_router(ewaybill.router)
 app.include_router(jobwork.router)
 app.include_router(stores.router)
 app.include_router(tenancy.router)
+app.include_router(transfers.router)
 
 observability.install_observability(app)
 

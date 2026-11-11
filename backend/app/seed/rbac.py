@@ -32,6 +32,8 @@ PERMISSIONS: list[tuple[str, str, str]] = [
     ("factory.access_all", "tenancy", "Access every factory of the acting company (company-wide)"),
     ("consolidation.approve", "reports", "Approve group consolidation eliminations (finance)"),
     ("intercompany.approve", "accounting", "Approve inter-company account mappings (accountant)"),
+    ("transfer.manage", "inventory", "Create/dispatch/receive factory stock transfers"),
+    ("transfer.authorize", "inventory", "Authorize factory stock transfers (checker)"),
 ]
 
 # role_code -> (name, [permission codes]); "*" means all permissions.
@@ -41,12 +43,12 @@ ROLES: dict[str, tuple[str, list[str]]] = {
     "GENERAL_MANAGER": (
         "General Manager",
         ["master.read", "report.read", "report.financial", "sales.manage", "purchase.manage",
-         "factory.access_all"],
+         "factory.access_all", "transfer.authorize"],
     ),
     "PRODUCTION_MANAGER": (
         "Production Manager",
         ["master.read", "knitting.manage", "greige.manage", "dyeing.manage", "recipe.read",
-         "finishing.manage", "quality.manage", "report.read"],
+         "finishing.manage", "quality.manage", "report.read", "transfer.manage"],
     ),
     "KNITTING_SUPERVISOR": ("Knitting Supervisor", ["master.read", "knitting.manage", "greige.manage"]),
     "DYEING_SUPERVISOR": ("Dyeing Supervisor", ["master.read", "dyeing.manage", "recipe.read", "dispensing.operate"]),

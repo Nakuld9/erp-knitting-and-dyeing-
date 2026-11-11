@@ -121,6 +121,17 @@ def test_roundtrip_is_repeatable(temp_db):
     assert _has_org_column(path)
 
 
+def test_factory_transfer_table_added_and_reversible(temp_db):
+    """0007 adds factory_stock_transfers; downgrade to 0006 removes it."""
+    url, path = temp_db
+    cfg = _alembic_cfg(url)
+    command.upgrade(cfg, "head")
+    assert _has_table(path, "factory_stock_transfers")
+    command.downgrade(cfg, "0006_intercompany_mappings")
+    assert not _has_table(path, "factory_stock_transfers")
+    assert _has_table(path, "warehouses")
+
+
 def test_intercompany_table_added_and_reversible(temp_db):
     """0006 adds intercompany_account_mappings; downgrade to 0005 removes it."""
     url, path = temp_db
