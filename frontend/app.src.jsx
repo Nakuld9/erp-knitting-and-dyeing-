@@ -188,15 +188,18 @@ const genNo = pfx => pfx+"-"+Date.now().toString().slice(-8);
 const DONUT=["#2563eb","#16a34a","#f59e0b","#7c3aed","#0d9488","#e11d48","#64748b"];
 
 const FLOW_NAV={"Yarn Issue":"knitting","Knitting":"knitting","Greige":"stock","Dyeing":"dyeing","Finishing":"quality","Finished Goods":"stock"};
-function OwnerDash({onNav}){
+function OwnerDash({onNav, asOf, refreshKey}){
   const nav=onNav||(()=>{});
-  const [d,err]=useData("/api/dashboard/owner");
-  const trend=useList("/api/dashboard/production-trend");
-  const chem=useData("/api/dashboard/chemical")[0];
-  const util=useList("/api/hardware/knitting-summary");
-  const batches=useList("/api/dyeing/batches");
-  const acts=useList("/api/vouchers");
-  if(err) return <Panel>{err}</Panel>; if(!d) return <Panel>Loading…</Panel>;
+  const q=p=>p+(p.includes("?")?"&":"?")+(asOf?("as_of="+asOf):"")+"&_r="+(refreshKey||0);
+  const [d,err]=useData(q("/api/dashboard/owner"));
+  const trend=useList(q("/api/dashboard/production-trend"));
+  const chem=useData(q("/api/dashboard/chemical"))[0];
+  const util=useList(q("/api/hardware/knitting-summary"));
+  const batches=useList(q("/api/dyeing/batches"));
+  const acts=useList(q("/api/vouchers"));
+  if(err) return <Panel><div className="muted">Couldn't load dashboard data — {String(err)}</div>
+    <button className="btn sec" style={{marginTop:10}} onClick={()=>location.reload()}>Retry</button></Panel>;
+  if(!d) return <Panel><div className="muted">Loading dashboard…</div></Panel>;
   const dl=d.deltas||{}; const k=d.kpis||{};
   const mix=((chem&&chem.top_consumption)||[]).map((m,i)=>({name:m.material, value:Number(m.cost), c:DONUT[i%DONUT.length]}));
   const mixTotal=mix.reduce((s,m)=>s+m.value,0);
@@ -309,13 +312,14 @@ function OwnerDash({onNav}){
 function SalesTable({rows}){ return (<table><thead><tr><th>Month</th><th className="num">Sales</th></tr></thead>
   <tbody>{(rows||[]).map((r,i)=><tr key={i}><td>{r.month}</td><td className="num">{inr2(r.amount)}</td></tr>)}</tbody></table>); }
 
-function FactoryDash({onNav}){
+function FactoryDash({onNav, asOf, refreshKey}){
   const nav=onNav||(()=>{});
-  const [d,err]=useData("/api/dashboard/factory");
-  const trend=useList("/api/dashboard/production-trend");
-  const util=useList("/api/hardware/knitting-summary");
-  const batches=useList("/api/dyeing/batches");
-  if(err) return <Panel>{err}</Panel>; if(!d) return <Panel>Loading…</Panel>;
+  const q=p=>p+(p.includes("?")?"&":"?")+(asOf?("as_of="+asOf):"")+"&_r="+(refreshKey||0);
+  const [d,err]=useData(q("/api/dashboard/factory"));
+  const trend=useList(q("/api/dashboard/production-trend"));
+  const util=useList(q("/api/hardware/knitting-summary"));
+  const batches=useList(q("/api/dyeing/batches"));
+  if(err) return <Panel><div className="muted">Couldn't load — {String(err)}</div></Panel>; if(!d) return <Panel><div className="muted">Loading…</div></Panel>;
   const dayShort=s=>s?s.slice(5):"";
   return (<div>
     <div className="kpi-grid">
@@ -352,11 +356,12 @@ function FactoryDash({onNav}){
   </div>);
 }
 
-function AccountsDash({onNav}){
+function AccountsDash({onNav, asOf, refreshKey}){
   const nav=onNav||(()=>{});
-  const [d,err]=useData("/api/dashboard/accounts");
-  const acts=useList("/api/vouchers");
-  if(err) return <Panel>{err}</Panel>; if(!d) return <Panel>Loading…</Panel>;
+  const q=p=>p+(p.includes("?")?"&":"?")+(asOf?("as_of="+asOf):"")+"&_r="+(refreshKey||0);
+  const [d,err]=useData(q("/api/dashboard/accounts"));
+  const acts=useList(q("/api/vouchers"));
+  if(err) return <Panel><div className="muted">Couldn't load — {String(err)}</div></Panel>; if(!d) return <Panel><div className="muted">Loading…</div></Panel>;
   return (<div>
     <div className="kpi-grid">
       <Stat tone="green" icon="📥" label="Today's receipts" value={inr(d.today_receipts)} onClick={()=>nav("vouchers")} />
@@ -386,10 +391,11 @@ function AccountsDash({onNav}){
   </div>);
 }
 
-function ChemicalDash({onNav}){
+function ChemicalDash({onNav, asOf, refreshKey}){
   const nav=onNav||(()=>{});
-  const [d,err]=useData("/api/dashboard/chemical");
-  if(err) return <Panel>{err}</Panel>; if(!d) return <Panel>Loading…</Panel>;
+  const q=p=>p+(p.includes("?")?"&":"?")+(asOf?("as_of="+asOf):"")+"&_r="+(refreshKey||0);
+  const [d,err]=useData(q("/api/dashboard/chemical"));
+  if(err) return <Panel><div className="muted">Couldn't load — {String(err)}</div></Panel>; if(!d) return <Panel><div className="muted">Loading…</div></Panel>;
   const bars=(d.top_consumption||[]).map(r=>({material:r.material, cost:Number(r.cost)}));
   return (<div>
     <div className="kpi-grid">
@@ -2427,9 +2433,28 @@ const NAV_ICON={owner:"📊",factory:"🏭",accounts:"💼",chemical:"🧪",purc
   payroll:"💰",costing:"📐",devices:"🖨️",reports:"📈",approvals:"✔️",notifications:"🔔",acctops:"🧮",admin:"⚙️"};
 function fyLabel(){ const d=new Date(); const y=d.getMonth()>=3?d.getFullYear():d.getFullYear()-1; return `FY ${y}–${(y+1)%100}`; }
 
+// Financial year helpers: FY string "2026-2027" -> the as-of date to query.
+function currentFY(){ const d=new Date(); const y=d.getMonth()>=3?d.getFullYear():d.getFullYear()-1; return `${y}-${y+1}`; }
+function fyAsOf(fy){
+  const parts=(fy||"").split("-").map(Number); if(parts.length!==2||isNaN(parts[1])) return today();
+  const start=new Date(parts[0],3,1), end=new Date(parts[1],2,31), now=new Date();
+  return (now>=start && now<=end) ? today() : `${parts[1]}-03-31`;   // current FY -> today, else year-end
+}
+
 function App(){
   const [page,setPage]=useState("owner"); const [me,setMe]=useState(null);
   const [notif,setNotif]=useState(0);
+  // Financial-year context: options come from real accounting periods; the
+  // selection drives the as-of date applied to dashboard/report queries.
+  const [fys,setFys]=useState([]); const [fy,setFy]=useState(()=>{ try{return localStorage.getItem("erp_fy")||currentFY();}catch(e){return currentFY();} });
+  const [refreshKey,setRefreshKey]=useState(0);
+  useEffect(()=>{ api("/api/admin/periods").then(ps=>{
+    const years=[...new Set((ps||[]).map(p=>p.fiscal_year).filter(Boolean))].sort().reverse();
+    if(!years.includes(currentFY())) years.unshift(currentFY());
+    setFys(years);
+  }).catch(()=>setFys([currentFY()])); },[]);
+  const pickFy=v=>{ setFy(v); try{localStorage.setItem("erp_fy",v);}catch(e){} setRefreshKey(k=>k+1); };
+  const asOf=fyAsOf(fy);
   const loadNotif=useCallback(()=>api("/api/notifications/unread-count").then(r=>setNotif(r.count||0)).catch(()=>{}),[]);
   useEffect(()=>{ api("/api/auth/me").then(setMe).catch(()=>{}); loadNotif();
     const t=setInterval(loadNotif,30000); return ()=>clearInterval(t); },[loadNotif]);
@@ -2470,15 +2495,18 @@ function App(){
         <div className="who-wrap">
           <button className="bell" title="Notifications" onClick={()=>{go("notifications"); loadNotif();}}>
             🔔{notif>0 && <span className="bell-dot">{notif>99?"99+":notif}</span>}</button>
-          <span className="fychip">{fyLabel()}</span>
-          <div className="who">{me? (me.full_name||me.username) : ""} · {new Date().toLocaleDateString("en-IN")}</div>
+          <button className="refresh-btn" title="Refresh data" onClick={()=>setRefreshKey(k=>k+1)}>⟳</button>
+          <select className="fy-select" title="Financial year" value={fy} onChange={e=>pickFy(e.target.value)}>
+            {fys.map(y=>{ const [a,b]=y.split("-"); return <option key={y} value={y}>FY {a}–{(b||"").slice(2)}</option>; })}
+          </select>
+          <div className="who">{me? (me.full_name||me.username) : ""}{me&&me.company?" · "+me.company:""}</div>
         </div></div>
       <div className="content">{
         page==="notifications"? <Notifications onChange={loadNotif}/>
-        : page==="owner"? <OwnerDash onNav={go}/>
-        : page==="factory"? <FactoryDash onNav={go}/>
-        : page==="accounts"? <AccountsDash onNav={go}/>
-        : page==="chemical"? <ChemicalDash onNav={go}/>
+        : page==="owner"? <OwnerDash onNav={go} asOf={asOf} refreshKey={refreshKey}/>
+        : page==="factory"? <FactoryDash onNav={go} asOf={asOf} refreshKey={refreshKey}/>
+        : page==="accounts"? <AccountsDash onNav={go} asOf={asOf} refreshKey={refreshKey}/>
+        : page==="chemical"? <ChemicalDash onNav={go} asOf={asOf} refreshKey={refreshKey}/>
         : <Cur/>}</div>
     </div>
   </div>);

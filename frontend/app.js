@@ -500,17 +500,30 @@ const FLOW_NAV = {
   "Finished Goods": "stock"
 };
 function OwnerDash({
-  onNav
+  onNav,
+  asOf,
+  refreshKey
 }) {
   const nav = onNav || (() => {});
-  const [d, err] = useData("/api/dashboard/owner");
-  const trend = useList("/api/dashboard/production-trend");
-  const chem = useData("/api/dashboard/chemical")[0];
-  const util = useList("/api/hardware/knitting-summary");
-  const batches = useList("/api/dyeing/batches");
-  const acts = useList("/api/vouchers");
-  if (err) return /*#__PURE__*/React.createElement(Panel, null, err);
-  if (!d) return /*#__PURE__*/React.createElement(Panel, null, "Loading\u2026");
+  const q = p => p + (p.includes("?") ? "&" : "?") + (asOf ? "as_of=" + asOf : "") + "&_r=" + (refreshKey || 0);
+  const [d, err] = useData(q("/api/dashboard/owner"));
+  const trend = useList(q("/api/dashboard/production-trend"));
+  const chem = useData(q("/api/dashboard/chemical"))[0];
+  const util = useList(q("/api/hardware/knitting-summary"));
+  const batches = useList(q("/api/dyeing/batches"));
+  const acts = useList(q("/api/vouchers"));
+  if (err) return /*#__PURE__*/React.createElement(Panel, null, /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "Couldn't load dashboard data \u2014 ", String(err)), /*#__PURE__*/React.createElement("button", {
+    className: "btn sec",
+    style: {
+      marginTop: 10
+    },
+    onClick: () => location.reload()
+  }, "Retry"));
+  if (!d) return /*#__PURE__*/React.createElement(Panel, null, /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "Loading dashboard\u2026"));
   const dl = d.deltas || {};
   const k = d.kpis || {};
   const mix = (chem && chem.top_consumption || []).map((m, i) => ({
@@ -812,15 +825,22 @@ function SalesTable({
   }, inr2(r.amount))))));
 }
 function FactoryDash({
-  onNav
+  onNav,
+  asOf,
+  refreshKey
 }) {
   const nav = onNav || (() => {});
-  const [d, err] = useData("/api/dashboard/factory");
-  const trend = useList("/api/dashboard/production-trend");
-  const util = useList("/api/hardware/knitting-summary");
-  const batches = useList("/api/dyeing/batches");
-  if (err) return /*#__PURE__*/React.createElement(Panel, null, err);
-  if (!d) return /*#__PURE__*/React.createElement(Panel, null, "Loading\u2026");
+  const q = p => p + (p.includes("?") ? "&" : "?") + (asOf ? "as_of=" + asOf : "") + "&_r=" + (refreshKey || 0);
+  const [d, err] = useData(q("/api/dashboard/factory"));
+  const trend = useList(q("/api/dashboard/production-trend"));
+  const util = useList(q("/api/hardware/knitting-summary"));
+  const batches = useList(q("/api/dyeing/batches"));
+  if (err) return /*#__PURE__*/React.createElement(Panel, null, /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "Couldn't load \u2014 ", String(err)));
+  if (!d) return /*#__PURE__*/React.createElement(Panel, null, /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "Loading\u2026"));
   const dayShort = s => s ? s.slice(5) : "";
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "kpi-grid"
@@ -926,13 +946,20 @@ function FactoryDash({
   }, b.rolls), /*#__PURE__*/React.createElement("td", null, stBadge(b.status)))))))));
 }
 function AccountsDash({
-  onNav
+  onNav,
+  asOf,
+  refreshKey
 }) {
   const nav = onNav || (() => {});
-  const [d, err] = useData("/api/dashboard/accounts");
-  const acts = useList("/api/vouchers");
-  if (err) return /*#__PURE__*/React.createElement(Panel, null, err);
-  if (!d) return /*#__PURE__*/React.createElement(Panel, null, "Loading\u2026");
+  const q = p => p + (p.includes("?") ? "&" : "?") + (asOf ? "as_of=" + asOf : "") + "&_r=" + (refreshKey || 0);
+  const [d, err] = useData(q("/api/dashboard/accounts"));
+  const acts = useList(q("/api/vouchers"));
+  if (err) return /*#__PURE__*/React.createElement(Panel, null, /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "Couldn't load \u2014 ", String(err)));
+  if (!d) return /*#__PURE__*/React.createElement(Panel, null, /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "Loading\u2026"));
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
     className: "kpi-grid"
   }, /*#__PURE__*/React.createElement(Stat, {
@@ -1008,12 +1035,19 @@ function AccountsDash({
   }, a.status))))));
 }
 function ChemicalDash({
-  onNav
+  onNav,
+  asOf,
+  refreshKey
 }) {
   const nav = onNav || (() => {});
-  const [d, err] = useData("/api/dashboard/chemical");
-  if (err) return /*#__PURE__*/React.createElement(Panel, null, err);
-  if (!d) return /*#__PURE__*/React.createElement(Panel, null, "Loading\u2026");
+  const q = p => p + (p.includes("?") ? "&" : "?") + (asOf ? "as_of=" + asOf : "") + "&_r=" + (refreshKey || 0);
+  const [d, err] = useData(q("/api/dashboard/chemical"));
+  if (err) return /*#__PURE__*/React.createElement(Panel, null, /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "Couldn't load \u2014 ", String(err)));
+  if (!d) return /*#__PURE__*/React.createElement(Panel, null, /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "Loading\u2026"));
   const bars = (d.top_consumption || []).map(r => ({
     material: r.material,
     cost: Number(r.cost)
@@ -7970,10 +8004,51 @@ function fyLabel() {
   const y = d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1;
   return `FY ${y}–${(y + 1) % 100}`;
 }
+
+// Financial year helpers: FY string "2026-2027" -> the as-of date to query.
+function currentFY() {
+  const d = new Date();
+  const y = d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1;
+  return `${y}-${y + 1}`;
+}
+function fyAsOf(fy) {
+  const parts = (fy || "").split("-").map(Number);
+  if (parts.length !== 2 || isNaN(parts[1])) return today();
+  const start = new Date(parts[0], 3, 1),
+    end = new Date(parts[1], 2, 31),
+    now = new Date();
+  return now >= start && now <= end ? today() : `${parts[1]}-03-31`; // current FY -> today, else year-end
+}
 function App() {
   const [page, setPage] = useState("owner");
   const [me, setMe] = useState(null);
   const [notif, setNotif] = useState(0);
+  // Financial-year context: options come from real accounting periods; the
+  // selection drives the as-of date applied to dashboard/report queries.
+  const [fys, setFys] = useState([]);
+  const [fy, setFy] = useState(() => {
+    try {
+      return localStorage.getItem("erp_fy") || currentFY();
+    } catch (e) {
+      return currentFY();
+    }
+  });
+  const [refreshKey, setRefreshKey] = useState(0);
+  useEffect(() => {
+    api("/api/admin/periods").then(ps => {
+      const years = [...new Set((ps || []).map(p => p.fiscal_year).filter(Boolean))].sort().reverse();
+      if (!years.includes(currentFY())) years.unshift(currentFY());
+      setFys(years);
+    }).catch(() => setFys([currentFY()]));
+  }, []);
+  const pickFy = v => {
+    setFy(v);
+    try {
+      localStorage.setItem("erp_fy", v);
+    } catch (e) {}
+    setRefreshKey(k => k + 1);
+  };
+  const asOf = fyAsOf(fy);
   const loadNotif = useCallback(() => api("/api/notifications/unread-count").then(r => setNotif(r.count || 0)).catch(() => {}), []);
   useEffect(() => {
     api("/api/auth/me").then(setMe).catch(() => {});
@@ -8050,22 +8125,43 @@ function App() {
     }
   }, "\uD83D\uDD14", notif > 0 && /*#__PURE__*/React.createElement("span", {
     className: "bell-dot"
-  }, notif > 99 ? "99+" : notif)), /*#__PURE__*/React.createElement("span", {
-    className: "fychip"
-  }, fyLabel()), /*#__PURE__*/React.createElement("div", {
+  }, notif > 99 ? "99+" : notif)), /*#__PURE__*/React.createElement("button", {
+    className: "refresh-btn",
+    title: "Refresh data",
+    onClick: () => setRefreshKey(k => k + 1)
+  }, "\u27F3"), /*#__PURE__*/React.createElement("select", {
+    className: "fy-select",
+    title: "Financial year",
+    value: fy,
+    onChange: e => pickFy(e.target.value)
+  }, fys.map(y => {
+    const [a, b] = y.split("-");
+    return /*#__PURE__*/React.createElement("option", {
+      key: y,
+      value: y
+    }, "FY ", a, "\u2013", (b || "").slice(2));
+  })), /*#__PURE__*/React.createElement("div", {
     className: "who"
-  }, me ? me.full_name || me.username : "", " \xB7 ", new Date().toLocaleDateString("en-IN")))), /*#__PURE__*/React.createElement("div", {
+  }, me ? me.full_name || me.username : "", me && me.company ? " · " + me.company : ""))), /*#__PURE__*/React.createElement("div", {
     className: "content"
   }, page === "notifications" ? /*#__PURE__*/React.createElement(Notifications, {
     onChange: loadNotif
   }) : page === "owner" ? /*#__PURE__*/React.createElement(OwnerDash, {
-    onNav: go
+    onNav: go,
+    asOf: asOf,
+    refreshKey: refreshKey
   }) : page === "factory" ? /*#__PURE__*/React.createElement(FactoryDash, {
-    onNav: go
+    onNav: go,
+    asOf: asOf,
+    refreshKey: refreshKey
   }) : page === "accounts" ? /*#__PURE__*/React.createElement(AccountsDash, {
-    onNav: go
+    onNav: go,
+    asOf: asOf,
+    refreshKey: refreshKey
   }) : page === "chemical" ? /*#__PURE__*/React.createElement(ChemicalDash, {
-    onNav: go
+    onNav: go,
+    asOf: asOf,
+    refreshKey: refreshKey
   }) : /*#__PURE__*/React.createElement(Cur, null))));
 }
 function Root() {
