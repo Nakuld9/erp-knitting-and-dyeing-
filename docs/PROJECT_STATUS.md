@@ -1,7 +1,7 @@
 # Project status & pending list
 
 Audit of the implementation against the master specification (the 24-section
-brief). Updated **2026-11-11**. Test suite: **259 passing**
+brief). Updated **2026-11-11**. Test suite: **263 passing** (+1 Postgres-gated)
 (`cd backend && pytest`).
 
 Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ not built.

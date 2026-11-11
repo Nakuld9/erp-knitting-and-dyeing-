@@ -1,0 +1,233 @@
+================================================================================
+TEXTILE ERP — REMEDIATION & INDEPENDENT-VERIFICATION REPORT
+================================================================================
+Prepared: 2026-11-11 (UTC). This report states what was fixed, what was actually
+executed, and what remains — without downgrading real issues.
+
+--------------------------------------------------------------------------------
+1. REPOSITORY & BRANCH
+--------------------------------------------------------------------------------
+Repo   : github.com/Nakuld9/erp-knitting-and-dyeing-
+Branch : feat/operability-ui
+
+--------------------------------------------------------------------------------
+2. COMMIT RANGE (this remediation)
+--------------------------------------------------------------------------------
+Start  : 2f92c68  (state at the start of this review)
+End    : a93ad88  (current HEAD, pushed)
+Commits: c3898d6  Phase 1 — remove demo credentials; strong prod admin password
+         a93ad88  Phase 2/3 — real financial-year selector + refresh + context
+
+--------------------------------------------------------------------------------
+3. FILES CHANGED
+--------------------------------------------------------------------------------
+ backend/app/seed/seed.py             (+17)   production admin-password guard
+ backend/tests/test_seed_security.py  (+41)   new regression tests
+ frontend/app.src.jsx                 (+95/-) login, FY selector, dashboard ctx
+ frontend/app.js                      (rebuilt from source, verified in sync)
+ frontend/index.html                  (+8)    FY selector / refresh styles
+
+--------------------------------------------------------------------------------
+4. FEATURES FIXED (with evidence)
+--------------------------------------------------------------------------------
+[CRITICAL] Login credential exposure — FIXED.
+  - Username/password no longer prefilled; empty fields, autofocus, proper
+    autocomplete. "Demo: admin / admin123" hint removed.
+  - Evidence: automated check after rebuild — login username value = "" and the
+    login box text does NOT contain "admin123".
+
+[CRITICAL] Predictable production admin password — FIXED (seed hardening).
+  - seed_admin() now fails closed in production: ERP_ADMIN_PASSWORD must be set,
+    >= 12 chars, and not a known-weak default; the password is never printed or
+    logged. Dev/test keep the admin123 convenience default (so local auth and the
+    test suite are unaffected).
+  - Evidence: test_seed_security.py — production requires strong password,
+    rejects known-weak, accepts strong, dev keeps default. 4/4 pass.
+  - Note: this complements the existing production CONFIG guard (rejects
+    DEBUG / weak SECRET_KEY / default DB creds in production).
+
+[HIGH] Financial-year "selector" was a static label — FIXED (made real).
+  - FY options now load from real accounting periods (/api/admin/periods), the
+    current FY is always present, and the selection persists in localStorage.
+  - Selecting an FY sets an as-of date that is applied to every dashboard query;
+    a refresh control forces a refetch; Owner Dashboard gained loading / error+
+    retry states.
+  - Evidence: after selecting FY, the Owner request carried the context:
+    GET /api/dashboard/owner?as_of=2026-11-11&_r=0  (observed in the browser).
+  - Limitation: the demo DB contains a single fiscal year, so there is only one
+    option to choose; the mechanism (backend-driven options + as_of in the query)
+    is proven, not the multi-year switch (no multi-year data exists to switch to).
+
+--------------------------------------------------------------------------------
+5. FEATURES STILL INCOMPLETE / NOT IMPLEMENTED (honest)
+--------------------------------------------------------------------------------
+[HIGH] Company & Branch selectors — NOT IMPLEMENTED (by design, not faked).
+  - The data model is single-company-per-user: User.company_id is one FK; there
+    is no user<->company membership table, and transactional queries are not
+    branch-scoped. A real company/branch switch would require a schema change
+    (membership) plus branch-dimension filtering across most endpoints.
+  - The brief rightly rejects a label-only selector, so none was added. This is
+    a genuine gap for any multi-company/multi-branch deployment and is called out
+    here rather than hidden. Scope: medium-to-large backend change.
+
+[HIGH] Incremental Alembic migrations — MISSING (production schema-evolution risk).
+  - There is ONE migration (0001_initial) whose upgrade() calls create_all and
+    downgrade() calls drop_all. The seed step also calls create_all.
+  - Consequence: a FRESH deploy builds all current tables correctly, and an
+    EXISTING database gains any NEW tables via the seed's create_all. But
+    create_all does NOT alter existing tables, so a future COLUMN added to an
+    existing table would NOT reach an already-migrated database. This session's
+    additions were all new tables (covered), but the pattern is unsafe for
+    ongoing schema change. Remediation: generate real autogenerated migrations.
+  - Also: `alembic downgrade base` would drop_all — destructive by design; never
+    run it against a database with data.
+
+[VENDOR-BLOCKED] Live integrations — simulators/engines built, live wiring needs
+  external access:
+  - Color Service: simulator only; no real hardware tested.
+  - E-invoice / E-way bill: full engines + a configurable GSP adapter exist, but
+    no live call has been made — needs Webtel/Pinnacle GSP credentials + endpoint.
+  - Bank feeds: CSV import works; no live bank API.
+
+--------------------------------------------------------------------------------
+6. ACTUAL TEST EXECUTION RESULTS
+--------------------------------------------------------------------------------
+Command : cd backend && pytest        (SQLite, in-memory)
+Date    : 2026-11-11 10:19 UTC
+Result  : 263 passed, 1 skipped, 0 failed, 0 errors  (148.33s)
+Skipped : tests/test_pg_concurrency.py (requires PG_TEST_URL — see §8)
+
+Test-count discrepancy RESOLVED: the earlier "253" predated the rate-limiting
+work (+6 tests -> 259). This remediation added test_seed_security.py (+4) -> 263.
+Numbers were executed, not copied.
+
+--------------------------------------------------------------------------------
+7. FRONTEND BUILD RESULT
+--------------------------------------------------------------------------------
+Babel compile of app.src.jsx -> app.js: OK.
+Compiled app.js verified byte-for-byte IN SYNC with the committed source (a fresh
+recompile equals the committed app.js). No drift, no missing imports, no page
+errors observed while navigating the app (console error listener clean on the
+dashboards, lists and forms exercised).
+
+--------------------------------------------------------------------------------
+8. POSTGRESQL VERIFICATION RESULT
+--------------------------------------------------------------------------------
+A throwaway PostgreSQL 16 cluster was initialised and started locally, and the
+concurrency test was run against it:
+  tests/test_pg_concurrency.py — 1 passed.
+It drives 12 threads drawing the same stock item at once and asserts the FIFO
+engine never double-draws (consumed <= available, remainder never negative, stock
+conserved) — exactly what the advisory lock + FOR UPDATE guarantee and SQLite
+cannot test. The test is gated on PG_TEST_URL so the normal suite skips it.
+Document-sequence / duplicate-posting-reference races: idempotency is enforced by
+a unique posting_reference + find_existing; the posting path is atomic. A
+dedicated multi-worker sequence-generation stress test under Postgres is NOT yet
+written (recommended before production — see §15).
+
+--------------------------------------------------------------------------------
+9. MIGRATION VERIFICATION RESULT
+--------------------------------------------------------------------------------
+- Only 0001_initial exists; upgrade=create_all, downgrade=drop_all.
+- No DROP/TRUNCATE/DELETE in any upgrade path. No destructive reseed was run;
+  existing data is never reset by the app at runtime.
+- Verified behaviour (see §5 HIGH): fresh deploy OK; existing DB gets new TABLES
+  via the seed's create_all; new COLUMNS on existing tables would NOT propagate.
+  This is the main migration risk and is not yet remediated.
+
+--------------------------------------------------------------------------------
+10. SECURITY & TENANCY FINDINGS
+--------------------------------------------------------------------------------
+Implemented & tested:
+  - JWT auth, 15-role RBAC, per-permission route guards.
+  - Company-ownership guard on referenced ids (supplier/customer/account/
+    warehouse/chemical/tax): a cross-company reference returns HTTP 422.
+    Evidence: tests/test_tenancy.py (foreign-supplier PO -> 422; own PO OK).
+  - Production config guard + strong-admin-password guard (this remediation).
+  - Fail-closed GST place-of-supply (missing state code raises, never assumes).
+  - Per-IP rate limiting (tight login bucket; /health exempt). Evidence:
+    tests/test_ratelimit.py (over-limit -> 429).
+  - Append-only audit log; immutable posted ledger (reversal-only corrections).
+Not done / not independently verified:
+  - No third-party penetration test. SQLi exposure is low (SQLAlchemy params,
+    no raw SQL on user input observed) but not formally audited.
+  - XSS/CSRF: the SPA uses a bearer token in memory/localStorage, not cookies, so
+    CSRF surface is small; output is React-escaped. Not formally audited.
+  - HTTPS is a reverse-proxy/deploy concern (documented), not in app code.
+
+--------------------------------------------------------------------------------
+11. GST LIMITATIONS
+--------------------------------------------------------------------------------
+Implemented & tested: CGST/SGST/IGST from configurable tax codes; sales & purchase
+registers; credit notes shown in the sales register (verified in gst.py — notes
+reduce outward supply as negative rows); debit notes in the purchase side; GSTR-1
+and GSTR-3B DRAFT preparation; ITC reversal/reclaim/RCM adjustment vouchers;
+book-vs-GST reconciliation; fail-closed place of supply.
+Limitations / honest labels:
+  - These are CALCULATIONS and DRAFT returns, not filed returns.
+  - NO government portal (GSTN) filing integration; no GSP/NIC live submission.
+  - E-invoice/E-way engines are built but have made NO live IRP/EWB call.
+  - No claim of statutory compliance — a qualified professional must review before
+    any real filing.
+
+--------------------------------------------------------------------------------
+12. COLOR SERVICE: HARDWARE vs SIMULATOR
+--------------------------------------------------------------------------------
+SIMULATOR ONLY. The adapter interface, a deterministic simulator, dose-order
+builder, correction dosing, idempotent ingest, and bath-wise consumption registers
+work and are tested. NO real dispensing hardware has been connected or tested.
+Going live requires the vendor's verified protocol/version, endpoint, credentials,
+and on-site validation. Live integration is explicitly PENDING.
+
+--------------------------------------------------------------------------------
+13. KNOWN BUGS & RISKS
+--------------------------------------------------------------------------------
+R1 [HIGH]  No incremental migrations — future column changes won't reach existing
+           DBs (see §5/§9). Remediate before relying on schema evolution in prod.
+R2 [HIGH]  No company/branch multi-tenancy switching (single-company model).
+R3 [MED]   Sequence-generation under high Postgres concurrency not stress-tested.
+R4 [MED]   Live GSP/Color-Service/bank integrations unverified (vendor-blocked).
+R5 [LOW]   No formal security pen-test; HTTPS/rate-limit tuning is deploy-config.
+R6 [LOW]   Dashboards show zeros where the demo has no data (correct, not a bug);
+           real figures depend on real transactions.
+
+--------------------------------------------------------------------------------
+14. DEPLOYMENT READINESS ASSESSMENT
+--------------------------------------------------------------------------------
+Classification: UAT READY.
+
+Rationale: the accounting core, GST calculations, manufacturing workflow,
+tenancy isolation, security guards, rate limiting and the concurrency lock are
+implemented and test-proven (263 tests + a real-Postgres concurrency proof). It
+is suitable for user-acceptance testing on non-production data. It is NOT
+PRODUCTION READY because of R1 (migration strategy), R2 (if multi-company is
+required), the absence of live statutory/vendor integrations, and the lack of an
+independent security review.
+
+--------------------------------------------------------------------------------
+15. EXACT STEPS REQUIRED BEFORE PRODUCTION DEPLOYMENT
+--------------------------------------------------------------------------------
+1. Generate real autogenerated Alembic migrations for the current models and
+   verify upgrade AND downgrade on a disposable copy of the target DB; stop
+   relying on create_all for schema evolution. (Closes R1.)
+2. Decide multi-company/branch: if required, add a user<->company membership model
+   and branch-scoped filtering, then wire the (currently omitted) company/branch
+   selectors. If single-company is acceptable, document that explicitly. (R2.)
+3. Set production env: ENVIRONMENT=production, DEBUG=false, a 32+ byte SECRET_KEY,
+   non-default DB credentials, and a strong ERP_ADMIN_PASSWORD (the app now
+   enforces all of these). Put TLS in front (nginx/Caddy/ALB).
+4. Provision backups + tested restore (scripts/backup.sh, restore.sh) and a
+   monitored /health/ready probe; configure log shipping (LOG_JSON=true).
+5. Add and run a Postgres sequence-generation concurrency stress test. (R3.)
+6. For statutory features: engage your GSP (Webtel/Pinnacle) for e-invoice/e-way
+   credentials + sandbox, wire and validate the live adapter, and have a GST
+   professional review before any real filing. (R4/§11.)
+7. For Color Service: obtain the verified vendor protocol + credentials and
+   validate on real hardware before enabling live dispensing. (R4/§12.)
+8. Commission an independent security review (authz, input validation, SQLi/XSS,
+   secrets, uploads). (R5.)
+9. Load test under expected concurrency; tune rate limits and worker count.
+
+================================================================================
+END OF REPORT
+================================================================================
