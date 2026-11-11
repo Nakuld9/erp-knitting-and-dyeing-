@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.context import apply_factory_scope
 from app.core.database import get_db
 from app.core.deps import require_permission
 from app.models.core import User
@@ -139,6 +140,7 @@ def list_tax_codes(db: Session = Depends(get_db), user: User = Depends(require_p
 def list_machines(machine_type: str | None = None, db: Session = Depends(get_db),
                   user: User = Depends(require_permission("master.read"))):
     stmt = select(Machine).where(Machine.company_id == user.company_id, Machine.is_active.is_(True))
+    stmt = apply_factory_scope(stmt, Machine, user)
     if machine_type:
         stmt = stmt.where(Machine.machine_type == machine_type)
     rows = db.execute(stmt.order_by(Machine.code)).scalars().all()

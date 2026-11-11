@@ -450,3 +450,60 @@ def approve_intercompany_mapping(mapping_id: uuid.UUID, db: Session = Depends(ge
 def intercompany_reconciliation(db: Session = Depends(get_db),
                                 user: User = Depends(require_permission("report.financial"))):
     return ic.reconciliation(db)
+
+
+# --- inter-company posting (dual-leg, atomic) -------------------------------
+
+from app.services.tax import GstStateError  # noqa: E402
+from app.services.accounting.posting_engine import PostingError  # noqa: E402
+
+
+class IntercompanyPostingIn(BaseModel):
+    seller_company_id: uuid.UUID
+    buyer_company_id: uuid.UUID
+    taxable: Decimal
+    voucher_date: str
+    reference: str = Field(min_length=1, max_length=60)
+    tax_code_id: uuid.UUID | None = None
+    narration: str | None = None
+    seller_income_code: str | None = None
+    buyer_expense_code: str | None = None
+
+
+@router.post("/api/accounting/intercompany-posting", status_code=status.HTTP_201_CREATED)
+def post_intercompany(p: IntercompanyPostingIn, db: Session = Depends(get_db),
+                      user: User = Depends(require_permission("voucher.post"))):
+    # posting touches both companies' ledgers — require access to both
+    if not user.is_superuser:
+        authorized = _authorized_company_ids(db, user)
+        if not {p.seller_company_id, p.buyer_company_id}.issubset(authorized):
+            raise HTTPException(status.HTTP_403_FORBIDDEN,
+                                "You must be authorized for both companies to post an inter-company charge")
+    if p.taxable <= 0:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "taxable must be positive")
+    from datetime import date as _date
+    try:
+        vdate = _date.fromisoformat(p.voucher_date)
+    except ValueError:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "voucher_date must be YYYY-MM-DD")
+    try:
+        return ic.post_intercompany_charge(
+            db, seller_company_id=p.seller_company_id, buyer_company_id=p.buyer_company_id,
+            taxable=p.taxable, voucher_date=vdate, reference=p.reference,
+            tax_code_id=p.tax_code_id, narration=p.narration, created_by=user.id,
+            seller_income_code=p.seller_income_code, buyer_expense_code=p.buyer_expense_code)
+    except (IntercompanyConfigError, GstStateError, PostingError) as e:
+        db.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e))
+
+
+@router.get("/api/reports/consolidated/elimination-suggestions")
+def consolidated_elimination_suggestions(organization_id: uuid.UUID, db: Session = Depends(get_db),
+                                         user: User = Depends(require_permission("report.financial"))):
+    """Read-only: suggested eliminations from matched inter-company balances."""
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
+    member_ids = consol.member_company_ids(db, organization_id)
+    _require_group_access(db, user, member_ids)
+    return consol.suggest_intercompany_eliminations(db, organization_id)

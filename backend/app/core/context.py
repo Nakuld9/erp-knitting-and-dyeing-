@@ -130,6 +130,26 @@ def resolve_tenant_context(
     return TenantContext(user=user, company_id=company_id, factory_id=factory_id)
 
 
+def acting_factory_id(user) -> uuid.UUID | None:
+    """The factory (branch) resolved for this request, or None when no factory is
+    in scope. Set by ``get_current_user`` from an authorized ``X-Factory-Id``."""
+    try:
+        return user.__dict__.get("acting_factory_id")
+    except AttributeError:
+        return None
+
+
+def apply_factory_scope(stmt, model, user):
+    """OPT-IN factory filter: narrows ``stmt`` to the acting factory only when one
+    is in scope. With no factory selected the query is unchanged (company-level),
+    so nothing is hidden by default and legacy/unassigned rows stay visible until
+    a specific factory is chosen."""
+    fid = acting_factory_id(user)
+    if fid is not None and hasattr(model, "factory_id"):
+        stmt = stmt.where(model.factory_id == fid)
+    return stmt
+
+
 def _parse_uuid(value: str | None, label: str) -> uuid.UUID | None:
     if value is None or value == "":
         return None

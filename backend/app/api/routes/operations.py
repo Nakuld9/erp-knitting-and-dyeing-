@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.core.context import apply_factory_scope
 from app.core.database import get_db
 from app.core.deps import require_permission
 from app.models.commercial import (
@@ -300,8 +301,9 @@ def assign_rolls(batch_id: uuid.UUID, payload: AssignRollsIn, db: Session = Depe
 @router.get("/dyeing/batches")
 def list_batches(db: Session = Depends(get_db), user: User = Depends(require_permission("dyeing.manage"))):
     from sqlalchemy import select
-    rows = db.execute(select(DyeBatch).where(DyeBatch.company_id == user.company_id)
-                      .order_by(DyeBatch.batch_code.desc())).scalars().all()
+    stmt = apply_factory_scope(select(DyeBatch).where(DyeBatch.company_id == user.company_id),
+                               DyeBatch, user)
+    rows = db.execute(stmt.order_by(DyeBatch.batch_code.desc())).scalars().all()
     return [{"id": str(b.id), "label": f"{b.batch_code} ({b.fabric_kg} kg, {len(b.rolls)} rolls)",
              "batch_code": b.batch_code, "fabric_kg": str(b.fabric_kg),
              "rolls": len(b.rolls), "status": b.status} for b in rows[:100]]

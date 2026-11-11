@@ -38,6 +38,15 @@ DEFAULT_RULES: dict[str, dict[str, str]] = {
         "receivable": "1040", "sales": "4010", "output_cgst": "2041",
         "output_sgst": "2042", "output_igst": "2043",
     },
+    # Inter-company charge. The due-from/due-to control accounts come from the
+    # approved IntercompanyAccountMapping (not here); these are the configurable
+    # income/expense/GST slots, overridable per company like any posting rule.
+    "INTERCOMPANY_SALE": {
+        "income": "4010", "output_cgst": "2041", "output_sgst": "2042", "output_igst": "2043",
+    },
+    "INTERCOMPANY_PURCHASE": {
+        "expense": "5150", "input_cgst": "1121", "input_sgst": "1122", "input_igst": "1123",
+    },
     "SALES_CREDIT_NOTE": {
         "receivable": "1040", "sales": "4010", "output_cgst": "2041",
         "output_sgst": "2042", "output_igst": "2043",

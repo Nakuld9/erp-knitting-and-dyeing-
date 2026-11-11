@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.context import apply_factory_scope
 from app.core.database import get_db
 from app.core.deps import require_permission
 from app.models.core import User
@@ -71,8 +72,8 @@ def post_production(payload: ProductionIn, db: Session = Depends(get_db),
 
 @router.get("/production")
 def list_production(db: Session = Depends(get_db), user: User = Depends(require_permission("report.read"))):
-    rows = db.execute(select(KnittingProduction).where(
-        KnittingProduction.company_id == user.company_id).order_by(
-        KnittingProduction.production_date.desc())).scalars().all()
+    stmt = apply_factory_scope(select(KnittingProduction).where(
+        KnittingProduction.company_id == user.company_id), KnittingProduction, user)
+    rows = db.execute(stmt.order_by(KnittingProduction.production_date.desc())).scalars().all()
     return [{"id": str(k.id), "number": k.number, "production_date": k.production_date.isoformat(),
              "produced_kg": str(k.produced_kg), "yarn_consumed_kg": str(k.yarn_consumed_kg)} for k in rows]

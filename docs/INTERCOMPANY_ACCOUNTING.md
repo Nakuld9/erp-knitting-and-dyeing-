@@ -53,15 +53,40 @@ plus approval fields (`is_approved`, `approved_by`, `approved_at`). Unique per
 | POST | `/api/admin/intercompany-mappings/{id}/approve` | `intercompany.approve` |
 | GET | `/api/admin/intercompany-reconciliation` | `report.financial` |
 
-## 4. What is intentionally NOT done (next, separately-approved step)
+## 4. Dual-leg posting (implemented)
 
-- The actual **dual-company posting** of an inter-company sale/purchase (company A
-  books a receivable to "due from B"; company B books a payable to "due to A";
-  GST per place of supply; linked counterparty reference). The configuration and
-  the fail-closed guard are in place; wiring the posting onto the sales/purchase
-  lifecycle is the next step and needs sign-off on the transaction flow.
-- **Automatic** consolidation elimination from matched inter-company balances
-  (the `ready_for_elimination` signal exists; generating the elimination entries
-  from it is the follow-on).
+`post_intercompany_charge()` posts **both legs atomically** (one transaction,
+commit once):
 
-Until posting is wired, this module changes no ledger and creates no transaction.
+- Seller A: Dr due-from(B) [control, from A's approved mapping]; Cr income;
+  Cr output GST.
+- Buyer B: Dr expense; Dr input GST; Cr due-to(A) [control, from B's approved
+  mapping].
+
+- **Fail-closed:** both mappings must be approved (`get_approved_mapping`), else it
+  raises and nothing posts.
+- **GST by place of supply:** intra-state (same state) → CGST+SGST; inter-state →
+  IGST; derived from each company's state code via the existing `tax` service
+  (fail-closed on a missing state code). Not assumed uniform across the group.
+- **Accounts are configurable:** income/expense/GST accounts resolve through
+  `posting_rules` (events `INTERCOMPANY_SALE` / `INTERCOMPANY_PURCHASE`,
+  overridable per company) or explicit codes passed in; control accounts come
+  from the mappings.
+
+API: `POST /api/accounting/intercompany-posting` (`voucher.post` + authorization
+for **both** companies).
+
+**Flow assumption (documented):** the two legs are posted together by this call
+(seller + buyer entered as one inter-company charge), sharing a reference — not
+auto-propagated across separate user sessions. Wiring this onto the full
+enquiry→SO→PO lifecycle (auto-creating B's PO from A's SO) remains a later,
+separately-approved enhancement.
+
+## 5. Automatic elimination suggestions (implemented, read-only)
+
+`suggest_intercompany_eliminations()` reads the due-from/due-to control-account
+balances for approved reciprocal pairs and proposes balanced eliminations
+(`GET /api/reports/consolidated/elimination-suggestions`). It **persists
+nothing**; finance reviews and creates them as approved `ConsolidationElimination`
+entries. Assumes the mapped control accounts are **dedicated** inter-company
+accounts.

@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.context import apply_factory_scope
 from app.core.database import get_db
 from app.core.deps import require_permission
 from app.models.core import User
@@ -63,9 +64,9 @@ def post_finishing(payload: FinishingIn, db: Session = Depends(get_db),
 
 @router.get("/finishing")
 def list_finishing(db: Session = Depends(get_db), user: User = Depends(require_permission("report.read"))):
-    rows = db.execute(select(FinishingTransaction).where(
-        FinishingTransaction.company_id == user.company_id).order_by(
-        FinishingTransaction.process_date.desc())).scalars().all()
+    stmt = apply_factory_scope(select(FinishingTransaction).where(
+        FinishingTransaction.company_id == user.company_id), FinishingTransaction, user)
+    rows = db.execute(stmt.order_by(FinishingTransaction.process_date.desc())).scalars().all()
     return [{"id": str(r.id), "number": r.number, "process_type": r.process_type,
              "process_date": r.process_date.isoformat(), "shrinkage_pct": _s(r.shrinkage_pct)} for r in rows]
 
@@ -102,9 +103,9 @@ def post_inspection(payload: InspectionIn, db: Session = Depends(get_db),
 
 @router.get("/inspections")
 def list_inspections(db: Session = Depends(get_db), user: User = Depends(require_permission("report.read"))):
-    rows = db.execute(select(QualityInspection).where(
-        QualityInspection.company_id == user.company_id).order_by(
-        QualityInspection.inspection_date.desc())).scalars().all()
+    stmt = apply_factory_scope(select(QualityInspection).where(
+        QualityInspection.company_id == user.company_id), QualityInspection, user)
+    rows = db.execute(stmt.order_by(QualityInspection.inspection_date.desc())).scalars().all()
     return [{"id": str(r.id), "number": r.number, "result": r.result, "delta_e": _s(r.delta_e),
              "shade_match": r.shade_match, "colour_fastness": r.colour_fastness,
              "inspection_date": r.inspection_date.isoformat()} for r in rows]

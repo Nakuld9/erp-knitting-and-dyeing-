@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.context import apply_factory_scope
 from app.core.database import get_db
 from app.core.deps import require_permission
 from app.models.core import User
@@ -20,6 +21,7 @@ router = APIRouter(prefix="/api/rolls", tags=["rolls"])
 def list_rolls(kind: str | None = None, unbatched: bool = False, undelivered: bool = False,
                db: Session = Depends(get_db), user: User = Depends(require_permission("report.read"))):
     stmt = select(FabricRoll).where(FabricRoll.company_id == user.company_id)
+    stmt = apply_factory_scope(stmt, FabricRoll, user)
     if kind:
         stmt = stmt.where(FabricRoll.kind == kind)
     if unbatched:

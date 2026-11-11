@@ -170,13 +170,21 @@ running system behaving exactly as it does today.
 - **Tests** — foundation (8), migrations (4), tenancy API (9), company switching
   (4). Full suite green.
 
-### Still to do (safe, next)
-- Wire the resolved acting-company into the existing routes so switching
-  `X-Company-Id` actually changes the data a multi-company user sees (today the
-  routes still read `User.company_id`; the resolver falls back to it, so this is
-  backward-compatible — it is deferred only to keep it a single reviewable change
-  and because the **factory** dimension needs the §6 policy).
+### Completed since
+- **Acting-company route wiring** — switching `X-Company-Id` changes real data
+  (`docs/ROUTE_WIRING_REPORT.md`).
+- **Legacy/Unassigned factory backfill** tooling (`docs/LEGACY_FACTORY_BACKFILL.md`).
+- **Group consolidation** + report-only eliminations (`docs/CONSOLIDATION.md`).
+- **Inter-company accounting** — configurable approved mappings, dual-leg atomic
+  posting with GST by place of supply, elimination suggestions
+  (`docs/INTERCOMPANY_ACCOUNTING.md`).
+- **Factory data-filtering (opt-in)** — operational list endpoints narrow to the
+  acting factory when an authorized `X-Factory-Id` is in scope; with no factory
+  selected the view is company-wide (nothing hidden, legacy rows stay visible).
+  Helper `apply_factory_scope` in `app/core/context.py`; wired into machines,
+  knitting production, dye batches, finishing, quality inspections, fabric rolls.
 
-### Still blocked on §6 business decisions
-- Backfilling `factory_id` on existing rows; `NOT NULL`/constraints; factory
-  isolation enforcement; inter-company accounting; consolidation.
+### Still blocked on §6 business decisions / later steps
+- Running the legacy `factory_id` backfill on real data + reconciliation;
+  `NOT NULL`/constraints once reconciled; auto-propagating inter-company documents
+  across the full sales/purchase lifecycle.

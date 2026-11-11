@@ -134,3 +134,80 @@ def consolidated_trial_balance(
         "approved": len(pending) == 0,  # finance-approved only when none pending
         "note": "Read-only consolidation. No entries are posted to any company ledger.",
     }
+
+
+def suggest_intercompany_eliminations(db: Session, organization_id: uuid.UUID) -> dict:
+    """Suggest consolidation eliminations from matched inter-company balances.
+
+    For each pair of member companies with APPROVED reciprocal inter-company
+    account mappings, read the due-from (A) and due-to (B) control-account
+    balances and propose a balanced elimination that removes them from the
+    consolidated view. READ-ONLY: it persists nothing. Finance reviews the
+    suggestions and creates them as (approved) ConsolidationElimination entries.
+
+    Assumes the mapped control accounts are DEDICATED inter-company accounts (not
+    shared with ordinary receivables/payables), so eliminating their full balance
+    is correct.
+    """
+    from app.models.accounting import ChartOfAccount
+    from app.models.tenancy import IntercompanyAccountMapping
+
+    members = list(member_company_ids(db, organization_id))
+    maps = db.execute(select(IntercompanyAccountMapping).where(
+        IntercompanyAccountMapping.is_approved.is_(True),
+        IntercompanyAccountMapping.company_id.in_(members),
+        IntercompanyAccountMapping.counterparty_company_id.in_(members),
+    )).scalars().all()
+    by_pair = {(m.company_id, m.counterparty_company_id): m for m in maps}
+
+    tb_cache: dict[uuid.UUID, dict[str, Decimal]] = {}
+
+    def _net(company_id: uuid.UUID, account_id: uuid.UUID) -> tuple[str, Decimal]:
+        acct = db.get(ChartOfAccount, account_id)
+        if company_id not in tb_cache:
+            res = tb.trial_balance(db, company_id)
+            tb_cache[company_id] = {
+                r["account_code"]: Decimal(str(r["closing_debit"])) - Decimal(str(r["closing_credit"]))
+                for r in res["rows"]
+            }
+        return acct.code, tb_cache[company_id].get(acct.code, ZERO)
+
+    # Build the plain pairs the pure computation needs, then delegate.
+    pairs = []
+    for m in maps:
+        recip = by_pair.get((m.counterparty_company_id, m.company_id))
+        if recip is None:
+            continue
+        df_code, df_net = _net(m.company_id, m.due_from_account_id)
+        dt_code, dt_net = _net(m.counterparty_company_id, recip.due_to_account_id)
+        pairs.append((m.company_id, m.counterparty_company_id, df_code, df_net, dt_code, dt_net))
+
+    suggestions = compute_elimination_suggestions(pairs)
+    return {"organization_id": str(organization_id), "suggestions": suggestions,
+            "note": "Read-only suggestions. Create them as approved eliminations to apply."}
+
+
+def compute_elimination_suggestions(pairs) -> list[dict]:
+    """Pure elimination maths (no DB), unit-testable in isolation.
+
+    ``pairs`` is an iterable of
+    ``(company_a, company_b, due_from_code, due_from_net, due_to_code, due_to_net)``
+    where ``due_from_net`` is A's receivable balance (debit-positive) and
+    ``due_to_net`` is B's payable balance (credit-positive -> negative net). Each
+    unordered pair is emitted once.
+    """
+    suggestions: list[dict] = []
+    seen: set[frozenset] = set()
+    for (a, b, df_code, df_net, dt_code, dt_net) in pairs:
+        key = frozenset((a, b))
+        if key in seen:
+            continue
+        seen.add(key)
+        ref = f"IC:{a}:{b}"
+        if df_net != ZERO:
+            suggestions.append({"account_code": df_code, "debit": "0", "credit": str(df_net),
+                                "counterparty_ref": ref, "basis": "due_from receivable"})
+        if dt_net != ZERO:
+            suggestions.append({"account_code": dt_code, "debit": str(-dt_net), "credit": "0",
+                                "counterparty_ref": ref, "basis": "due_to payable"})
+    return suggestions
