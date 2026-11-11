@@ -6612,6 +6612,307 @@ function JobWork() {
     onClick: () => act(j.id, "bill")
   }, "Bill"))))))));
 }
+function Stores() {
+  const warehouses = useList("/api/masters/warehouses");
+  const suppliers = useList("/api/masters/suppliers");
+  const [items, setItems] = useState([]);
+  const [err, setErr] = useState("");
+  const [res, setRes] = useState(null);
+  const [ni, setNi] = useState({
+    code: "",
+    name: "",
+    category: "NEEDLE",
+    uom: "PCS"
+  });
+  const [rc, setRc] = useState({
+    store_item_id: "",
+    qty: "",
+    unit_cost: "",
+    warehouse_id: "",
+    supplier_id: ""
+  });
+  const [is, setIs] = useState({
+    store_item_id: "",
+    qty: "",
+    warehouse_id: "",
+    machine: ""
+  });
+  const load = useCallback(() => api("/api/stores/items").then(setItems).catch(() => {}), []);
+  useEffect(() => {
+    load();
+  }, [load]);
+  const go = async fn => {
+    setErr("");
+    setRes(null);
+    try {
+      await fn();
+      load();
+    } catch (ex) {
+      setErr(ex.message);
+    }
+  };
+  const addItem = e => {
+    e.preventDefault();
+    go(async () => {
+      await api("/api/stores/items", {
+        method: "POST",
+        body: ni
+      });
+      setRes({
+        created: ni.code
+      });
+      setNi({
+        code: "",
+        name: "",
+        category: ni.category,
+        uom: "PCS"
+      });
+    });
+  };
+  const receive = e => {
+    e.preventDefault();
+    go(async () => {
+      const r = await api("/api/stores/receipts", {
+        method: "POST",
+        body: {
+          store_item_id: rc.store_item_id,
+          qty: rc.qty,
+          unit_cost: rc.unit_cost,
+          warehouse_id: rc.warehouse_id || null,
+          supplier_id: rc.supplier_id || null
+        }
+      });
+      setRes({
+        received: r.value,
+        voucher: r.voucher_number
+      });
+      setRc({
+        ...rc,
+        qty: "",
+        unit_cost: ""
+      });
+    });
+  };
+  const issue = e => {
+    e.preventDefault();
+    go(async () => {
+      const r = await api("/api/stores/issues", {
+        method: "POST",
+        body: {
+          store_item_id: is.store_item_id,
+          qty: is.qty,
+          warehouse_id: is.warehouse_id || null,
+          machine: is.machine || null
+        }
+      });
+      setRes({
+        issued_cost: r.cost,
+        voucher: r.voucher_number
+      });
+      setIs({
+        ...is,
+        qty: ""
+      });
+    });
+  };
+  const itemOpts = items.map(i => ({
+    id: i.id,
+    label: `${i.code} · ${i.name}`
+  }));
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Panel, {
+    title: "Add store item (needles / spares / packing)"
+  }, /*#__PURE__*/React.createElement("form", {
+    className: "row",
+    onSubmit: addItem
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Code"), /*#__PURE__*/React.createElement("input", {
+    required: true,
+    value: ni.code,
+    onChange: e => setNi({
+      ...ni,
+      code: e.target.value
+    }),
+    placeholder: "NDL-9G",
+    style: {
+      width: 120
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field",
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("label", null, "Name"), /*#__PURE__*/React.createElement("input", {
+    required: true,
+    value: ni.name,
+    onChange: e => setNi({
+      ...ni,
+      name: e.target.value
+    }),
+    placeholder: "9G Knitting Needle"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Category"), /*#__PURE__*/React.createElement("select", {
+    value: ni.category,
+    onChange: e => setNi({
+      ...ni,
+      category: e.target.value
+    })
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "NEEDLE"
+  }, "Needle"), /*#__PURE__*/React.createElement("option", {
+    value: "SPARE"
+  }, "Spare"), /*#__PURE__*/React.createElement("option", {
+    value: "PACKING"
+  }, "Packing"), /*#__PURE__*/React.createElement("option", {
+    value: "OTHER"
+  }, "Other"))), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "UoM"), /*#__PURE__*/React.createElement("input", {
+    value: ni.uom,
+    onChange: e => setNi({
+      ...ni,
+      uom: e.target.value
+    }),
+    style: {
+      width: 80
+    }
+  })), /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Add"))), /*#__PURE__*/React.createElement("div", {
+    className: "row",
+    style: {
+      gap: 16,
+      alignItems: "flex-start"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement(Panel, {
+    title: "Receive into store"
+  }, /*#__PURE__*/React.createElement("form", {
+    onSubmit: receive
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field mb"
+  }, /*#__PURE__*/React.createElement("label", null, "Item"), /*#__PURE__*/React.createElement(Opts, {
+    items: itemOpts,
+    value: rc.store_item_id,
+    onChange: e => setRc({
+      ...rc,
+      store_item_id: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "row mb"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Qty"), /*#__PURE__*/React.createElement("input", {
+    value: rc.qty,
+    onChange: e => setRc({
+      ...rc,
+      qty: e.target.value
+    }),
+    placeholder: "500"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Unit cost"), /*#__PURE__*/React.createElement("input", {
+    value: rc.unit_cost,
+    onChange: e => setRc({
+      ...rc,
+      unit_cost: e.target.value
+    }),
+    placeholder: "20"
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "row mb"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Warehouse"), /*#__PURE__*/React.createElement(Opts, {
+    items: warehouses,
+    value: rc.warehouse_id,
+    onChange: e => setRc({
+      ...rc,
+      warehouse_id: e.target.value
+    }),
+    placeholder: "\u2014"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Supplier (credit) / blank = cash"), /*#__PURE__*/React.createElement(Opts, {
+    items: suppliers,
+    value: rc.supplier_id,
+    onChange: e => setRc({
+      ...rc,
+      supplier_id: e.target.value
+    }),
+    placeholder: "cash"
+  }))), /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Receive")))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement(Panel, {
+    title: "Issue to machine"
+  }, /*#__PURE__*/React.createElement("form", {
+    onSubmit: issue
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field mb"
+  }, /*#__PURE__*/React.createElement("label", null, "Item"), /*#__PURE__*/React.createElement(Opts, {
+    items: itemOpts,
+    value: is.store_item_id,
+    onChange: e => setIs({
+      ...is,
+      store_item_id: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "row mb"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Qty"), /*#__PURE__*/React.createElement("input", {
+    value: is.qty,
+    onChange: e => setIs({
+      ...is,
+      qty: e.target.value
+    }),
+    placeholder: "150"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Machine"), /*#__PURE__*/React.createElement("input", {
+    value: is.machine,
+    onChange: e => setIs({
+      ...is,
+      machine: e.target.value
+    }),
+    placeholder: "KNIT-01"
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "field mb"
+  }, /*#__PURE__*/React.createElement("label", null, "From warehouse"), /*#__PURE__*/React.createElement(Opts, {
+    items: warehouses,
+    value: is.warehouse_id,
+    onChange: e => setIs({
+      ...is,
+      warehouse_id: e.target.value
+    }),
+    placeholder: "\u2014"
+  })), /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Issue (expense at FIFO cost)"))))), err && /*#__PURE__*/React.createElement("div", {
+    className: "err"
+  }, err), /*#__PURE__*/React.createElement(Result, {
+    r: res
+  }), /*#__PURE__*/React.createElement(Panel, {
+    title: "Store items"
+  }, items.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "None yet.") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Code"), /*#__PURE__*/React.createElement("th", null, "Name"), /*#__PURE__*/React.createElement("th", null, "Category"), /*#__PURE__*/React.createElement("th", null, "UoM"))), /*#__PURE__*/React.createElement("tbody", null, items.map(i => /*#__PURE__*/React.createElement("tr", {
+    key: i.id
+  }, /*#__PURE__*/React.createElement("td", null, i.code), /*#__PURE__*/React.createElement("td", null, i.name), /*#__PURE__*/React.createElement("td", null, i.category), /*#__PURE__*/React.createElement("td", null, i.uom))))), /*#__PURE__*/React.createElement("div", {
+    className: "muted",
+    style: {
+      fontSize: 12,
+      marginTop: 6
+    }
+  }, "On-hand quantities show on the Stock on Hand page (item type STORE).")));
+}
 function StockOnHand() {
   const warehouses = useList("/api/masters/warehouses");
   const [wh, setWh] = useState("");
@@ -6912,6 +7213,10 @@ const PAGES = {
     t: "Stock on Hand",
     c: StockOnHand
   },
+  stores: {
+    t: "Stores & Spares",
+    c: Stores
+  },
   pipeline: {
     t: "Sales Pipeline (enquiry → quote → SO)",
     c: SalesPipeline
@@ -7017,6 +7322,7 @@ const NAV_ICON = {
   vouchers: "📒",
   inventoryops: "🔁",
   stock: "📦",
+  stores: "🪡",
   jobwork: "🔄",
   masters: "🗃️",
   coa: "📚",
@@ -7069,7 +7375,7 @@ function App() {
     className: "group"
   }, "Dashboards"), navBtn("owner", "Owner"), navBtn("factory", "Factory"), navBtn("accounts", "Accounts"), navBtn("chemical", "Chemical"), /*#__PURE__*/React.createElement("div", {
     className: "group"
-  }, "Transactions"), navBtn("purchaseorders", "Purchase Orders"), navBtn("purchase", "Purchase (GRN)"), navBtn("knitting", "Knitting"), navBtn("batching", "Batching"), navBtn("pipeline", "Sales Pipeline"), navBtn("salesorders", "Sales Orders"), navBtn("sales", "Sales Invoice"), navBtn("dyeing", "Dyeing & Dispensing"), navBtn("jobwork", "Job Work"), navBtn("vouchers", "Vouchers"), navBtn("inventoryops", "Inventory Ops"), navBtn("stock", "Stock on Hand"), /*#__PURE__*/React.createElement("div", {
+  }, "Transactions"), navBtn("purchaseorders", "Purchase Orders"), navBtn("purchase", "Purchase (GRN)"), navBtn("knitting", "Knitting"), navBtn("batching", "Batching"), navBtn("pipeline", "Sales Pipeline"), navBtn("salesorders", "Sales Orders"), navBtn("sales", "Sales Invoice"), navBtn("dyeing", "Dyeing & Dispensing"), navBtn("jobwork", "Job Work"), navBtn("vouchers", "Vouchers"), navBtn("inventoryops", "Inventory Ops"), navBtn("stock", "Stock on Hand"), navBtn("stores", "Stores & Spares"), /*#__PURE__*/React.createElement("div", {
     className: "group"
   }, "Masters"), navBtn("masters", "Master Data"), navBtn("coa", "Chart of Accounts"), navBtn("customers", "Customers"), navBtn("suppliers", "Suppliers"), navBtn("warehouses", "Warehouses"), /*#__PURE__*/React.createElement("div", {
     className: "group"

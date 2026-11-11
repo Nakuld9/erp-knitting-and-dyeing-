@@ -2049,6 +2049,76 @@ function JobWork(){
   </div>);
 }
 
+function Stores(){
+  const warehouses=useList("/api/masters/warehouses"); const suppliers=useList("/api/masters/suppliers");
+  const [items,setItems]=useState([]); const [err,setErr]=useState(""); const [res,setRes]=useState(null);
+  const [ni,setNi]=useState({code:"",name:"",category:"NEEDLE",uom:"PCS"});
+  const [rc,setRc]=useState({store_item_id:"",qty:"",unit_cost:"",warehouse_id:"",supplier_id:""});
+  const [is,setIs]=useState({store_item_id:"",qty:"",warehouse_id:"",machine:""});
+  const load=useCallback(()=>api("/api/stores/items").then(setItems).catch(()=>{}),[]);
+  useEffect(()=>{load()},[load]);
+  const go=async fn=>{ setErr(""); setRes(null); try{ await fn(); load(); }catch(ex){ setErr(ex.message); } };
+  const addItem=e=>{ e.preventDefault(); go(async()=>{ await api("/api/stores/items",{method:"POST",body:ni});
+    setRes({created:ni.code}); setNi({code:"",name:"",category:ni.category,uom:"PCS"}); }); };
+  const receive=e=>{ e.preventDefault(); go(async()=>{ const r=await api("/api/stores/receipts",{method:"POST",body:{
+      store_item_id:rc.store_item_id, qty:rc.qty, unit_cost:rc.unit_cost,
+      warehouse_id:rc.warehouse_id||null, supplier_id:rc.supplier_id||null}});
+    setRes({received:r.value, voucher:r.voucher_number}); setRc({...rc,qty:"",unit_cost:""}); }); };
+  const issue=e=>{ e.preventDefault(); go(async()=>{ const r=await api("/api/stores/issues",{method:"POST",body:{
+      store_item_id:is.store_item_id, qty:is.qty, warehouse_id:is.warehouse_id||null, machine:is.machine||null}});
+    setRes({issued_cost:r.cost, voucher:r.voucher_number}); setIs({...is,qty:""}); }); };
+  const itemOpts=items.map(i=>({id:i.id,label:`${i.code} · ${i.name}`}));
+  return (<div>
+    <Panel title="Add store item (needles / spares / packing)">
+      <form className="row" onSubmit={addItem}>
+        <div className="field"><label>Code</label><input required value={ni.code} onChange={e=>setNi({...ni,code:e.target.value})} placeholder="NDL-9G" style={{width:120}}/></div>
+        <div className="field" style={{flex:1}}><label>Name</label><input required value={ni.name} onChange={e=>setNi({...ni,name:e.target.value})} placeholder="9G Knitting Needle"/></div>
+        <div className="field"><label>Category</label>
+          <select value={ni.category} onChange={e=>setNi({...ni,category:e.target.value})}>
+            <option value="NEEDLE">Needle</option><option value="SPARE">Spare</option>
+            <option value="PACKING">Packing</option><option value="OTHER">Other</option></select></div>
+        <div className="field"><label>UoM</label><input value={ni.uom} onChange={e=>setNi({...ni,uom:e.target.value})} style={{width:80}}/></div>
+        <button className="btn">Add</button>
+      </form>
+    </Panel>
+    <div className="row" style={{gap:16,alignItems:"flex-start"}}>
+      <div style={{flex:1}}><Panel title="Receive into store">
+        <form onSubmit={receive}>
+          <div className="field mb"><label>Item</label><Opts items={itemOpts} value={rc.store_item_id} onChange={e=>setRc({...rc,store_item_id:e.target.value})}/></div>
+          <div className="row mb">
+            <div className="field"><label>Qty</label><input value={rc.qty} onChange={e=>setRc({...rc,qty:e.target.value})} placeholder="500"/></div>
+            <div className="field"><label>Unit cost</label><input value={rc.unit_cost} onChange={e=>setRc({...rc,unit_cost:e.target.value})} placeholder="20"/></div>
+          </div>
+          <div className="row mb">
+            <div className="field"><label>Warehouse</label><Opts items={warehouses} value={rc.warehouse_id} onChange={e=>setRc({...rc,warehouse_id:e.target.value})} placeholder="—"/></div>
+            <div className="field"><label>Supplier (credit) / blank = cash</label><Opts items={suppliers} value={rc.supplier_id} onChange={e=>setRc({...rc,supplier_id:e.target.value})} placeholder="cash"/></div>
+          </div>
+          <button className="btn">Receive</button>
+        </form>
+      </Panel></div>
+      <div style={{flex:1}}><Panel title="Issue to machine">
+        <form onSubmit={issue}>
+          <div className="field mb"><label>Item</label><Opts items={itemOpts} value={is.store_item_id} onChange={e=>setIs({...is,store_item_id:e.target.value})}/></div>
+          <div className="row mb">
+            <div className="field"><label>Qty</label><input value={is.qty} onChange={e=>setIs({...is,qty:e.target.value})} placeholder="150"/></div>
+            <div className="field"><label>Machine</label><input value={is.machine} onChange={e=>setIs({...is,machine:e.target.value})} placeholder="KNIT-01"/></div>
+          </div>
+          <div className="field mb"><label>From warehouse</label><Opts items={warehouses} value={is.warehouse_id} onChange={e=>setIs({...is,warehouse_id:e.target.value})} placeholder="—"/></div>
+          <button className="btn">Issue (expense at FIFO cost)</button>
+        </form>
+      </Panel></div>
+    </div>
+    {err && <div className="err">{err}</div>}
+    <Result r={res}/>
+    <Panel title="Store items">
+      {items.length===0?<div className="muted">None yet.</div>:
+      <table><thead><tr><th>Code</th><th>Name</th><th>Category</th><th>UoM</th></tr></thead>
+      <tbody>{items.map(i=><tr key={i.id}><td>{i.code}</td><td>{i.name}</td><td>{i.category}</td><td>{i.uom}</td></tr>)}</tbody></table>}
+      <div className="muted" style={{fontSize:12,marginTop:6}}>On-hand quantities show on the Stock on Hand page (item type STORE).</div>
+    </Panel>
+  </div>);
+}
+
 function StockOnHand(){
   const warehouses=useList("/api/masters/warehouses");
   const [wh,setWh]=useState(""); const [it,setIt]=useState("");
@@ -2142,6 +2212,7 @@ const PAGES={
   batching:{t:"Batching",c:Batching},
   inventoryops:{t:"Inventory Ops (transfer / split / merge)",c:InventoryOps},
   stock:{t:"Stock on Hand",c:StockOnHand},
+  stores:{t:"Stores & Spares",c:Stores},
   pipeline:{t:"Sales Pipeline (enquiry → quote → SO)",c:SalesPipeline},
   salesorders:{t:"Sales Orders & Dispatch",c:SalesOrders},
   sales:{t:"Sales Invoice",c:Sales}, dyeing:{t:"Dyeing & Dispensing",c:Dyeing},
@@ -2161,7 +2232,7 @@ const PAGES={
 };
 const NAV_ICON={owner:"📊",factory:"🏭",accounts:"💼",chemical:"🧪",purchaseorders:"📝",purchase:"📥",
   knitting:"🧶",batching:"🧺",pipeline:"🎯",salesorders:"🛒",sales:"🧾",dyeing:"🎨",vouchers:"📒",
-  inventoryops:"🔁",stock:"📦",jobwork:"🔄",masters:"🗃️",coa:"📚",customers:"👤",suppliers:"🏢",warehouses:"🏬",quality:"🔍",assets:"🏗️",
+  inventoryops:"🔁",stock:"📦",stores:"🪡",jobwork:"🔄",masters:"🗃️",coa:"📚",customers:"👤",suppliers:"🏢",warehouses:"🏬",quality:"🔍",assets:"🏗️",
   payroll:"💰",costing:"📐",devices:"🖨️",reports:"📈",approvals:"✔️",notifications:"🔔",acctops:"🧮",admin:"⚙️"};
 function fyLabel(){ const d=new Date(); const y=d.getMonth()>=3?d.getFullYear():d.getFullYear()-1; return `FY ${y}–${(y+1)%100}`; }
 
@@ -2184,7 +2255,7 @@ function App(){
         <div className="group">Transactions</div>
         {navBtn("purchaseorders","Purchase Orders")}{navBtn("purchase","Purchase (GRN)")}{navBtn("knitting","Knitting")}
         {navBtn("batching","Batching")}{navBtn("pipeline","Sales Pipeline")}{navBtn("salesorders","Sales Orders")}{navBtn("sales","Sales Invoice")}{navBtn("dyeing","Dyeing & Dispensing")}{navBtn("jobwork","Job Work")}{navBtn("vouchers","Vouchers")}
-        {navBtn("inventoryops","Inventory Ops")}{navBtn("stock","Stock on Hand")}
+        {navBtn("inventoryops","Inventory Ops")}{navBtn("stock","Stock on Hand")}{navBtn("stores","Stores & Spares")}
         <div className="group">Masters</div>
         {navBtn("masters","Master Data")}{navBtn("coa","Chart of Accounts")}{navBtn("customers","Customers")}{navBtn("suppliers","Suppliers")}{navBtn("warehouses","Warehouses")}
         <div className="group">Quality</div>{navBtn("quality","Quality")}

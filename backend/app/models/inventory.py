@@ -26,6 +26,7 @@ class ItemType(str, enum.Enum):
     CHEMICAL = "CHEMICAL"   # chemicals and dyes (chemicals.id)
     YARN = "YARN"           # yarn_masters.id
     FABRIC = "FABRIC"       # fabric_rolls.id (greige/finished)
+    STORE = "STORE"         # store_items.id (needles, spares, packing aids)
 
 
 class MoveDirection(str, enum.Enum):

@@ -220,6 +220,7 @@ def stock_on_hand(db: Session, company_id: uuid.UUID, *,
     """
     from app.models.manufacturing import FabricRoll
     from app.models.masters import Chemical, FabricType, Warehouse, YarnMaster
+    from app.models.stores import StoreItem
 
     stmt = select(StockLayer).where(
         StockLayer.company_id == company_id, StockLayer.qty_remaining > QZERO)
@@ -237,6 +238,8 @@ def stock_on_hand(db: Session, company_id: uuid.UUID, *,
         select(FabricRoll).where(FabricRoll.company_id == company_id)).scalars()}
     ftypes = {f.id: f.name for f in db.execute(
         select(FabricType).where(FabricType.company_id == company_id)).scalars()}
+    store = {s.id: (s.code, s.name) for s in db.execute(
+        select(StoreItem).where(StoreItem.company_id == company_id)).scalars()}
     whs = {w.id: (w.code, w.name) for w in db.execute(
         select(Warehouse).where(Warehouse.company_id == company_id)).scalars()}
 
@@ -249,6 +252,9 @@ def stock_on_hand(db: Session, company_id: uuid.UUID, *,
         elif it == ItemType.YARN.value:
             code, name = yarn.get(ly.item_id, ("", "Yarn"))
             gid = ("YARN", str(ly.item_id))
+        elif it == ItemType.STORE.value:
+            code, name = store.get(ly.item_id, ("", "Store item"))
+            gid = ("STORE", str(ly.item_id))
         else:  # FABRIC — collapse rolls into type + kind
             ft, kind = rolls.get(ly.item_id, (None, "GREIGE"))
             kind = kind.value if hasattr(kind, "value") else (kind or "GREIGE")

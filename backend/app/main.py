@@ -33,6 +33,7 @@ from app.api.routes import (
     quality,
     reports,
     rolls,
+    stores,
     vouchers,
 )
 from app.core.config import settings
@@ -76,6 +77,7 @@ app.include_router(accounting_ops.router)
 app.include_router(einvoice.router)
 app.include_router(ewaybill.router)
 app.include_router(jobwork.router)
+app.include_router(stores.router)
 
 observability.install_observability(app)
 
