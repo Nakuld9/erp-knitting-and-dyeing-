@@ -8,7 +8,8 @@ services:
       POSTGRES_PASSWORD: erp
       POSTGRES_DB: erp
     ports:
-      - "5432:5432"
+      # Bind the dev database to loopback only — not reachable off-host.
+      - "127.0.0.1:5432:5432"
     volumes:
       - erp_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -29,6 +30,12 @@ services:
         condition: service_healthy
     ports:
       - "8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:8000/health/ready || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
 
 volumes:
   erp_pgdata:

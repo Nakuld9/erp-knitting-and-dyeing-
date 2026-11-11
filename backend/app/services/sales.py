@@ -25,7 +25,9 @@ def post_sales_invoice(db: Session, invoice: SalesInvoice, *, created_by: uuid.U
 
     company = db.get(Company, invoice.company_id)
     customer = db.get(Customer, invoice.customer_id)
-    intra = (company.state_code == customer.state_code) if (company.state_code and customer.state_code) else True
+    from app.services.tax import resolve_intra_state
+    intra = resolve_intra_state(company.state_code, customer.state_code if customer else None,
+                                context=f"Sales invoice {invoice.number}")
 
     taxable = MZERO
     cgst = sgst = igst = MZERO

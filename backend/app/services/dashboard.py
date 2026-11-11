@@ -7,7 +7,8 @@ matches the report it drills into.
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, timedelta
+from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -91,20 +92,143 @@ def _sales_trend(db, company_id, as_of, months=6):
     return out
 
 
+def _pct_change(cur, prev) -> float | None:
+    """Percentage change cur vs prev; None when there is no prior base."""
+    prev = Decimal(str(prev or 0))
+    if prev == 0:
+        return None
+    return float(quantize((Decimal(str(cur)) - prev) / abs(prev) * Decimal("100"), QTY_SCALE))
+
+
+def _production_kg(db, company_id, frm: date, to: date):
+    total = db.execute(
+        select(func.coalesce(func.sum(KnittingProduction.produced_kg), 0)).where(
+            KnittingProduction.company_id == company_id,
+            KnittingProduction.production_date >= frm,
+            KnittingProduction.production_date <= to)).scalar() or 0
+    return quantize(Decimal(str(total)), QTY_SCALE)
+
+
+def _order_counts(db, company_id):
+    from app.models.commercial import DocStatus, SalesOrder
+    rows = db.execute(
+        select(SalesOrder.status, func.count()).where(SalesOrder.company_id == company_id)
+        .group_by(SalesOrder.status)).all()
+    by = {str(s): n for s, n in rows}
+    active = by.get(DocStatus.CONFIRMED.value, 0) + by.get(DocStatus.PARTIAL.value, 0)
+    pending = by.get(DocStatus.DRAFT.value, 0)
+    return active, pending
+
+
+def _fabric_stock(db, company_id):
+    """Greige and finished fabric on hand (kg + value) from open FIFO layers."""
+    from app.services.inventory import stock_on_hand
+    g_kg = g_val = f_kg = f_val = ZERO
+    for r in stock_on_hand(db, company_id, item_type=ItemType.FABRIC):
+        name = (r.get("item_code") or "").upper()
+        if name == "GREIGE":
+            g_kg += Decimal(str(r["qty"])); g_val += Decimal(str(r["value"]))
+        elif name == "FINISHED":
+            f_kg += Decimal(str(r["qty"])); f_val += Decimal(str(r["value"]))
+    return (quantize(g_kg, QTY_SCALE), quantize(g_val, MONEY_SCALE),
+            quantize(f_kg, QTY_SCALE), quantize(f_val, MONEY_SCALE))
+
+
+def _overdue(ageing: dict) -> object:
+    return sum((Decimal(str(p.get("61-90", 0))) + Decimal(str(p.get("90+", 0)))
+                for p in ageing.get("parties", [])), ZERO)
+
+
+def _owner_alerts(db, company_id, as_of, pending_orders, overdue_recv, overdue_pay):
+    from app.models.approvals import ApprovalRequest, ApprovalStatus
+    alerts = []
+    n_appr = db.execute(select(func.count()).select_from(ApprovalRequest).where(
+        ApprovalRequest.company_id == company_id,
+        ApprovalRequest.status == ApprovalStatus.PENDING.value)).scalar() or 0
+    if n_appr:
+        alerts.append({"kind": "APPROVAL", "severity": "warn", "page": "approvals",
+                       "text": f"{n_appr} approval{'s' if n_appr != 1 else ''} pending"})
+    if pending_orders:
+        alerts.append({"kind": "ORDER", "severity": "info", "page": "salesorders",
+                       "text": f"{pending_orders} sales order{'s' if pending_orders != 1 else ''} not yet confirmed"})
+    if overdue_recv > 0:
+        alerts.append({"kind": "RECEIVABLE", "severity": "bad", "page": "customers",
+                       "text": f"Overdue receivables ₹{overdue_recv:,.0f} (60+ days)"})
+    if overdue_pay > 0:
+        alerts.append({"kind": "PAYABLE", "severity": "warn", "page": "suppliers",
+                       "text": f"Overdue payables ₹{overdue_pay:,.0f} (60+ days)"})
+    ch = chemical_dashboard(db, company_id, as_of)
+    for a in ch.get("stock_alerts", [])[:5]:
+        alerts.append({"kind": "STOCK", "severity": "warn", "page": "chemical",
+                       "text": f"Low stock: {a['name']} ({a['on_hand']} on hand)"})
+    return alerts
+
+
 def owner_dashboard(db: Session, company_id: uuid.UUID, as_of: date | None = None) -> dict:
     as_of = as_of or date.today()
     pnl = fs.profit_and_loss(db, company_id, _fy_start(as_of), as_of)
     inventory_value = sum((_acct_balance(db, company_id, c, as_of) for c in INVENTORY_ACCOUNTS), ZERO)
+
+    # Honest "vs last month": trailing 30 days vs the prior 30 days.
+    cur = fs.profit_and_loss(db, company_id, as_of - timedelta(days=29), as_of)
+    prev = fs.profit_and_loss(db, company_id, as_of - timedelta(days=59), as_of - timedelta(days=30))
+    deltas = {
+        "revenue": _pct_change(cur["revenue_total"], prev["revenue_total"]),
+        "gross_profit": _pct_change(cur["gross_profit"], prev["gross_profit"]),
+        "net_profit": _pct_change(cur["net_profit"], prev["net_profit"]),
+    }
+
+    prod_today = _production_kg(db, company_id, as_of, as_of)
+    prod_month = _production_kg(db, company_id, as_of.replace(day=1), as_of)
+    active_orders, pending_orders = _order_counts(db, company_id)
+    greige_kg, greige_val, fg_kg, fg_val = _fabric_stock(db, company_id)
+    receivables = _acct_balance(db, company_id, "1040", as_of)
+    payables = _acct_balance(db, company_id, "2010", as_of)
+    fac = factory_dashboard(db, company_id, as_of)
+    overdue_recv = _overdue(fs.debtors_ageing(db, company_id, as_of))
+    overdue_pay = _overdue(fs.creditors_ageing(db, company_id, as_of))
+
+    # Manufacturing process flow: Yarn → Knitting → Greige → Dyeing → Finishing → FG
+    flow = [
+        {"stage": "Yarn Issue", "metric": "Issued (FY, kg)",
+         "value": str(db.execute(select(func.coalesce(func.sum(KnittingProduction.yarn_consumed_kg), 0))
+                     .where(KnittingProduction.company_id == company_id)).scalar() or 0)},
+        {"stage": "Knitting", "metric": "Today (kg)", "value": str(prod_today)},
+        {"stage": "Greige", "metric": "On hand (kg)", "value": str(greige_kg)},
+        {"stage": "Dyeing", "metric": "Active batches", "value": str(fac["active_batches"])},
+        {"stage": "Finishing", "metric": "Dyed output (kg)", "value": str(fac["dyeing_output_kg"])},
+        {"stage": "Finished Goods", "metric": "On hand (kg)", "value": str(fg_kg)},
+    ]
+
     return {
         "as_of": as_of,
+        # headline financials
         "revenue": pnl["revenue_total"],
         "gross_profit": pnl["gross_profit"],
         "net_profit": pnl["net_profit"],
         "cash_and_bank": _cash_and_bank(db, company_id, as_of),
-        "receivables": _acct_balance(db, company_id, "1040", as_of),
-        "payables": _acct_balance(db, company_id, "2010", as_of),
+        "receivables": receivables,
+        "payables": payables,
         "inventory_value": inventory_value,
+        "deltas": deltas,
         "sales_trend": _sales_trend(db, company_id, as_of),
+        # operational KPIs (real, derived)
+        "kpis": {
+            "production_today_kg": prod_today,
+            "production_month_kg": prod_month,
+            "active_orders": active_orders,
+            "pending_orders": pending_orders,
+            "finished_goods_kg": fg_kg,
+            "finished_goods_value": fg_val,
+            "greige_kg": greige_kg,
+            "greige_value": greige_val,
+            "receivables": receivables,
+            "payables": payables,
+        },
+        "manufacturing_flow": flow,
+        "overdue_receivables": overdue_recv,
+        "overdue_payables": overdue_pay,
+        "alerts": _owner_alerts(db, company_id, as_of, pending_orders, overdue_recv, overdue_pay),
     }
 
 
@@ -151,6 +275,35 @@ def accounts_dashboard(db: Session, company_id: uuid.UUID, as_of: date | None = 
         "gst_net_payable": g["net_tax_payable"]["total"],
         "trial_balance_balanced": trial["is_balanced"],
     }
+
+
+def production_trend(db: Session, company_id: uuid.UUID, as_of: date | None = None, days: int = 14) -> list[dict]:
+    """Daily knitting and dyeing output (kg) for the last ``days`` days."""
+    from app.models.manufacturing import DyeBath
+    as_of = as_of or date.today()
+    start = as_of - timedelta(days=days - 1)
+    series = {start + timedelta(days=i): {"knitting_kg": ZERO, "dyeing_kg": ZERO} for i in range(days)}
+
+    knit = db.execute(
+        select(KnittingProduction.production_date, func.sum(KnittingProduction.produced_kg))
+        .where(KnittingProduction.company_id == company_id,
+               KnittingProduction.production_date >= start, KnittingProduction.production_date <= as_of)
+        .group_by(KnittingProduction.production_date)).all()
+    for d, kg in knit:
+        if d in series:
+            series[d]["knitting_kg"] = quantize(kg or 0, QTY_SCALE)
+
+    baths = db.execute(select(DyeBath.actual_start, DyeBath.fabric_kg).where(
+        DyeBath.company_id == company_id)).all()
+    for ts, kg in baths:
+        if ts is None:
+            continue
+        d = ts.date() if hasattr(ts, "date") else ts
+        if d in series:
+            series[d]["dyeing_kg"] = quantize(Decimal(str(series[d]["dyeing_kg"])) + Decimal(str(kg or 0)), QTY_SCALE)
+
+    return [{"date": d.isoformat(), "knitting_kg": v["knitting_kg"], "dyeing_kg": v["dyeing_kg"]}
+            for d, v in sorted(series.items())]
 
 
 def factory_dashboard(db: Session, company_id: uuid.UUID, as_of: date | None = None) -> dict:

@@ -23,7 +23,8 @@ echo "[entrypoint] Running migrations..."
 alembic upgrade head
 
 echo "[entrypoint] Seeding baseline data (idempotent)..."
-python -m app.seed.seed || echo "[entrypoint] Seed skipped/failed (non-fatal)"
+# Fail fast: do not start the API without baseline master/accounting data.
+python -m app.seed.seed
 
 echo "[entrypoint] Starting API..."
 exec uvicorn app.main:app --host 0.0.0.0 --port 8000

@@ -1,0 +1,17 @@
+# Example crontab for Textile ERP operations.
+# Install with:  crontab scripts/crontab.example   (edit paths/URLs first)
+#
+# Environment for the jobs (cron has a minimal env of its own):
+DATABASE_URL=postgresql+psycopg2://erp:CHANGE_ME@localhost:5432/erp
+BACKUP_DIR=/var/backups/erp
+RETENTION_DAYS=30
+BASE_URL=http://127.0.0.1:8000
+ERP_HOME=/opt/erp
+
+# Nightly database backup at 02:17 (off the hour to dodge the backup stampede).
+# Keep backups off-host too: sync BACKUP_DIR to object storage after this runs.
+17 2 * * *  cd "$ERP_HOME" && ./scripts/backup.sh >> /var/log/erp-backup.log 2>&1
+
+# Readiness probe every 5 minutes; alert if it ever exits non-zero.
+*/5 * * * *  "$ERP_HOME/scripts/healthcheck.sh" >> /var/log/erp-health.log 2>&1 || \
+             echo "ERP readiness failed at $(date)" | logger -t erp-health

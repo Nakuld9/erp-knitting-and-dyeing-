@@ -16,10 +16,20 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.deps import require_permission
-from app.models.commercial import GoodsReceiptNote, GRNLine, SalesInvoice, SalesInvoiceLine
+from app.models.commercial import (
+    CreditNote,
+    CreditNoteLine,
+    DebitNote,
+    DebitNoteLine,
+    GoodsReceiptNote,
+    GRNLine,
+    SalesInvoice,
+    SalesInvoiceLine,
+)
 from app.models.core import User
 from app.models.manufacturing import BatchStatus, DyeBatch, DyeBath
-from app.services import procurement, sales
+from app.services import batching, credit_debit_notes, procurement, sales
+from app.services.inventory.service import InsufficientStockError
 from app.services.colorservice import ColorServiceSimulator
 from app.services.colorservice import ingest as cs
 from app.services.colorservice.register import bath_consumption_register
@@ -34,6 +44,7 @@ class GRNLineIn(BaseModel):
     chemical_id: uuid.UUID
     chemical_lot_id: uuid.UUID | None = None
     warehouse_id: uuid.UUID | None = None
+    purchase_order_line_id: uuid.UUID | None = None
     qty: Decimal
     unit_cost: Decimal
     tax_code_id: uuid.UUID | None = None
@@ -44,23 +55,41 @@ class GRNIn(BaseModel):
     number: str
     grn_date: date
     supplier_invoice_no: str | None = None
+    purchase_order_id: uuid.UUID | None = None
     lines: list[GRNLineIn] = Field(min_length=1)
 
 
 @router.post("/procurement/grn", status_code=status.HTTP_201_CREATED)
 def post_grn(payload: GRNIn, db: Session = Depends(get_db),
             user: User = Depends(require_permission("purchase.manage"))):
+    from app.core.tenancy import require_company_record
+    from app.models.commercial import PurchaseOrder as _PO
+    from app.models.masters import Chemical, Supplier, TaxCode, Warehouse
+    require_company_record(db, Supplier, payload.supplier_id, user.company_id, label="Supplier")
+    require_company_record(db, _PO, payload.purchase_order_id, user.company_id,
+                           label="Purchase order", optional=True)
+    for ln in payload.lines:
+        d = ln.model_dump()
+        require_company_record(db, Chemical, d.get("chemical_id"), user.company_id, label="Chemical", optional=True)
+        require_company_record(db, Warehouse, d.get("warehouse_id"), user.company_id, label="Warehouse", optional=True)
+        require_company_record(db, TaxCode, d.get("tax_code_id"), user.company_id, label="Tax code", optional=True)
     grn = GoodsReceiptNote(company_id=user.company_id, supplier_id=payload.supplier_id,
                            number=payload.number, grn_date=payload.grn_date,
-                           supplier_invoice_no=payload.supplier_invoice_no, created_by=user.id)
+                           supplier_invoice_no=payload.supplier_invoice_no,
+                           purchase_order_id=payload.purchase_order_id, created_by=user.id)
     for i, ln in enumerate(payload.lines, start=1):
         grn.lines.append(GRNLine(line_no=i, **ln.model_dump()))
     db.add(grn)
     db.flush()
     voucher = procurement.post_chemical_grn(db, grn, created_by=user.id)
+    po_status = None
+    if payload.purchase_order_id:
+        from app.models.commercial import PurchaseOrder
+        po = db.get(PurchaseOrder, payload.purchase_order_id)
+        po_status = po.status if po else None
     db.commit()
     return {"grn_id": str(grn.id), "voucher_number": voucher.number,
-            "total": str(voucher.total_debit)}
+            "total": str(voucher.total_debit), "po_status": po_status}
 
 
 # ------------------------------- sales --------------------------------------
@@ -83,6 +112,15 @@ class SalesInvoiceIn(BaseModel):
 @router.post("/sales/invoices", status_code=status.HTTP_201_CREATED)
 def post_sales_invoice(payload: SalesInvoiceIn, db: Session = Depends(get_db),
                        user: User = Depends(require_permission("sales.manage"))):
+    from app.core.tenancy import require_company_record
+    from app.models.commercial import SalesOrder as _SO
+    from app.models.masters import Customer, TaxCode
+    require_company_record(db, Customer, payload.customer_id, user.company_id, label="Customer")
+    require_company_record(db, _SO, payload.sales_order_id, user.company_id,
+                           label="Sales order", optional=True)
+    for ln in payload.lines:
+        require_company_record(db, TaxCode, ln.model_dump().get("tax_code_id"), user.company_id,
+                               label="Tax code", optional=True)
     inv = SalesInvoice(company_id=user.company_id, customer_id=payload.customer_id,
                        number=payload.number, invoice_date=payload.invoice_date,
                        sales_order_id=payload.sales_order_id, created_by=user.id)
@@ -97,13 +135,123 @@ def post_sales_invoice(payload: SalesInvoiceIn, db: Session = Depends(get_db),
             "total_value": str(inv.total_value)}
 
 
+# --------------------------- credit / debit notes ---------------------------
+
+class CreditNoteLineIn(BaseModel):
+    description: str | None = None
+    qty: Decimal
+    rate: Decimal
+    tax_code_id: uuid.UUID | None = None
+
+
+class CreditNoteIn(BaseModel):
+    customer_id: uuid.UUID
+    number: str
+    note_date: date
+    reason: str | None = None
+    original_invoice_id: uuid.UUID | None = None
+    lines: list[CreditNoteLineIn] = Field(min_length=1)
+
+
+@router.post("/sales/credit-notes", status_code=status.HTTP_201_CREATED)
+def post_credit_note(payload: CreditNoteIn, db: Session = Depends(get_db),
+                     user: User = Depends(require_permission("sales.manage"))):
+    note = CreditNote(company_id=user.company_id, customer_id=payload.customer_id,
+                      number=payload.number, note_date=payload.note_date, reason=payload.reason,
+                      original_invoice_id=payload.original_invoice_id, created_by=user.id)
+    for i, ln in enumerate(payload.lines, start=1):
+        note.lines.append(CreditNoteLine(line_no=i, **ln.model_dump()))
+    db.add(note)
+    db.flush()
+    voucher = credit_debit_notes.post_sales_credit_note(db, note, created_by=user.id)
+    db.commit()
+    return {"credit_note_id": str(note.id), "voucher_number": voucher.number,
+            "taxable_value": str(note.taxable_value), "tax_amount": str(note.tax_amount),
+            "total_value": str(note.total_value)}
+
+
+class SalesReturnIn(BaseModel):
+    customer_id: uuid.UUID
+    number: str
+    note_date: date
+    reason: str | None = None
+    restock_roll_ids: list[uuid.UUID] = Field(default_factory=list)
+    lines: list[CreditNoteLineIn] = Field(min_length=1)
+
+
+@router.post("/sales/returns", status_code=status.HTTP_201_CREATED)
+def post_sales_return(payload: SalesReturnIn, db: Session = Depends(get_db),
+                      user: User = Depends(require_permission("sales.manage"))):
+    note = CreditNote(company_id=user.company_id, customer_id=payload.customer_id,
+                      number=payload.number, note_date=payload.note_date, reason=payload.reason,
+                      created_by=user.id)
+    for i, ln in enumerate(payload.lines, start=1):
+        note.lines.append(CreditNoteLine(line_no=i, **ln.model_dump()))
+    db.add(note)
+    db.flush()
+    try:
+        res = credit_debit_notes.post_sales_return(db, note, restock_roll_ids=payload.restock_roll_ids,
+                                                   created_by=user.id)
+    except RuntimeError as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    db.commit()
+    cn = res["credit_note_voucher"]; cogs = res["cogs_reversal_voucher"]
+    return {"credit_note_id": str(note.id), "credit_voucher": cn.number if cn else None,
+            "cogs_reversal_voucher": cogs.number if cogs else None,
+            "total_value": str(note.total_value), "restocked": len(payload.restock_roll_ids)}
+
+
+class DebitNoteLineIn(BaseModel):
+    chemical_id: uuid.UUID
+    chemical_lot_id: uuid.UUID | None = None
+    warehouse_id: uuid.UUID | None = None
+    qty: Decimal
+    tax_code_id: uuid.UUID | None = None
+
+
+class DebitNoteIn(BaseModel):
+    supplier_id: uuid.UUID
+    number: str
+    note_date: date
+    reason: str | None = None
+    original_grn_id: uuid.UUID | None = None
+    lines: list[DebitNoteLineIn] = Field(min_length=1)
+
+
+@router.post("/purchase/debit-notes", status_code=status.HTTP_201_CREATED)
+def post_debit_note(payload: DebitNoteIn, db: Session = Depends(get_db),
+                    user: User = Depends(require_permission("purchase.manage"))):
+    note = DebitNote(company_id=user.company_id, supplier_id=payload.supplier_id,
+                     number=payload.number, note_date=payload.note_date, reason=payload.reason,
+                     original_grn_id=payload.original_grn_id, created_by=user.id)
+    for i, ln in enumerate(payload.lines, start=1):
+        note.lines.append(DebitNoteLine(line_no=i, **ln.model_dump()))
+    db.add(note)
+    db.flush()
+    try:
+        voucher = credit_debit_notes.post_purchase_debit_note(db, note, created_by=user.id)
+    except InsufficientStockError as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    db.commit()
+    return {"debit_note_id": str(note.id), "voucher_number": voucher.number,
+            "taxable_value": str(note.taxable_value), "tax_amount": str(note.tax_amount),
+            "total_value": str(note.total_value)}
+
+
 # ------------------------------ dyeing --------------------------------------
 
 class BatchIn(BaseModel):
     batch_code: str
-    fabric_kg: Decimal
+    fabric_kg: Decimal = Decimal("0")   # auto-summed from rolls when roll_ids given
     shade_id: uuid.UUID | None = None
     sales_order_id: uuid.UUID | None = None
+    roll_ids: list[uuid.UUID] = Field(default_factory=list)
+
+
+class AssignRollsIn(BaseModel):
+    roll_ids: list[uuid.UUID] = Field(min_length=1)
 
 
 class BathIn(BaseModel):
@@ -118,11 +266,54 @@ class BathIn(BaseModel):
 @router.post("/dyeing/batches", status_code=status.HTTP_201_CREATED)
 def create_batch(payload: BatchIn, db: Session = Depends(get_db),
                  user: User = Depends(require_permission("dyeing.manage"))):
-    batch = DyeBatch(company_id=user.company_id, status=BatchStatus.PLANNED,
-                     created_by=user.id, **payload.model_dump())
+    batch = DyeBatch(company_id=user.company_id, status=BatchStatus.PLANNED, created_by=user.id,
+                     batch_code=payload.batch_code, fabric_kg=payload.fabric_kg,
+                     shade_id=payload.shade_id, sales_order_id=payload.sales_order_id)
     db.add(batch)
+    db.flush()
+    if payload.roll_ids:
+        try:
+            batching.assign_rolls(db, user.company_id, batch, payload.roll_ids)
+        except batching.BatchingError as exc:
+            db.rollback()
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
     db.commit()
-    return {"batch_id": str(batch.id), "batch_code": batch.batch_code}
+    return {"batch_id": str(batch.id), "batch_code": batch.batch_code,
+            "fabric_kg": str(batch.fabric_kg), "rolls": len(batch.rolls)}
+
+
+@router.post("/dyeing/batches/{batch_id}/assign-rolls")
+def assign_rolls(batch_id: uuid.UUID, payload: AssignRollsIn, db: Session = Depends(get_db),
+                 user: User = Depends(require_permission("dyeing.manage"))):
+    batch = db.get(DyeBatch, batch_id)
+    if batch is None or batch.company_id != user.company_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Batch not found")
+    try:
+        batching.assign_rolls(db, user.company_id, batch, payload.roll_ids)
+        db.commit()
+    except batching.BatchingError as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    return {"batch_id": str(batch.id), "fabric_kg": str(batch.fabric_kg), "rolls": len(batch.rolls)}
+
+
+@router.get("/dyeing/batches")
+def list_batches(db: Session = Depends(get_db), user: User = Depends(require_permission("dyeing.manage"))):
+    from sqlalchemy import select
+    rows = db.execute(select(DyeBatch).where(DyeBatch.company_id == user.company_id)
+                      .order_by(DyeBatch.batch_code.desc())).scalars().all()
+    return [{"id": str(b.id), "label": f"{b.batch_code} ({b.fabric_kg} kg, {len(b.rolls)} rolls)",
+             "batch_code": b.batch_code, "fabric_kg": str(b.fabric_kg),
+             "rolls": len(b.rolls), "status": b.status} for b in rows[:100]]
+
+
+@router.get("/dyeing/batches/{batch_id}/rolls")
+def batch_rolls(batch_id: uuid.UUID, db: Session = Depends(get_db),
+                user: User = Depends(require_permission("dyeing.manage"))):
+    batch = db.get(DyeBatch, batch_id)
+    if batch is None or batch.company_id != user.company_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Batch not found")
+    return [{"id": str(r.id), "roll_no": r.roll_no, "weight_kg": str(r.weight_kg)} for r in batch.rolls]
 
 
 @router.post("/dyeing/baths", status_code=status.HTTP_201_CREATED)

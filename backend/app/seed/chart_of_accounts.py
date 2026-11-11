@@ -35,6 +35,7 @@ COA: list[tuple[str, str, AccountType, bool, str | None, set[str]]] = [
     ("1121", "Input CGST", A, False, "1120", set()),
     ("1122", "Input SGST", A, False, "1120", set()),
     ("1123", "Input IGST", A, False, "1120", set()),
+    ("1115", "Stores & Spares Inventory", A, False, "1000", set()),
     ("1130", "Supplier Advances", A, False, "1000", set()),
     ("1140", "Prepaid Expenses", A, False, "1000", set()),
     ("1500", "Fixed Assets", A, True, None, set()),
@@ -54,6 +55,9 @@ COA: list[tuple[str, str, AccountType, bool, str | None, set[str]]] = [
     ("2010", "Accounts Payable", L, False, "2000", {"control"}),
     ("2020", "Expenses Payable", L, False, "2000", set()),
     ("2030", "Salary Payable", L, False, "2000", set()),
+    ("2031", "PF Payable", L, False, "2000", set()),
+    ("2032", "ESI Payable", L, False, "2000", set()),
+    ("2033", "Professional Tax Payable", L, False, "2000", set()),
     ("2040", "GST Output", L, True, "2000", set()),
     ("2041", "Output CGST", L, False, "2040", set()),
     ("2042", "Output SGST", L, False, "2040", set()),
@@ -82,6 +86,7 @@ COA: list[tuple[str, str, AccountType, bool, str | None, set[str]]] = [
     ("4050", "Other Operating Income", I, False, "4000", set()),
     ("4060", "Scrap Sales", I, False, "4000", set()),
     ("4090", "Other Income", I, False, "4000", set()),
+    ("4095", "Rounding Off", I, False, "4000", set()),
     # ---------------- DIRECT EXPENSES / COGS ----------------
     ("5000", "Direct Expenses & COGS", X, True, None, set()),
     ("5010", "Yarn Consumption", X, False, "5000", set()),
@@ -102,8 +107,11 @@ COA: list[tuple[str, str, AccountType, bool, str | None, set[str]]] = [
     # ---------------- INDIRECT EXPENSES ----------------
     ("6000", "Indirect Expenses", X, True, None, set()),
     ("6010", "Salaries", X, False, "6000", set()),
+    ("6011", "Employer PF Contribution", X, False, "6000", set()),
+    ("6012", "Employer ESI Contribution", X, False, "6000", set()),
     ("6020", "Office Expenses", X, False, "6000", set()),
     ("6030", "Repairs and Maintenance", X, False, "6000", set()),
+    ("6035", "Stores & Spares Consumption", X, False, "6000", set()),
     ("6040", "Factory Administration", X, False, "6000", set()),
     ("6050", "Rent", X, False, "6000", set()),
     ("6060", "Insurance", X, False, "6000", set()),
@@ -115,6 +123,7 @@ COA: list[tuple[str, str, AccountType, bool, str | None, set[str]]] = [
     ("6120", "Interest", X, False, "6000", set()),
     ("6130", "Communication", X, False, "6000", set()),
     ("6190", "Miscellaneous Expenses", X, False, "6000", set()),
+    ("6195", "Inventory Adjustment (Shrinkage/Gain)", X, False, "6000", set()),
 ]
 
 
@@ -131,6 +140,8 @@ VOUCHER_TYPES: list[tuple[str, str, str, bool]] = [
     ("SJ", "Stock Journal", "SJ", False),
     ("PJ", "Production Journal", "PJ", False),
     ("PRV", "Payroll Voucher", "PRV", True),
+    ("GADJ", "GST Adjustment Voucher", "GADJ", False),
+    ("YEC", "Year-End Closing Voucher", "YEC", False),
     ("DEP", "Depreciation Voucher", "DEP", False),
     ("GADJ", "GST Adjustment Voucher", "GADJ", True),
     ("OB", "Opening Balance Voucher", "OB", True),

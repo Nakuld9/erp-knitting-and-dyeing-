@@ -43,6 +43,7 @@ class KnittingProduction(AuditMixin, Base):
     sales_order_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sales_orders.id"), nullable=True)
     yarn_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("yarn_masters.id"), index=True)
     yarn_lot: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    yarn_lot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("yarn_lots.id"), nullable=True, index=True)
     fabric_type_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("fabric_types.id"), nullable=True)
     production_date: Mapped[date] = mapped_column(Date, index=True)
     shift: Mapped[str | None] = mapped_column(String(20), nullable=True)
@@ -69,14 +70,22 @@ class FabricRoll(AuditMixin, Base):
         ForeignKey("knitting_production.id"), nullable=True, index=True
     )
     fabric_type_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("fabric_types.id"), nullable=True)
+    # Denormalised lineage stamped at production time (shown on the roll + label).
+    machine_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("machines.id"), nullable=True)
+    yarn_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("yarn_masters.id"), nullable=True)
+    yarn_lot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("yarn_lots.id"), nullable=True)
     sales_order_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sales_orders.id"), nullable=True)
     dye_batch_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dye_batches.id"), nullable=True)
+    # Set once the roll is dispatched, so it can't be delivered twice.
+    delivery_note_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("delivery_notes.id"), nullable=True, index=True)
     weight_kg: Mapped[object] = mapped_column(Quantity, default=0)
     length_m: Mapped[object | None] = mapped_column(Quantity, nullable=True)
     gsm: Mapped[object | None] = mapped_column(Quantity, nullable=True)
     width_cm: Mapped[object | None] = mapped_column(Quantity, nullable=True)
     warehouse_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("warehouses.id"), nullable=True)
     quality_status: Mapped[str] = mapped_column(String(20), default="OK")
+    # lifecycle: ACTIVE, or SPLIT / MERGED once superseded by child/merged rolls.
+    status: Mapped[str] = mapped_column(String(10), default="ACTIVE", index=True)
     # roll lineage (split/merge): points to the parent roll it came from.
     parent_roll_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("fabric_rolls.id"), nullable=True)
 

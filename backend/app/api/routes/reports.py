@@ -74,6 +74,76 @@ def profit_and_loss(
     return _stringify(fs.profit_and_loss(db, user.company_id, frm, to))
 
 
+@router.get("/manufacturing-account")
+def manufacturing_account(
+    date_from: date | None = None, date_to: date | None = None,
+    db: Session = Depends(get_db), user: User = Depends(require_permission("report.financial")),
+) -> dict:
+    to = date_to or date.today(); frm = date_from or _fy_start(to)
+    return _stringify(fs.manufacturing_account(db, user.company_id, frm, to))
+
+
+@router.get("/trading-account")
+def trading_account(
+    date_from: date | None = None, date_to: date | None = None,
+    db: Session = Depends(get_db), user: User = Depends(require_permission("report.financial")),
+) -> dict:
+    to = date_to or date.today(); frm = date_from or _fy_start(to)
+    return _stringify(fs.trading_account(db, user.company_id, frm, to))
+
+
+@router.get("/funds-flow")
+def funds_flow(
+    date_from: date | None = None, date_to: date | None = None,
+    db: Session = Depends(get_db), user: User = Depends(require_permission("report.financial")),
+) -> dict:
+    to = date_to or date.today(); frm = date_from or _fy_start(to)
+    return _stringify(fs.funds_flow(db, user.company_id, frm, to))
+
+
+@router.get("/customer-statement")
+def customer_statement(
+    customer_id: uuid.UUID,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("report.read")),
+) -> dict:
+    from app.services.accounting import statements
+    to = date_to or date.today()
+    frm = date_from or _fy_start(to)
+    return _stringify(statements.customer_statement(db, user.company_id, customer_id, frm, to))
+
+
+@router.get("/supplier-statement")
+def supplier_statement(
+    supplier_id: uuid.UUID,
+    date_from: date | None = None,
+    date_to: date | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("report.read")),
+) -> dict:
+    from app.services.accounting import statements
+    to = date_to or date.today()
+    frm = date_from or _fy_start(to)
+    return _stringify(statements.supplier_statement(db, user.company_id, supplier_id, frm, to))
+
+
+@router.get("/cost-centres")
+def cost_centres(
+    date_from: date | None = None,
+    date_to: date | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_permission("report.read")),
+) -> dict:
+    from app.services.accounting.cost_centres import cost_centre_report
+    # Default to the whole fiscal year so period-end postings (e.g. month-end
+    # overhead allocations, year-end entries) are included.
+    frm = date_from or _fy_start(date.today())
+    to = date_to or date(frm.year + 1, 3, 31)
+    return _stringify(cost_centre_report(db, user.company_id, frm, to))
+
+
 @router.get("/balance-sheet")
 def balance_sheet(
     as_of: date | None = None,

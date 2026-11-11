@@ -33,6 +33,10 @@ def _bank_coa_code(db: Session, bank_account_id: uuid.UUID) -> tuple[BankAccount
 
 def customer_receipt(db, *, company_id, bank_account_id, customer_id, amount, vdate, ref,
                      created_by=None, ar_code="1040"):
+    from app.core.tenancy import require_company_record
+    from app.models.masters import BankAccount, Customer
+    require_company_record(db, BankAccount, bank_account_id, company_id, label="Bank account")
+    require_company_record(db, Customer, customer_id, company_id, label="Customer")
     _ba, bank_code = _bank_coa_code(db, bank_account_id)
     amount = quantize(amount, MONEY_SCALE)
     return pe.post_voucher(db, pe.PostingRequest(
@@ -45,6 +49,10 @@ def customer_receipt(db, *, company_id, bank_account_id, customer_id, amount, vd
 
 def supplier_payment(db, *, company_id, bank_account_id, supplier_id, amount, vdate, ref,
                      created_by=None, ap_code="2010"):
+    from app.core.tenancy import require_company_record
+    from app.models.masters import BankAccount, Supplier
+    require_company_record(db, BankAccount, bank_account_id, company_id, label="Bank account")
+    require_company_record(db, Supplier, supplier_id, company_id, label="Supplier")
     _ba, bank_code = _bank_coa_code(db, bank_account_id)
     amount = quantize(amount, MONEY_SCALE)
     return pe.post_voucher(db, pe.PostingRequest(
@@ -57,6 +65,10 @@ def supplier_payment(db, *, company_id, bank_account_id, supplier_id, amount, vd
 
 def contra(db, *, company_id, from_bank_account_id, to_bank_account_id, amount, vdate, ref,
            created_by=None):
+    from app.core.tenancy import require_company_record
+    from app.models.masters import BankAccount
+    require_company_record(db, BankAccount, from_bank_account_id, company_id, label="From bank account")
+    require_company_record(db, BankAccount, to_bank_account_id, company_id, label="To bank account")
     _f, from_code = _bank_coa_code(db, from_bank_account_id)
     _t, to_code = _bank_coa_code(db, to_bank_account_id)
     amount = quantize(amount, MONEY_SCALE)
