@@ -242,6 +242,87 @@ function DataTable({
   }, "Next \u203A")));
 }
 
+// Reusable line-items editor for transaction forms: configurable input columns,
+// add/remove rows, an optional computed per-row amount and a live subtotal.
+// NOTE: statutory GST/total are posted by the backend — the subtotal here is the
+// taxable (qty x rate) figure only, shown for data entry, never as the tax source.
+function LineItems({
+  columns,
+  rows,
+  setRows,
+  newRow,
+  amount,
+  amountLabel = "Taxable subtotal",
+  note
+}) {
+  const set = (i, k, v) => setRows(rs => rs.map((r, j) => j === i ? {
+    ...r,
+    [k]: v
+  } : r));
+  const del = i => setRows(rs => rs.length > 1 ? rs.filter((_, j) => j !== i) : rs);
+  const subtotal = amount ? rows.reduce((s, r) => s + Number(amount(r) || 0), 0) : null;
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, columns.map(c => /*#__PURE__*/React.createElement("th", {
+    key: c.key,
+    className: c.num ? "num" : ""
+  }, c.label)), amount && /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Amount"), /*#__PURE__*/React.createElement("th", {
+    style: {
+      width: 36
+    }
+  }))), /*#__PURE__*/React.createElement("tbody", null, rows.map((r, i) => /*#__PURE__*/React.createElement("tr", {
+    key: i
+  }, columns.map(c => /*#__PURE__*/React.createElement("td", {
+    key: c.key,
+    className: c.num ? "num" : ""
+  }, c.type === "opts" ? /*#__PURE__*/React.createElement(Opts, {
+    items: c.items || [],
+    value: r[c.key],
+    onChange: e => set(i, c.key, e.target.value),
+    placeholder: c.placeholder || "—"
+  }) : c.type === "select" ? /*#__PURE__*/React.createElement("select", {
+    value: r[c.key],
+    onChange: e => set(i, c.key, e.target.value)
+  }, (c.options || []).map(o => /*#__PURE__*/React.createElement("option", {
+    key: o[0],
+    value: o[0]
+  }, o[1]))) : /*#__PURE__*/React.createElement("input", {
+    style: {
+      width: c.width || 120
+    },
+    value: r[c.key],
+    onChange: e => set(i, c.key, e.target.value),
+    placeholder: c.placeholder
+  }))), amount && /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(amount(r))), /*#__PURE__*/React.createElement("td", null, rows.length > 1 && /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "btn sec",
+    title: "Remove",
+    onClick: () => del(i)
+  }, "\u2715"))))), amount && /*#__PURE__*/React.createElement("tfoot", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", {
+    colSpan: columns.length
+  }, amountLabel), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, inr2(subtotal)), /*#__PURE__*/React.createElement("th", null)))), /*#__PURE__*/React.createElement("div", {
+    className: "row",
+    style: {
+      marginTop: 10,
+      alignItems: "center",
+      gap: 12
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    type: "button",
+    className: "btn sec",
+    onClick: () => setRows(rs => [...rs, newRow()])
+  }, "+ Add line"), note && /*#__PURE__*/React.createElement("span", {
+    className: "muted",
+    style: {
+      fontSize: 12
+    }
+  }, note)));
+}
+
 // Lazy line-item detail panels for expandable order rows.
 function PODetail({
   id,
@@ -2262,62 +2343,51 @@ function Purchase() {
       ...hdr,
       grn_date: e.target.value
     })
-  }))), /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Chemical"), /*#__PURE__*/React.createElement("th", null, "Warehouse"), /*#__PURE__*/React.createElement("th", {
-    className: "num"
-  }, "Qty"), /*#__PURE__*/React.createElement("th", {
-    className: "num"
-  }, "Unit cost"), /*#__PURE__*/React.createElement("th", null, "Tax"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, lines.map((l, i) => /*#__PURE__*/React.createElement("tr", {
-    key: i
-  }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Opts, {
-    items: chemicals,
-    value: l.chemical_id,
-    onChange: e => setLine(i, "chemical_id", e.target.value)
-  })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Opts, {
-    items: warehouses,
-    value: l.warehouse_id,
-    onChange: e => setLine(i, "warehouse_id", e.target.value),
-    placeholder: "\u2014"
-  })), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, /*#__PURE__*/React.createElement("input", {
-    style: {
-      width: 90
-    },
-    value: l.qty,
-    onChange: e => setLine(i, "qty", e.target.value)
-  })), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, /*#__PURE__*/React.createElement("input", {
-    style: {
-      width: 100
-    },
-    value: l.unit_cost,
-    onChange: e => setLine(i, "unit_cost", e.target.value)
-  })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Opts, {
-    items: taxes,
-    value: l.tax_code_id,
-    onChange: e => setLine(i, "tax_code_id", e.target.value),
-    placeholder: "\u2014"
-  })), /*#__PURE__*/React.createElement("td", null, lines.length > 1 && /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    className: "btn sec",
-    onClick: () => setLines(ls => ls.filter((_, j) => j !== i))
-  }, "\u2715")))))), /*#__PURE__*/React.createElement("div", {
-    className: "row",
-    style: {
-      marginTop: 12
-    }
-  }, /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    className: "btn sec",
-    onClick: () => setLines(ls => [...ls, {
+  }))), /*#__PURE__*/React.createElement(LineItems, {
+    rows: lines,
+    setRows: setLines,
+    newRow: () => ({
       chemical_id: "",
       warehouse_id: "",
       qty: "",
       unit_cost: "",
       tax_code_id: ""
-    }])
-  }, "+ Add line"), /*#__PURE__*/React.createElement("button", {
+    }),
+    amount: l => Number(l.qty || 0) * Number(l.unit_cost || 0),
+    amountLabel: "Goods value (before GST)",
+    note: "Input GST and payable are computed by the backend on posting.",
+    columns: [{
+      key: "chemical_id",
+      label: "Chemical",
+      type: "opts",
+      items: chemicals
+    }, {
+      key: "warehouse_id",
+      label: "Warehouse",
+      type: "opts",
+      items: warehouses
+    }, {
+      key: "qty",
+      label: "Qty",
+      num: true,
+      width: 90
+    }, {
+      key: "unit_cost",
+      label: "Unit cost",
+      num: true,
+      width: 100
+    }, {
+      key: "tax_code_id",
+      label: "Tax",
+      type: "opts",
+      items: taxes
+    }]
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "row",
+    style: {
+      marginTop: 14
+    }
+  }, /*#__PURE__*/React.createElement("button", {
     className: "btn"
   }, "Post GRN")), err && /*#__PURE__*/React.createElement("div", {
     className: "err"
@@ -3017,59 +3087,44 @@ function Sales() {
       ...hdr,
       invoice_date: e.target.value
     })
-  }))), /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Description"), /*#__PURE__*/React.createElement("th", {
-    className: "num"
-  }, "Qty"), /*#__PURE__*/React.createElement("th", {
-    className: "num"
-  }, "Rate"), /*#__PURE__*/React.createElement("th", null, "Tax"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, lines.map((l, i) => /*#__PURE__*/React.createElement("tr", {
-    key: i
-  }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("input", {
-    style: {
-      width: 260
-    },
-    value: l.description,
-    onChange: e => setLine(i, "description", e.target.value),
-    placeholder: "Dyed fabric"
-  })), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, /*#__PURE__*/React.createElement("input", {
-    style: {
-      width: 90
-    },
-    value: l.qty,
-    onChange: e => setLine(i, "qty", e.target.value)
-  })), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, /*#__PURE__*/React.createElement("input", {
-    style: {
-      width: 90
-    },
-    value: l.rate,
-    onChange: e => setLine(i, "rate", e.target.value)
-  })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement(Opts, {
-    items: taxes,
-    value: l.tax_code_id,
-    onChange: e => setLine(i, "tax_code_id", e.target.value),
-    placeholder: "\u2014"
-  })), /*#__PURE__*/React.createElement("td", null, lines.length > 1 && /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    className: "btn sec",
-    onClick: () => setLines(ls => ls.filter((_, j) => j !== i))
-  }, "\u2715")))))), /*#__PURE__*/React.createElement("div", {
-    className: "row",
-    style: {
-      marginTop: 12
-    }
-  }, /*#__PURE__*/React.createElement("button", {
-    type: "button",
-    className: "btn sec",
-    onClick: () => setLines(ls => [...ls, {
+  }))), /*#__PURE__*/React.createElement(LineItems, {
+    rows: lines,
+    setRows: setLines,
+    newRow: () => ({
       description: "",
       qty: "",
       rate: "",
       tax_code_id: ""
-    }])
-  }, "+ Add line"), /*#__PURE__*/React.createElement("button", {
+    }),
+    amount: l => Number(l.qty || 0) * Number(l.rate || 0),
+    note: "GST and invoice total are computed by the backend on posting.",
+    columns: [{
+      key: "description",
+      label: "Description",
+      width: 260,
+      placeholder: "Dyed fabric"
+    }, {
+      key: "qty",
+      label: "Qty",
+      num: true,
+      width: 90
+    }, {
+      key: "rate",
+      label: "Rate",
+      num: true,
+      width: 90
+    }, {
+      key: "tax_code_id",
+      label: "Tax",
+      type: "opts",
+      items: taxes
+    }]
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "row",
+    style: {
+      marginTop: 14
+    }
+  }, /*#__PURE__*/React.createElement("button", {
     className: "btn"
   }, "Post invoice")), err && /*#__PURE__*/React.createElement("div", {
     className: "err"

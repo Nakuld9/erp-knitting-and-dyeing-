@@ -97,6 +97,36 @@ function DataTable({columns, rows, searchKeys, pageSize=10, empty="Nothing to sh
   </div>);
 }
 
+// Reusable line-items editor for transaction forms: configurable input columns,
+// add/remove rows, an optional computed per-row amount and a live subtotal.
+// NOTE: statutory GST/total are posted by the backend — the subtotal here is the
+// taxable (qty x rate) figure only, shown for data entry, never as the tax source.
+function LineItems({columns, rows, setRows, newRow, amount, amountLabel="Taxable subtotal", note}){
+  const set=(i,k,v)=>setRows(rs=>rs.map((r,j)=>j===i?{...r,[k]:v}:r));
+  const del=i=>setRows(rs=>rs.length>1?rs.filter((_,j)=>j!==i):rs);
+  const subtotal = amount? rows.reduce((s,r)=>s+Number(amount(r)||0),0) : null;
+  return (<div>
+    <table><thead><tr>
+      {columns.map(c=><th key={c.key} className={c.num?"num":""}>{c.label}</th>)}
+      {amount && <th className="num">Amount</th>}<th style={{width:36}}></th></tr></thead>
+    <tbody>{rows.map((r,i)=><tr key={i}>
+      {columns.map(c=><td key={c.key} className={c.num?"num":""}>
+        {c.type==="opts"? <Opts items={c.items||[]} value={r[c.key]} onChange={e=>set(i,c.key,e.target.value)} placeholder={c.placeholder||"—"}/>
+         : c.type==="select"? <select value={r[c.key]} onChange={e=>set(i,c.key,e.target.value)}>{(c.options||[]).map(o=><option key={o[0]} value={o[0]}>{o[1]}</option>)}</select>
+         : <input style={{width:c.width||120}} value={r[c.key]} onChange={e=>set(i,c.key,e.target.value)} placeholder={c.placeholder}/>}
+      </td>)}
+      {amount && <td className="num">{inr2(amount(r))}</td>}
+      <td>{rows.length>1 && <button type="button" className="btn sec" title="Remove" onClick={()=>del(i)}>✕</button>}</td>
+    </tr>)}</tbody>
+    {amount && <tfoot><tr><th colSpan={columns.length}>{amountLabel}</th><th className="num">{inr2(subtotal)}</th><th></th></tr></tfoot>}
+    </table>
+    <div className="row" style={{marginTop:10,alignItems:"center",gap:12}}>
+      <button type="button" className="btn sec" onClick={()=>setRows(rs=>[...rs,newRow()])}>+ Add line</button>
+      {note && <span className="muted" style={{fontSize:12}}>{note}</span>}
+    </div>
+  </div>);
+}
+
 // Lazy line-item detail panels for expandable order rows.
 function PODetail({id, names}){
   const [d]=useData("/api/procurement/purchase-orders/"+id);
@@ -832,18 +862,19 @@ function Purchase(){
         <div className="field"><label>Date</label>
           <input type="date" value={hdr.grn_date} onChange={e=>setHdr({...hdr,grn_date:e.target.value})}/></div>
       </div>
-      <table><thead><tr><th>Chemical</th><th>Warehouse</th><th className="num">Qty</th>
-        <th className="num">Unit cost</th><th>Tax</th><th></th></tr></thead>
-      <tbody>{lines.map((l,i)=><tr key={i}>
-        <td><Opts items={chemicals} value={l.chemical_id} onChange={e=>setLine(i,"chemical_id",e.target.value)}/></td>
-        <td><Opts items={warehouses} value={l.warehouse_id} onChange={e=>setLine(i,"warehouse_id",e.target.value)} placeholder="—"/></td>
-        <td className="num"><input style={{width:90}} value={l.qty} onChange={e=>setLine(i,"qty",e.target.value)}/></td>
-        <td className="num"><input style={{width:100}} value={l.unit_cost} onChange={e=>setLine(i,"unit_cost",e.target.value)}/></td>
-        <td><Opts items={taxes} value={l.tax_code_id} onChange={e=>setLine(i,"tax_code_id",e.target.value)} placeholder="—"/></td>
-        <td>{lines.length>1 && <button type="button" className="btn sec" onClick={()=>setLines(ls=>ls.filter((_,j)=>j!==i))}>✕</button>}</td>
-      </tr>)}</tbody></table>
-      <div className="row" style={{marginTop:12}}>
-        <button type="button" className="btn sec" onClick={()=>setLines(ls=>[...ls,{chemical_id:"",warehouse_id:"",qty:"",unit_cost:"",tax_code_id:""}])}>+ Add line</button>
+      <LineItems rows={lines} setRows={setLines}
+        newRow={()=>({chemical_id:"",warehouse_id:"",qty:"",unit_cost:"",tax_code_id:""})}
+        amount={l=>Number(l.qty||0)*Number(l.unit_cost||0)}
+        amountLabel="Goods value (before GST)"
+        note="Input GST and payable are computed by the backend on posting."
+        columns={[
+          {key:"chemical_id",label:"Chemical",type:"opts",items:chemicals},
+          {key:"warehouse_id",label:"Warehouse",type:"opts",items:warehouses},
+          {key:"qty",label:"Qty",num:true,width:90},
+          {key:"unit_cost",label:"Unit cost",num:true,width:100},
+          {key:"tax_code_id",label:"Tax",type:"opts",items:taxes},
+        ]}/>
+      <div className="row" style={{marginTop:14}}>
         <button className="btn">Post GRN</button>
       </div>
       {err && <div className="err">{err}</div>}
@@ -1037,16 +1068,17 @@ function Sales(){
         <div className="field"><label>Date</label>
           <input type="date" value={hdr.invoice_date} onChange={e=>setHdr({...hdr,invoice_date:e.target.value})}/></div>
       </div>
-      <table><thead><tr><th>Description</th><th className="num">Qty</th><th className="num">Rate</th><th>Tax</th><th></th></tr></thead>
-      <tbody>{lines.map((l,i)=><tr key={i}>
-        <td><input style={{width:260}} value={l.description} onChange={e=>setLine(i,"description",e.target.value)} placeholder="Dyed fabric"/></td>
-        <td className="num"><input style={{width:90}} value={l.qty} onChange={e=>setLine(i,"qty",e.target.value)}/></td>
-        <td className="num"><input style={{width:90}} value={l.rate} onChange={e=>setLine(i,"rate",e.target.value)}/></td>
-        <td><Opts items={taxes} value={l.tax_code_id} onChange={e=>setLine(i,"tax_code_id",e.target.value)} placeholder="—"/></td>
-        <td>{lines.length>1 && <button type="button" className="btn sec" onClick={()=>setLines(ls=>ls.filter((_,j)=>j!==i))}>✕</button>}</td>
-      </tr>)}</tbody></table>
-      <div className="row" style={{marginTop:12}}>
-        <button type="button" className="btn sec" onClick={()=>setLines(ls=>[...ls,{description:"",qty:"",rate:"",tax_code_id:""}])}>+ Add line</button>
+      <LineItems rows={lines} setRows={setLines}
+        newRow={()=>({description:"",qty:"",rate:"",tax_code_id:""})}
+        amount={l=>Number(l.qty||0)*Number(l.rate||0)}
+        note="GST and invoice total are computed by the backend on posting."
+        columns={[
+          {key:"description",label:"Description",width:260,placeholder:"Dyed fabric"},
+          {key:"qty",label:"Qty",num:true,width:90},
+          {key:"rate",label:"Rate",num:true,width:90},
+          {key:"tax_code_id",label:"Tax",type:"opts",items:taxes},
+        ]}/>
+      <div className="row" style={{marginTop:14}}>
         <button className="btn">Post invoice</button>
       </div>
       {err && <div className="err">{err}</div>}
