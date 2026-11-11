@@ -50,6 +50,43 @@ function Stat({icon, label, value, sub, delta, tone, onClick}){
 function Panel({title, children}){ return (
   <div className="panel">{title && <h3>{title}</h3>}{children}</div> ); }
 
+// Reusable enterprise table: client-side search, sortable headers, pagination.
+// columns: [{key, label, num?, sortable?, render?(row)}]. searchKeys defaults to
+// all column keys. Row actions = a column with a render returning buttons.
+function DataTable({columns, rows, searchKeys, pageSize=10, empty="Nothing to show.", initialSort, right, rowClass}){
+  const [q,setQ]=useState(""); const [sort,setSort]=useState(initialSort||null); const [page,setPage]=useState(0);
+  const sk = searchKeys || columns.map(c=>c.key);
+  let data = rows||[];
+  if(q){ const qq=q.toLowerCase(); data=data.filter(r=> sk.some(k=> String(r[k]??"").toLowerCase().includes(qq))); }
+  if(sort){ const {key,dir}=sort; data=[...data].sort((a,b)=>{ let x=a[key],y=b[key];
+    const nx=Number(x),ny=Number(y);
+    if(x!==""&&y!==""&&x!=null&&y!=null&&!isNaN(nx)&&!isNaN(ny)){x=nx;y=ny;}
+    else {x=String(x??"").toLowerCase(); y=String(y??"").toLowerCase();}
+    return (x<y?-1:x>y?1:0)*(dir==="asc"?1:-1); }); }
+  const total=data.length; const pages=Math.max(1,Math.ceil(total/pageSize));
+  const pg=Math.min(page,pages-1); const slice=data.slice(pg*pageSize,pg*pageSize+pageSize);
+  const toggle=key=>setSort(s=> s&&s.key===key ? {key,dir:s.dir==="asc"?"desc":"asc"} : {key,dir:"asc"});
+  const arrow=key=> sort&&sort.key===key ? (sort.dir==="asc"?" ▲":" ▼") : "";
+  return (<div>
+    <div className="dt-toolbar">
+      <input className="dt-search" placeholder="Search…" value={q} onChange={e=>{setQ(e.target.value); setPage(0);}}/>
+      {right}
+      <span style={{flex:1}}/>
+      <span className="dt-count">{total} row{total!==1?"s":""}</span>
+    </div>
+    {total===0? <div className="muted">{empty}</div> :
+    <table><thead><tr>{columns.map(c=><th key={c.key} className={(c.num?"num ":"")+(c.sortable!==false?"dt-th":"")}
+        onClick={()=>c.sortable!==false&&toggle(c.key)}>{c.label}{c.sortable!==false?arrow(c.key):""}</th>)}</tr></thead>
+    <tbody>{slice.map((r,i)=><tr key={r.id||i} className={rowClass?rowClass(r):undefined}>{columns.map(c=><td key={c.key} className={c.num?"num":""}>
+      {c.render?c.render(r):(r[c.key]??"")}</td>)}</tr>)}</tbody></table>}
+    {pages>1 && <div className="dt-pager">
+      <button className="btn sec" disabled={pg===0} onClick={()=>setPage(pg-1)}>‹ Prev</button>
+      <span className="muted">Page {pg+1} of {pages}</span>
+      <button className="btn sec" disabled={pg>=pages-1} onClick={()=>setPage(pg+1)}>Next ›</button>
+    </div>}
+  </div>);
+}
+
 // ---- login ----------------------------------------------------------------
 function Login({onLogin}){
   const [u,setU]=useState("admin"); const [p,setP]=useState("admin123"); const [err,setErr]=useState("");
@@ -644,10 +681,16 @@ function PartyPage({kind}){  // kind: "customers" | "suppliers"
     </Panel>
     {ledger && <PartyLedger kind={kind} party={ledger} onClose={()=>setLedger(null)}/>}
     <Panel title={title.charAt(0).toUpperCase()+title.slice(1)+"s"}>
-      {!rows?"Loading…":<table><thead><tr><th>Code</th><th>Name</th><th>GSTIN</th><th>State</th>{isCust && <th className="num">Credit limit</th>}<th></th></tr></thead>
-      <tbody>{rows.map(r=><tr key={r.id}><td>{r.code}</td><td>{r.name}</td><td>{r.gstin||"-"}</td>
-        <td>{r.state_code||"-"}</td>{isCust && <td className="num">{Number(r.credit_limit)>0?inr2(r.credit_limit):"—"}</td>}
-        <td className="num"><button className="btn sec" onClick={()=>setLedger({id:r.id,name:r.name})}>Ledger</button></td></tr>)}</tbody></table>}
+      <DataTable rows={rows||[]} pageSize={12} empty={rows?"None yet.":"Loading…"}
+        searchKeys={["code","name","gstin","state_code"]}
+        columns={[
+          {key:"code",label:"Code"},
+          {key:"name",label:"Name"},
+          {key:"gstin",label:"GSTIN",render:r=>r.gstin||"-"},
+          {key:"state_code",label:"State",render:r=>r.state_code||"-"},
+          ...(isCust?[{key:"credit_limit",label:"Credit limit",num:true,render:r=>Number(r.credit_limit)>0?inr2(r.credit_limit):"—"}]:[]),
+          {key:"act",label:"",sortable:false,num:true,render:r=><button className="btn sec" onClick={()=>setLedger({id:r.id,name:r.name})}>Ledger</button>},
+        ]}/>
     </Panel>
   </div>);
 }
@@ -1373,11 +1416,15 @@ function Vouchers(){
       <Result r={res}/>
     </Panel>
     <Panel title="Recent vouchers">
-      {recent.length===0?<div className="muted">None yet.</div>:
-      <table><thead><tr><th>Number</th><th>Date</th><th>Status</th><th className="num">Debit</th><th>Narration</th></tr></thead>
-      <tbody>{recent.map(v=><tr key={v.id}><td>{v.number}</td><td>{v.voucher_date}</td>
-        <td><span className={"badge "+(v.status==="POSTED"?"ok":v.status==="REVERSED"?"warn":"")}>{v.status}</span></td>
-        <td className="num">{inr2(v.total_debit)}</td><td>{v.narration||"-"}</td></tr>)}</tbody></table>}
+      <DataTable rows={recent} pageSize={10} empty="None yet." initialSort={{key:"voucher_date",dir:"desc"}}
+        searchKeys={["number","status","narration"]}
+        columns={[
+          {key:"number",label:"Number"},
+          {key:"voucher_date",label:"Date"},
+          {key:"status",label:"Status",render:v=><span className={"badge "+(v.status==="POSTED"?"ok":v.status==="REVERSED"?"warn":"")}>{v.status}</span>},
+          {key:"total_debit",label:"Debit",num:true,render:v=>inr2(v.total_debit)},
+          {key:"narration",label:"Narration",render:v=>v.narration||"-"},
+        ]}/>
     </Panel>
   </div>);
 }
@@ -2077,18 +2124,20 @@ function JobWork(){
       <div className="muted" style={{fontSize:12,marginTop:6}}>Inward material belongs to the customer — it is never valued in your stock; you bill a processing charge (income). Outward keeps your fabric as your asset; on receipt you book the dyer's processing charge as a cost + payable.</div>
     </Panel>
     <Panel title="Job work orders">
-      {rows.length===0?<div className="muted">None yet.</div>:
-      <table><thead><tr><th>Number</th><th>Dir</th><th>Process</th><th>Party</th><th className="num">Qty</th>
-        <th className="num">Charge</th><th>Status</th><th></th></tr></thead>
-      <tbody>{rows.map(j=><tr key={j.id}><td>{j.number}</td>
-        <td><span className={"badge "+(j.direction==="INWARD"?"ok":"info")}>{j.direction}</span></td>
-        <td>{j.process}</td><td>{j.party}</td><td className="num">{inr2(j.qty_kg)}</td>
-        <td className="num">{Number(j.total_value)?inr2(j.total_value):inr2(Number(j.qty_kg)*Number(j.rate))}</td>
-        <td><span className={"badge "+(stCls[j.status]||"")}>{j.status}</span></td>
-        <td className="num">
-          {j.direction==="OUTWARD" && j.status==="OPEN" && <button className="btn sec" onClick={()=>act(j.id,"dispatch")}>Dispatch</button>}{" "}
-          {j.status!=="BILLED" && j.status!=="CANCELLED" && <button className="btn" onClick={()=>act(j.id,"bill")}>Bill</button>}
-        </td></tr>)}</tbody></table>}
+      <DataTable rows={rows} pageSize={10} empty="None yet." initialSort={{key:"number",dir:"desc"}}
+        searchKeys={["number","direction","process","party","status"]}
+        columns={[
+          {key:"number",label:"Number"},
+          {key:"direction",label:"Dir",render:j=><span className={"badge "+(j.direction==="INWARD"?"ok":"info")}>{j.direction}</span>},
+          {key:"process",label:"Process"},
+          {key:"party",label:"Party"},
+          {key:"qty_kg",label:"Qty",num:true,render:j=>inr2(j.qty_kg)},
+          {key:"charge",label:"Charge",num:true,sortable:false,render:j=>Number(j.total_value)?inr2(j.total_value):inr2(Number(j.qty_kg)*Number(j.rate))},
+          {key:"status",label:"Status",render:j=><span className={"badge "+(stCls[j.status]||"")}>{j.status}</span>},
+          {key:"act",label:"",sortable:false,num:true,render:j=><>
+            {j.direction==="OUTWARD" && j.status==="OPEN" && <button className="btn sec" onClick={()=>act(j.id,"dispatch")}>Dispatch</button>}{" "}
+            {j.status!=="BILLED" && j.status!=="CANCELLED" && <button className="btn" onClick={()=>act(j.id,"bill")}>Bill</button>}</>},
+        ]}/>
     </Panel>
   </div>);
 }
@@ -2155,9 +2204,12 @@ function Stores(){
     {err && <div className="err">{err}</div>}
     <Result r={res}/>
     <Panel title="Store items">
-      {items.length===0?<div className="muted">None yet.</div>:
-      <table><thead><tr><th>Code</th><th>Name</th><th>Category</th><th>UoM</th></tr></thead>
-      <tbody>{items.map(i=><tr key={i.id}><td>{i.code}</td><td>{i.name}</td><td>{i.category}</td><td>{i.uom}</td></tr>)}</tbody></table>}
+      <DataTable rows={items} pageSize={10} empty="None yet."
+        searchKeys={["code","name","category"]}
+        columns={[
+          {key:"code",label:"Code"},{key:"name",label:"Name"},
+          {key:"category",label:"Category"},{key:"uom",label:"UoM"},
+        ]}/>
       <div className="muted" style={{fontSize:12,marginTop:6}}>On-hand quantities show on the Stock on Hand page (item type STORE).</div>
     </Panel>
   </div>);
@@ -2191,13 +2243,17 @@ function StockOnHand(){
           <div style={{fontWeight:700,fontSize:16}}>{inr2(totVal)}</div></div>
       </div>
       {err && <div className="err">{err}</div>}
-      <table><thead><tr><th>Type</th><th>Code</th><th>Item</th><th>Warehouse</th>
-        <th className="num">Qty</th><th className="num">Value</th></tr></thead>
-      <tbody>{rows.length===0?<tr><td colSpan="6" className="muted">No stock on hand for this filter.</td></tr>:
-        rows.map((r,i)=><tr key={i}><td><span className={"badge "+(typeBadge[r.item_type]||"")}>{r.item_type}</span></td>
-          <td>{r.item_code||"—"}</td><td>{r.item_name}</td><td>{r.warehouse}</td>
-          <td className="num">{inr2(r.qty)}</td><td className="num">{inr2(r.value)}</td></tr>)}</tbody>
-      </table>
+      <DataTable rows={rows} pageSize={12} empty="No stock on hand for this filter."
+        searchKeys={["item_type","item_code","item_name","warehouse"]}
+        initialSort={{key:"value",dir:"desc"}}
+        columns={[
+          {key:"item_type",label:"Type",render:r=><span className={"badge "+(typeBadge[r.item_type]||"")}>{r.item_type}</span>},
+          {key:"item_code",label:"Code",render:r=>r.item_code||"—"},
+          {key:"item_name",label:"Item"},
+          {key:"warehouse",label:"Warehouse"},
+          {key:"qty",label:"Qty",num:true,render:r=>inr2(r.qty)},
+          {key:"value",label:"Value",num:true,render:r=>inr2(r.value)},
+        ]}/>
       <div className="muted" style={{fontSize:12,marginTop:6}}>Live from open FIFO cost layers · fabric grouped by type &amp; greige/finished.</div>
     </Panel>
   </div>);
@@ -2239,11 +2295,15 @@ function ChartOfAccounts(){
       <div className="muted" style={{fontSize:12}}>Direct expenses sit under <b>5000 Direct Expenses &amp; COGS</b>, indirect under <b>6000 Indirect Expenses</b>, loans under <b>2500 Long-term Liabilities</b> or <b>2000 Current Liabilities</b>. A heading cannot receive postings.</div>
     </Panel>
     <Panel title="Chart of accounts">
-      <table><thead><tr><th>Code</th><th>Name</th><th>Type</th><th>Under</th><th>Postable</th></tr></thead>
-      <tbody>{rows.map(a=><tr key={a.id} style={a.is_group?{fontWeight:700,background:"#f8fafc"}:{}}>
-        <td>{a.code}</td><td>{a.name}</td><td>{a.account_type}</td>
-        <td>{a.parent_id?byCode[a.parent_id]:"—"}</td>
-        <td>{a.is_group?"heading":(a.allow_posting?"yes":"no")}</td></tr>)}</tbody></table>
+      <DataTable rows={rows} pageSize={15} rowClass={a=>a.is_group?"row-group":undefined}
+        searchKeys={["code","name","account_type"]}
+        columns={[
+          {key:"code",label:"Code"},
+          {key:"name",label:"Name"},
+          {key:"account_type",label:"Type"},
+          {key:"under",label:"Under",sortable:false,render:a=>a.parent_id?byCode[a.parent_id]:"—"},
+          {key:"postable",label:"Postable",sortable:false,render:a=>a.is_group?"heading":(a.allow_posting?"yes":"no")},
+        ]}/>
     </Panel>
   </div>);
 }

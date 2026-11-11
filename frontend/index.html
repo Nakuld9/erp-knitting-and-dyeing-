@@ -132,6 +132,16 @@
   }
   /* tables never force horizontal page scroll */
   .panel{overflow-x:auto}
+  /* ---- reusable DataTable ---- */
+  .dt-toolbar{display:flex; align-items:center; gap:10px; margin-bottom:12px}
+  .dt-search{width:240px; max-width:50vw; padding:8px 12px; border:1px solid var(--line); border-radius:9px;
+    font-size:13px; background:#fff}
+  .dt-search:focus{outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+  .dt-count{color:var(--muted); font-size:12px}
+  th.dt-th{cursor:pointer; user-select:none; white-space:nowrap}
+  th.dt-th:hover{color:var(--accent)}
+  .dt-pager{display:flex; align-items:center; justify-content:flex-end; gap:12px; margin-top:12px; font-size:13px}
+  tr.row-group td{font-weight:700; background:#f8fafc}
   .util-row{display:flex; align-items:center; gap:10px; margin:9px 0; font-size:13px}
   .util-row .nm{width:150px; color:var(--ink)}
   .util-bar{flex:1; height:8px; background:#eef2f7; border-radius:999px; overflow:hidden}

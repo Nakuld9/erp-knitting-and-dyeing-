@@ -126,6 +126,103 @@ function Panel({
   }, title && /*#__PURE__*/React.createElement("h3", null, title), children);
 }
 
+// Reusable enterprise table: client-side search, sortable headers, pagination.
+// columns: [{key, label, num?, sortable?, render?(row)}]. searchKeys defaults to
+// all column keys. Row actions = a column with a render returning buttons.
+function DataTable({
+  columns,
+  rows,
+  searchKeys,
+  pageSize = 10,
+  empty = "Nothing to show.",
+  initialSort,
+  right,
+  rowClass
+}) {
+  const [q, setQ] = useState("");
+  const [sort, setSort] = useState(initialSort || null);
+  const [page, setPage] = useState(0);
+  const sk = searchKeys || columns.map(c => c.key);
+  let data = rows || [];
+  if (q) {
+    const qq = q.toLowerCase();
+    data = data.filter(r => sk.some(k => String(r[k] ?? "").toLowerCase().includes(qq)));
+  }
+  if (sort) {
+    const {
+      key,
+      dir
+    } = sort;
+    data = [...data].sort((a, b) => {
+      let x = a[key],
+        y = b[key];
+      const nx = Number(x),
+        ny = Number(y);
+      if (x !== "" && y !== "" && x != null && y != null && !isNaN(nx) && !isNaN(ny)) {
+        x = nx;
+        y = ny;
+      } else {
+        x = String(x ?? "").toLowerCase();
+        y = String(y ?? "").toLowerCase();
+      }
+      return (x < y ? -1 : x > y ? 1 : 0) * (dir === "asc" ? 1 : -1);
+    });
+  }
+  const total = data.length;
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  const pg = Math.min(page, pages - 1);
+  const slice = data.slice(pg * pageSize, pg * pageSize + pageSize);
+  const toggle = key => setSort(s => s && s.key === key ? {
+    key,
+    dir: s.dir === "asc" ? "desc" : "asc"
+  } : {
+    key,
+    dir: "asc"
+  });
+  const arrow = key => sort && sort.key === key ? sort.dir === "asc" ? " ▲" : " ▼" : "";
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "dt-toolbar"
+  }, /*#__PURE__*/React.createElement("input", {
+    className: "dt-search",
+    placeholder: "Search\u2026",
+    value: q,
+    onChange: e => {
+      setQ(e.target.value);
+      setPage(0);
+    }
+  }), right, /*#__PURE__*/React.createElement("span", {
+    style: {
+      flex: 1
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "dt-count"
+  }, total, " row", total !== 1 ? "s" : "")), total === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, empty) : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, columns.map(c => /*#__PURE__*/React.createElement("th", {
+    key: c.key,
+    className: (c.num ? "num " : "") + (c.sortable !== false ? "dt-th" : ""),
+    onClick: () => c.sortable !== false && toggle(c.key)
+  }, c.label, c.sortable !== false ? arrow(c.key) : "")))), /*#__PURE__*/React.createElement("tbody", null, slice.map((r, i) => /*#__PURE__*/React.createElement("tr", {
+    key: r.id || i,
+    className: rowClass ? rowClass(r) : undefined
+  }, columns.map(c => /*#__PURE__*/React.createElement("td", {
+    key: c.key,
+    className: c.num ? "num" : ""
+  }, c.render ? c.render(r) : r[c.key] ?? "")))))), pages > 1 && /*#__PURE__*/React.createElement("div", {
+    className: "dt-pager"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn sec",
+    disabled: pg === 0,
+    onClick: () => setPage(pg - 1)
+  }, "\u2039 Prev"), /*#__PURE__*/React.createElement("span", {
+    className: "muted"
+  }, "Page ", pg + 1, " of ", pages), /*#__PURE__*/React.createElement("button", {
+    className: "btn sec",
+    disabled: pg >= pages - 1,
+    onClick: () => setPage(pg + 1)
+  }, "Next \u203A")));
+}
+
 // ---- login ----------------------------------------------------------------
 function Login({
   onLogin
@@ -1635,21 +1732,44 @@ function PartyPage({
     onClose: () => setLedger(null)
   }), /*#__PURE__*/React.createElement(Panel, {
     title: title.charAt(0).toUpperCase() + title.slice(1) + "s"
-  }, !rows ? "Loading…" : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Code"), /*#__PURE__*/React.createElement("th", null, "Name"), /*#__PURE__*/React.createElement("th", null, "GSTIN"), /*#__PURE__*/React.createElement("th", null, "State"), isCust && /*#__PURE__*/React.createElement("th", {
-    className: "num"
-  }, "Credit limit"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, rows.map(r => /*#__PURE__*/React.createElement("tr", {
-    key: r.id
-  }, /*#__PURE__*/React.createElement("td", null, r.code), /*#__PURE__*/React.createElement("td", null, r.name), /*#__PURE__*/React.createElement("td", null, r.gstin || "-"), /*#__PURE__*/React.createElement("td", null, r.state_code || "-"), isCust && /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, Number(r.credit_limit) > 0 ? inr2(r.credit_limit) : "—"), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, /*#__PURE__*/React.createElement("button", {
-    className: "btn sec",
-    onClick: () => setLedger({
-      id: r.id,
-      name: r.name
-    })
-  }, "Ledger"))))))));
+  }, /*#__PURE__*/React.createElement(DataTable, {
+    rows: rows || [],
+    pageSize: 12,
+    empty: rows ? "None yet." : "Loading…",
+    searchKeys: ["code", "name", "gstin", "state_code"],
+    columns: [{
+      key: "code",
+      label: "Code"
+    }, {
+      key: "name",
+      label: "Name"
+    }, {
+      key: "gstin",
+      label: "GSTIN",
+      render: r => r.gstin || "-"
+    }, {
+      key: "state_code",
+      label: "State",
+      render: r => r.state_code || "-"
+    }, ...(isCust ? [{
+      key: "credit_limit",
+      label: "Credit limit",
+      num: true,
+      render: r => Number(r.credit_limit) > 0 ? inr2(r.credit_limit) : "—"
+    }] : []), {
+      key: "act",
+      label: "",
+      sortable: false,
+      num: true,
+      render: r => /*#__PURE__*/React.createElement("button", {
+        className: "btn sec",
+        onClick: () => setLedger({
+          id: r.id,
+          name: r.name
+        })
+      }, "Ledger")
+    }]
+  })));
 }
 
 // ---- pre-sales: enquiries, quotations, statements -------------------------
@@ -4138,17 +4258,38 @@ function Vouchers() {
     r: res
   })), /*#__PURE__*/React.createElement(Panel, {
     title: "Recent vouchers"
-  }, recent.length === 0 ? /*#__PURE__*/React.createElement("div", {
-    className: "muted"
-  }, "None yet.") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Number"), /*#__PURE__*/React.createElement("th", null, "Date"), /*#__PURE__*/React.createElement("th", null, "Status"), /*#__PURE__*/React.createElement("th", {
-    className: "num"
-  }, "Debit"), /*#__PURE__*/React.createElement("th", null, "Narration"))), /*#__PURE__*/React.createElement("tbody", null, recent.map(v => /*#__PURE__*/React.createElement("tr", {
-    key: v.id
-  }, /*#__PURE__*/React.createElement("td", null, v.number), /*#__PURE__*/React.createElement("td", null, v.voucher_date), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", {
-    className: "badge " + (v.status === "POSTED" ? "ok" : v.status === "REVERSED" ? "warn" : "")
-  }, v.status)), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, inr2(v.total_debit)), /*#__PURE__*/React.createElement("td", null, v.narration || "-")))))));
+  }, /*#__PURE__*/React.createElement(DataTable, {
+    rows: recent,
+    pageSize: 10,
+    empty: "None yet.",
+    initialSort: {
+      key: "voucher_date",
+      dir: "desc"
+    },
+    searchKeys: ["number", "status", "narration"],
+    columns: [{
+      key: "number",
+      label: "Number"
+    }, {
+      key: "voucher_date",
+      label: "Date"
+    }, {
+      key: "status",
+      label: "Status",
+      render: v => /*#__PURE__*/React.createElement("span", {
+        className: "badge " + (v.status === "POSTED" ? "ok" : v.status === "REVERSED" ? "warn" : "")
+      }, v.status)
+    }, {
+      key: "total_debit",
+      label: "Debit",
+      num: true,
+      render: v => inr2(v.total_debit)
+    }, {
+      key: "narration",
+      label: "Narration",
+      render: v => v.narration || "-"
+    }]
+  })));
 }
 
 // ---- administration -------------------------------------------------------
@@ -6699,31 +6840,61 @@ function JobWork() {
     }
   }, "Inward material belongs to the customer \u2014 it is never valued in your stock; you bill a processing charge (income). Outward keeps your fabric as your asset; on receipt you book the dyer's processing charge as a cost + payable.")), /*#__PURE__*/React.createElement(Panel, {
     title: "Job work orders"
-  }, rows.length === 0 ? /*#__PURE__*/React.createElement("div", {
-    className: "muted"
-  }, "None yet.") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Number"), /*#__PURE__*/React.createElement("th", null, "Dir"), /*#__PURE__*/React.createElement("th", null, "Process"), /*#__PURE__*/React.createElement("th", null, "Party"), /*#__PURE__*/React.createElement("th", {
-    className: "num"
-  }, "Qty"), /*#__PURE__*/React.createElement("th", {
-    className: "num"
-  }, "Charge"), /*#__PURE__*/React.createElement("th", null, "Status"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, rows.map(j => /*#__PURE__*/React.createElement("tr", {
-    key: j.id
-  }, /*#__PURE__*/React.createElement("td", null, j.number), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", {
-    className: "badge " + (j.direction === "INWARD" ? "ok" : "info")
-  }, j.direction)), /*#__PURE__*/React.createElement("td", null, j.process), /*#__PURE__*/React.createElement("td", null, j.party), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, inr2(j.qty_kg)), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, Number(j.total_value) ? inr2(j.total_value) : inr2(Number(j.qty_kg) * Number(j.rate))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", {
-    className: "badge " + (stCls[j.status] || "")
-  }, j.status)), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, j.direction === "OUTWARD" && j.status === "OPEN" && /*#__PURE__*/React.createElement("button", {
-    className: "btn sec",
-    onClick: () => act(j.id, "dispatch")
-  }, "Dispatch"), " ", j.status !== "BILLED" && j.status !== "CANCELLED" && /*#__PURE__*/React.createElement("button", {
-    className: "btn",
-    onClick: () => act(j.id, "bill")
-  }, "Bill"))))))));
+  }, /*#__PURE__*/React.createElement(DataTable, {
+    rows: rows,
+    pageSize: 10,
+    empty: "None yet.",
+    initialSort: {
+      key: "number",
+      dir: "desc"
+    },
+    searchKeys: ["number", "direction", "process", "party", "status"],
+    columns: [{
+      key: "number",
+      label: "Number"
+    }, {
+      key: "direction",
+      label: "Dir",
+      render: j => /*#__PURE__*/React.createElement("span", {
+        className: "badge " + (j.direction === "INWARD" ? "ok" : "info")
+      }, j.direction)
+    }, {
+      key: "process",
+      label: "Process"
+    }, {
+      key: "party",
+      label: "Party"
+    }, {
+      key: "qty_kg",
+      label: "Qty",
+      num: true,
+      render: j => inr2(j.qty_kg)
+    }, {
+      key: "charge",
+      label: "Charge",
+      num: true,
+      sortable: false,
+      render: j => Number(j.total_value) ? inr2(j.total_value) : inr2(Number(j.qty_kg) * Number(j.rate))
+    }, {
+      key: "status",
+      label: "Status",
+      render: j => /*#__PURE__*/React.createElement("span", {
+        className: "badge " + (stCls[j.status] || "")
+      }, j.status)
+    }, {
+      key: "act",
+      label: "",
+      sortable: false,
+      num: true,
+      render: j => /*#__PURE__*/React.createElement(React.Fragment, null, j.direction === "OUTWARD" && j.status === "OPEN" && /*#__PURE__*/React.createElement("button", {
+        className: "btn sec",
+        onClick: () => act(j.id, "dispatch")
+      }, "Dispatch"), " ", j.status !== "BILLED" && j.status !== "CANCELLED" && /*#__PURE__*/React.createElement("button", {
+        className: "btn",
+        onClick: () => act(j.id, "bill")
+      }, "Bill"))
+    }]
+  })));
 }
 function Stores() {
   const warehouses = useList("/api/masters/warehouses");
@@ -7014,11 +7185,25 @@ function Stores() {
     r: res
   }), /*#__PURE__*/React.createElement(Panel, {
     title: "Store items"
-  }, items.length === 0 ? /*#__PURE__*/React.createElement("div", {
-    className: "muted"
-  }, "None yet.") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Code"), /*#__PURE__*/React.createElement("th", null, "Name"), /*#__PURE__*/React.createElement("th", null, "Category"), /*#__PURE__*/React.createElement("th", null, "UoM"))), /*#__PURE__*/React.createElement("tbody", null, items.map(i => /*#__PURE__*/React.createElement("tr", {
-    key: i.id
-  }, /*#__PURE__*/React.createElement("td", null, i.code), /*#__PURE__*/React.createElement("td", null, i.name), /*#__PURE__*/React.createElement("td", null, i.category), /*#__PURE__*/React.createElement("td", null, i.uom))))), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement(DataTable, {
+    rows: items,
+    pageSize: 10,
+    empty: "None yet.",
+    searchKeys: ["code", "name", "category"],
+    columns: [{
+      key: "code",
+      label: "Code"
+    }, {
+      key: "name",
+      label: "Name"
+    }, {
+      key: "category",
+      label: "Category"
+    }, {
+      key: "uom",
+      label: "UoM"
+    }]
+  }), /*#__PURE__*/React.createElement("div", {
     className: "muted",
     style: {
       fontSize: 12,
@@ -7111,22 +7296,43 @@ function StockOnHand() {
     }
   }, inr2(totVal)))), err && /*#__PURE__*/React.createElement("div", {
     className: "err"
-  }, err), /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Type"), /*#__PURE__*/React.createElement("th", null, "Code"), /*#__PURE__*/React.createElement("th", null, "Item"), /*#__PURE__*/React.createElement("th", null, "Warehouse"), /*#__PURE__*/React.createElement("th", {
-    className: "num"
-  }, "Qty"), /*#__PURE__*/React.createElement("th", {
-    className: "num"
-  }, "Value"))), /*#__PURE__*/React.createElement("tbody", null, rows.length === 0 ? /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
-    colSpan: "6",
-    className: "muted"
-  }, "No stock on hand for this filter.")) : rows.map((r, i) => /*#__PURE__*/React.createElement("tr", {
-    key: i
-  }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", {
-    className: "badge " + (typeBadge[r.item_type] || "")
-  }, r.item_type)), /*#__PURE__*/React.createElement("td", null, r.item_code || "—"), /*#__PURE__*/React.createElement("td", null, r.item_name), /*#__PURE__*/React.createElement("td", null, r.warehouse), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, inr2(r.qty)), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, inr2(r.value)))))), /*#__PURE__*/React.createElement("div", {
+  }, err), /*#__PURE__*/React.createElement(DataTable, {
+    rows: rows,
+    pageSize: 12,
+    empty: "No stock on hand for this filter.",
+    searchKeys: ["item_type", "item_code", "item_name", "warehouse"],
+    initialSort: {
+      key: "value",
+      dir: "desc"
+    },
+    columns: [{
+      key: "item_type",
+      label: "Type",
+      render: r => /*#__PURE__*/React.createElement("span", {
+        className: "badge " + (typeBadge[r.item_type] || "")
+      }, r.item_type)
+    }, {
+      key: "item_code",
+      label: "Code",
+      render: r => r.item_code || "—"
+    }, {
+      key: "item_name",
+      label: "Item"
+    }, {
+      key: "warehouse",
+      label: "Warehouse"
+    }, {
+      key: "qty",
+      label: "Qty",
+      num: true,
+      render: r => inr2(r.qty)
+    }, {
+      key: "value",
+      label: "Value",
+      num: true,
+      render: r => inr2(r.value)
+    }]
+  }), /*#__PURE__*/React.createElement("div", {
     className: "muted",
     style: {
       fontSize: 12,
@@ -7277,13 +7483,32 @@ function ChartOfAccounts() {
     }
   }, "Direct expenses sit under ", /*#__PURE__*/React.createElement("b", null, "5000 Direct Expenses & COGS"), ", indirect under ", /*#__PURE__*/React.createElement("b", null, "6000 Indirect Expenses"), ", loans under ", /*#__PURE__*/React.createElement("b", null, "2500 Long-term Liabilities"), " or ", /*#__PURE__*/React.createElement("b", null, "2000 Current Liabilities"), ". A heading cannot receive postings.")), /*#__PURE__*/React.createElement(Panel, {
     title: "Chart of accounts"
-  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Code"), /*#__PURE__*/React.createElement("th", null, "Name"), /*#__PURE__*/React.createElement("th", null, "Type"), /*#__PURE__*/React.createElement("th", null, "Under"), /*#__PURE__*/React.createElement("th", null, "Postable"))), /*#__PURE__*/React.createElement("tbody", null, rows.map(a => /*#__PURE__*/React.createElement("tr", {
-    key: a.id,
-    style: a.is_group ? {
-      fontWeight: 700,
-      background: "#f8fafc"
-    } : {}
-  }, /*#__PURE__*/React.createElement("td", null, a.code), /*#__PURE__*/React.createElement("td", null, a.name), /*#__PURE__*/React.createElement("td", null, a.account_type), /*#__PURE__*/React.createElement("td", null, a.parent_id ? byCode[a.parent_id] : "—"), /*#__PURE__*/React.createElement("td", null, a.is_group ? "heading" : a.allow_posting ? "yes" : "no")))))));
+  }, /*#__PURE__*/React.createElement(DataTable, {
+    rows: rows,
+    pageSize: 15,
+    rowClass: a => a.is_group ? "row-group" : undefined,
+    searchKeys: ["code", "name", "account_type"],
+    columns: [{
+      key: "code",
+      label: "Code"
+    }, {
+      key: "name",
+      label: "Name"
+    }, {
+      key: "account_type",
+      label: "Type"
+    }, {
+      key: "under",
+      label: "Under",
+      sortable: false,
+      render: a => a.parent_id ? byCode[a.parent_id] : "—"
+    }, {
+      key: "postable",
+      label: "Postable",
+      sortable: false,
+      render: a => a.is_group ? "heading" : a.allow_posting ? "yes" : "no"
+    }]
+  })));
 }
 const PAGES = {
   owner: {
