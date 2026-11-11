@@ -156,3 +156,24 @@ class IntercompanyAccountMapping(AuditMixin, Base):
     approved_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class CompanyDatabase(AuditMixin, Base):
+    """Control-plane registry mapping a company to its dedicated database.
+
+    Lives in the control/default database. When a company has an active row here,
+    its company-scoped data lives in the database at ``dsn``; requests acting in
+    that company are routed there. A company with no row (or an inactive one)
+    stays on the default database (backward compatible).
+
+    NOTE: ``dsn`` may contain credentials; in production prefer a DSN that pulls
+    the password from the environment. Access to this table is control-plane only.
+    """
+
+    __tablename__ = "company_databases"
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), unique=True, index=True)
+    dsn: Mapped[str] = mapped_column(String(500))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    provisioned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -77,6 +77,20 @@ def get_current_user(
     return user
 
 
+def get_company_db(user: User = Depends(get_current_user)):
+    """Yield a session routed to the ACTING COMPANY's database (database-per-company).
+
+    Auth/memberships live in the control/default database (loaded by
+    get_current_user); this dependency routes *company-scoped* reads/writes to the
+    company's own database when one is registered, falling back to the default
+    database otherwise. Routes adopt this in place of get_db as part of the staged
+    database-per-company cutover (see docs/DATABASE_PER_COMPANY.md)."""
+    from app.core.db_router import company_session
+
+    with company_session(user.company_id) as db:
+        yield db
+
+
 def require_permission(code: str):
     """Dependency factory enforcing a single permission code."""
 
