@@ -1986,6 +1986,69 @@ function Notifications({onChange}){
   </Panel>);
 }
 
+function JobWork(){
+  const customers=useList("/api/masters/customers"); const suppliers=useList("/api/masters/suppliers");
+  const fabrics=useList("/api/masters/fabric-types"); const taxes=useList("/api/masters/tax-codes");
+  const [rows,setRows]=useState([]); const [err,setErr]=useState(""); const [res,setRes]=useState(null);
+  const [f,setF]=useState({direction:"INWARD",process:"DYEING",party_id:"",fabric_type_id:"",qty_kg:"1000",rate:"25",tax_code_id:"",description:"",number:genNo("JW")});
+  const load=useCallback(()=>api("/api/jobwork").then(setRows).catch(()=>{}),[]);
+  useEffect(()=>{load()},[load]);
+  const parties = f.direction==="INWARD" ? customers : suppliers;
+  const create=async e=>{ e.preventDefault(); setErr(""); setRes(null);
+    try{ const r=await api("/api/jobwork",{method:"POST",body:{number:f.number,direction:f.direction,process:f.process,
+        party_id:f.party_id, order_date:today(), qty_kg:f.qty_kg, rate:f.rate,
+        fabric_type_id:f.fabric_type_id||null, tax_code_id:f.tax_code_id||null, description:f.description||null}});
+      setRes(r); setF({...f,number:genNo("JW"),party_id:""}); load(); }
+    catch(ex){ setErr(ex.message); } };
+  const act=async(id,action)=>{ setErr("");
+    try{ await api(`/api/jobwork/${id}/${action}`,{method:"POST"}); load(); }catch(ex){ setErr(ex.message); } };
+  const stCls={OPEN:"",SENT:"warn",RECEIVED:"warn",BILLED:"ok",CANCELLED:"bad"};
+  return (<div>
+    <Panel title="Job work — inward (we process for others) / outward (we send ours out)">
+      <form onSubmit={create}>
+        <div className="row mb">
+          <div className="field"><label>Direction</label>
+            <select value={f.direction} onChange={e=>setF({...f,direction:e.target.value,party_id:""})}>
+              <option value="INWARD">Inward — we dye/finish others' fabric (we earn)</option>
+              <option value="OUTWARD">Outward — we send our fabric to another dyer (we pay)</option></select></div>
+          <div className="field"><label>Process</label>
+            <select value={f.process} onChange={e=>setF({...f,process:e.target.value})}>
+              <option value="DYEING">Dyeing</option><option value="FINISHING">Finishing</option>
+              <option value="KNITTING">Knitting</option><option value="OTHER">Other</option></select></div>
+          <div className="field"><label>{f.direction==="INWARD"?"Customer":"Subcontractor (supplier)"}</label>
+            <Opts items={parties} value={f.party_id} onChange={e=>setF({...f,party_id:e.target.value})}/></div>
+          <div className="field"><label>JW number</label><input value={f.number} onChange={e=>setF({...f,number:e.target.value})}/></div>
+        </div>
+        <div className="row">
+          <div className="field"><label>Fabric type</label><Opts items={fabrics} value={f.fabric_type_id} onChange={e=>setF({...f,fabric_type_id:e.target.value})} placeholder="—"/></div>
+          <div className="field"><label>Qty (kg)</label><input value={f.qty_kg} onChange={e=>setF({...f,qty_kg:e.target.value})}/></div>
+          <div className="field"><label>Rate / kg</label><input value={f.rate} onChange={e=>setF({...f,rate:e.target.value})}/></div>
+          <div className="field"><label>Tax</label><Opts items={taxes} value={f.tax_code_id} onChange={e=>setF({...f,tax_code_id:e.target.value})} placeholder="—"/></div>
+          <div className="field" style={{flex:1}}><label>Note</label><input value={f.description} onChange={e=>setF({...f,description:e.target.value})} placeholder="e.g. navy, 1000 kg"/></div>
+          <div className="field" style={{alignSelf:"end"}}><button className="btn">Create</button></div>
+        </div>
+        {err && <div className="err">{err}</div>}
+      </form>
+      <Result r={res}/>
+      <div className="muted" style={{fontSize:12,marginTop:6}}>Inward material belongs to the customer — it is never valued in your stock; you bill a processing charge (income). Outward keeps your fabric as your asset; on receipt you book the dyer's processing charge as a cost + payable.</div>
+    </Panel>
+    <Panel title="Job work orders">
+      {rows.length===0?<div className="muted">None yet.</div>:
+      <table><thead><tr><th>Number</th><th>Dir</th><th>Process</th><th>Party</th><th className="num">Qty</th>
+        <th className="num">Charge</th><th>Status</th><th></th></tr></thead>
+      <tbody>{rows.map(j=><tr key={j.id}><td>{j.number}</td>
+        <td><span className={"badge "+(j.direction==="INWARD"?"ok":"info")}>{j.direction}</span></td>
+        <td>{j.process}</td><td>{j.party}</td><td className="num">{inr2(j.qty_kg)}</td>
+        <td className="num">{Number(j.total_value)?inr2(j.total_value):inr2(Number(j.qty_kg)*Number(j.rate))}</td>
+        <td><span className={"badge "+(stCls[j.status]||"")}>{j.status}</span></td>
+        <td className="num">
+          {j.direction==="OUTWARD" && j.status==="OPEN" && <button className="btn sec" onClick={()=>act(j.id,"dispatch")}>Dispatch</button>}{" "}
+          {j.status!=="BILLED" && j.status!=="CANCELLED" && <button className="btn" onClick={()=>act(j.id,"bill")}>Bill</button>}
+        </td></tr>)}</tbody></table>}
+    </Panel>
+  </div>);
+}
+
 function StockOnHand(){
   const warehouses=useList("/api/masters/warehouses");
   const [wh,setWh]=useState(""); const [it,setIt]=useState("");
@@ -2082,6 +2145,7 @@ const PAGES={
   pipeline:{t:"Sales Pipeline (enquiry → quote → SO)",c:SalesPipeline},
   salesorders:{t:"Sales Orders & Dispatch",c:SalesOrders},
   sales:{t:"Sales Invoice",c:Sales}, dyeing:{t:"Dyeing & Dispensing",c:Dyeing},
+  jobwork:{t:"Job Work (inward / outward)",c:JobWork},
   customers:{t:"Customers",c:()=> <PartyPage kind="customers"/>},
   suppliers:{t:"Suppliers",c:()=> <PartyPage kind="suppliers"/>},
   warehouses:{t:"Warehouses",c:Warehouses}, quality:{t:"Quality & Finishing",c:Quality},
@@ -2097,7 +2161,7 @@ const PAGES={
 };
 const NAV_ICON={owner:"📊",factory:"🏭",accounts:"💼",chemical:"🧪",purchaseorders:"📝",purchase:"📥",
   knitting:"🧶",batching:"🧺",pipeline:"🎯",salesorders:"🛒",sales:"🧾",dyeing:"🎨",vouchers:"📒",
-  inventoryops:"🔁",stock:"📦",masters:"🗃️",coa:"📚",customers:"👤",suppliers:"🏢",warehouses:"🏬",quality:"🔍",assets:"🏗️",
+  inventoryops:"🔁",stock:"📦",jobwork:"🔄",masters:"🗃️",coa:"📚",customers:"👤",suppliers:"🏢",warehouses:"🏬",quality:"🔍",assets:"🏗️",
   payroll:"💰",costing:"📐",devices:"🖨️",reports:"📈",approvals:"✔️",notifications:"🔔",acctops:"🧮",admin:"⚙️"};
 function fyLabel(){ const d=new Date(); const y=d.getMonth()>=3?d.getFullYear():d.getFullYear()-1; return `FY ${y}–${(y+1)%100}`; }
 
@@ -2119,7 +2183,7 @@ function App(){
         {navBtn("accounts","Accounts")}{navBtn("chemical","Chemical")}
         <div className="group">Transactions</div>
         {navBtn("purchaseorders","Purchase Orders")}{navBtn("purchase","Purchase (GRN)")}{navBtn("knitting","Knitting")}
-        {navBtn("batching","Batching")}{navBtn("pipeline","Sales Pipeline")}{navBtn("salesorders","Sales Orders")}{navBtn("sales","Sales Invoice")}{navBtn("dyeing","Dyeing & Dispensing")}{navBtn("vouchers","Vouchers")}
+        {navBtn("batching","Batching")}{navBtn("pipeline","Sales Pipeline")}{navBtn("salesorders","Sales Orders")}{navBtn("sales","Sales Invoice")}{navBtn("dyeing","Dyeing & Dispensing")}{navBtn("jobwork","Job Work")}{navBtn("vouchers","Vouchers")}
         {navBtn("inventoryops","Inventory Ops")}{navBtn("stock","Stock on Hand")}
         <div className="group">Masters</div>
         {navBtn("masters","Master Data")}{navBtn("coa","Chart of Accounts")}{navBtn("customers","Customers")}{navBtn("suppliers","Suppliers")}{navBtn("warehouses","Warehouses")}

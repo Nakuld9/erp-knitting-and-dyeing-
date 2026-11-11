@@ -21,6 +21,7 @@ from app.api.routes import (
     einvoice,
     ewaybill,
     hardware,
+    jobwork,
     inbox,
     inventory_ops,
     knitting,
@@ -74,6 +75,7 @@ app.include_router(approvals.router)
 app.include_router(accounting_ops.router)
 app.include_router(einvoice.router)
 app.include_router(ewaybill.router)
+app.include_router(jobwork.router)
 
 observability.install_observability(app)
 

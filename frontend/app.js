@@ -6392,6 +6392,226 @@ function Notifications({
     className: "badge " + (kindCls[n.kind] || "")
   }, n.kind))));
 }
+function JobWork() {
+  const customers = useList("/api/masters/customers");
+  const suppliers = useList("/api/masters/suppliers");
+  const fabrics = useList("/api/masters/fabric-types");
+  const taxes = useList("/api/masters/tax-codes");
+  const [rows, setRows] = useState([]);
+  const [err, setErr] = useState("");
+  const [res, setRes] = useState(null);
+  const [f, setF] = useState({
+    direction: "INWARD",
+    process: "DYEING",
+    party_id: "",
+    fabric_type_id: "",
+    qty_kg: "1000",
+    rate: "25",
+    tax_code_id: "",
+    description: "",
+    number: genNo("JW")
+  });
+  const load = useCallback(() => api("/api/jobwork").then(setRows).catch(() => {}), []);
+  useEffect(() => {
+    load();
+  }, [load]);
+  const parties = f.direction === "INWARD" ? customers : suppliers;
+  const create = async e => {
+    e.preventDefault();
+    setErr("");
+    setRes(null);
+    try {
+      const r = await api("/api/jobwork", {
+        method: "POST",
+        body: {
+          number: f.number,
+          direction: f.direction,
+          process: f.process,
+          party_id: f.party_id,
+          order_date: today(),
+          qty_kg: f.qty_kg,
+          rate: f.rate,
+          fabric_type_id: f.fabric_type_id || null,
+          tax_code_id: f.tax_code_id || null,
+          description: f.description || null
+        }
+      });
+      setRes(r);
+      setF({
+        ...f,
+        number: genNo("JW"),
+        party_id: ""
+      });
+      load();
+    } catch (ex) {
+      setErr(ex.message);
+    }
+  };
+  const act = async (id, action) => {
+    setErr("");
+    try {
+      await api(`/api/jobwork/${id}/${action}`, {
+        method: "POST"
+      });
+      load();
+    } catch (ex) {
+      setErr(ex.message);
+    }
+  };
+  const stCls = {
+    OPEN: "",
+    SENT: "warn",
+    RECEIVED: "warn",
+    BILLED: "ok",
+    CANCELLED: "bad"
+  };
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement(Panel, {
+    title: "Job work \u2014 inward (we process for others) / outward (we send ours out)"
+  }, /*#__PURE__*/React.createElement("form", {
+    onSubmit: create
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "row mb"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Direction"), /*#__PURE__*/React.createElement("select", {
+    value: f.direction,
+    onChange: e => setF({
+      ...f,
+      direction: e.target.value,
+      party_id: ""
+    })
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "INWARD"
+  }, "Inward \u2014 we dye/finish others' fabric (we earn)"), /*#__PURE__*/React.createElement("option", {
+    value: "OUTWARD"
+  }, "Outward \u2014 we send our fabric to another dyer (we pay)"))), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Process"), /*#__PURE__*/React.createElement("select", {
+    value: f.process,
+    onChange: e => setF({
+      ...f,
+      process: e.target.value
+    })
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "DYEING"
+  }, "Dyeing"), /*#__PURE__*/React.createElement("option", {
+    value: "FINISHING"
+  }, "Finishing"), /*#__PURE__*/React.createElement("option", {
+    value: "KNITTING"
+  }, "Knitting"), /*#__PURE__*/React.createElement("option", {
+    value: "OTHER"
+  }, "Other"))), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, f.direction === "INWARD" ? "Customer" : "Subcontractor (supplier)"), /*#__PURE__*/React.createElement(Opts, {
+    items: parties,
+    value: f.party_id,
+    onChange: e => setF({
+      ...f,
+      party_id: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "JW number"), /*#__PURE__*/React.createElement("input", {
+    value: f.number,
+    onChange: e => setF({
+      ...f,
+      number: e.target.value
+    })
+  }))), /*#__PURE__*/React.createElement("div", {
+    className: "row"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Fabric type"), /*#__PURE__*/React.createElement(Opts, {
+    items: fabrics,
+    value: f.fabric_type_id,
+    onChange: e => setF({
+      ...f,
+      fabric_type_id: e.target.value
+    }),
+    placeholder: "\u2014"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Qty (kg)"), /*#__PURE__*/React.createElement("input", {
+    value: f.qty_kg,
+    onChange: e => setF({
+      ...f,
+      qty_kg: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Rate / kg"), /*#__PURE__*/React.createElement("input", {
+    value: f.rate,
+    onChange: e => setF({
+      ...f,
+      rate: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Tax"), /*#__PURE__*/React.createElement(Opts, {
+    items: taxes,
+    value: f.tax_code_id,
+    onChange: e => setF({
+      ...f,
+      tax_code_id: e.target.value
+    }),
+    placeholder: "\u2014"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field",
+    style: {
+      flex: 1
+    }
+  }, /*#__PURE__*/React.createElement("label", null, "Note"), /*#__PURE__*/React.createElement("input", {
+    value: f.description,
+    onChange: e => setF({
+      ...f,
+      description: e.target.value
+    }),
+    placeholder: "e.g. navy, 1000 kg"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field",
+    style: {
+      alignSelf: "end"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Create"))), err && /*#__PURE__*/React.createElement("div", {
+    className: "err"
+  }, err)), /*#__PURE__*/React.createElement(Result, {
+    r: res
+  }), /*#__PURE__*/React.createElement("div", {
+    className: "muted",
+    style: {
+      fontSize: 12,
+      marginTop: 6
+    }
+  }, "Inward material belongs to the customer \u2014 it is never valued in your stock; you bill a processing charge (income). Outward keeps your fabric as your asset; on receipt you book the dyer's processing charge as a cost + payable.")), /*#__PURE__*/React.createElement(Panel, {
+    title: "Job work orders"
+  }, rows.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "None yet.") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Number"), /*#__PURE__*/React.createElement("th", null, "Dir"), /*#__PURE__*/React.createElement("th", null, "Process"), /*#__PURE__*/React.createElement("th", null, "Party"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Qty"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Charge"), /*#__PURE__*/React.createElement("th", null, "Status"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, rows.map(j => /*#__PURE__*/React.createElement("tr", {
+    key: j.id
+  }, /*#__PURE__*/React.createElement("td", null, j.number), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", {
+    className: "badge " + (j.direction === "INWARD" ? "ok" : "info")
+  }, j.direction)), /*#__PURE__*/React.createElement("td", null, j.process), /*#__PURE__*/React.createElement("td", null, j.party), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(j.qty_kg)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, Number(j.total_value) ? inr2(j.total_value) : inr2(Number(j.qty_kg) * Number(j.rate))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", {
+    className: "badge " + (stCls[j.status] || "")
+  }, j.status)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, j.direction === "OUTWARD" && j.status === "OPEN" && /*#__PURE__*/React.createElement("button", {
+    className: "btn sec",
+    onClick: () => act(j.id, "dispatch")
+  }, "Dispatch"), " ", j.status !== "BILLED" && j.status !== "CANCELLED" && /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    onClick: () => act(j.id, "bill")
+  }, "Bill"))))))));
+}
 function StockOnHand() {
   const warehouses = useList("/api/masters/warehouses");
   const [wh, setWh] = useState("");
@@ -6708,6 +6928,10 @@ const PAGES = {
     t: "Dyeing & Dispensing",
     c: Dyeing
   },
+  jobwork: {
+    t: "Job Work (inward / outward)",
+    c: JobWork
+  },
   customers: {
     t: "Customers",
     c: () => /*#__PURE__*/React.createElement(PartyPage, {
@@ -6793,6 +7017,7 @@ const NAV_ICON = {
   vouchers: "📒",
   inventoryops: "🔁",
   stock: "📦",
+  jobwork: "🔄",
   masters: "🗃️",
   coa: "📚",
   customers: "👤",
@@ -6844,7 +7069,7 @@ function App() {
     className: "group"
   }, "Dashboards"), navBtn("owner", "Owner"), navBtn("factory", "Factory"), navBtn("accounts", "Accounts"), navBtn("chemical", "Chemical"), /*#__PURE__*/React.createElement("div", {
     className: "group"
-  }, "Transactions"), navBtn("purchaseorders", "Purchase Orders"), navBtn("purchase", "Purchase (GRN)"), navBtn("knitting", "Knitting"), navBtn("batching", "Batching"), navBtn("pipeline", "Sales Pipeline"), navBtn("salesorders", "Sales Orders"), navBtn("sales", "Sales Invoice"), navBtn("dyeing", "Dyeing & Dispensing"), navBtn("vouchers", "Vouchers"), navBtn("inventoryops", "Inventory Ops"), navBtn("stock", "Stock on Hand"), /*#__PURE__*/React.createElement("div", {
+  }, "Transactions"), navBtn("purchaseorders", "Purchase Orders"), navBtn("purchase", "Purchase (GRN)"), navBtn("knitting", "Knitting"), navBtn("batching", "Batching"), navBtn("pipeline", "Sales Pipeline"), navBtn("salesorders", "Sales Orders"), navBtn("sales", "Sales Invoice"), navBtn("dyeing", "Dyeing & Dispensing"), navBtn("jobwork", "Job Work"), navBtn("vouchers", "Vouchers"), navBtn("inventoryops", "Inventory Ops"), navBtn("stock", "Stock on Hand"), /*#__PURE__*/React.createElement("div", {
     className: "group"
   }, "Masters"), navBtn("masters", "Master Data"), navBtn("coa", "Chart of Accounts"), navBtn("customers", "Customers"), navBtn("suppliers", "Suppliers"), navBtn("warehouses", "Warehouses"), /*#__PURE__*/React.createElement("div", {
     className: "group"
