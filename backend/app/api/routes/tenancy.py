@@ -14,10 +14,14 @@ user. Nothing here backfills or enforces ownership on existing operational data.
 """
 from __future__ import annotations
 
+import re
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+# Standard 15-char GSTIN: 2-digit state + 10-char PAN + entity + 'Z' + checksum.
+_GSTIN_RE = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$")
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -216,6 +220,14 @@ class GstRegistrationIn(BaseModel):
     branch_id: uuid.UUID | None = None
     is_primary: bool = False
 
+    @field_validator("gstin")
+    @classmethod
+    def _validate_gstin(cls, v: str) -> str:
+        v = v.strip().upper()
+        if not _GSTIN_RE.match(v):
+            raise ValueError("Invalid GSTIN format (expected 15-char GSTIN, e.g. 27AAAAA0000A1Z5)")
+        return v
+
 
 @router.get("/api/admin/gst-registrations")
 def list_gst_registrations(company_id: uuid.UUID | None = None, db: Session = Depends(get_db),
@@ -244,6 +256,17 @@ def create_gst_registration(p: GstRegistrationIn, db: Session = Depends(get_db),
         GSTRegistration.gstin == p.gstin)).scalar_one_or_none()
     if dup is not None:
         raise HTTPException(status.HTTP_409_CONFLICT, "GSTIN already registered for this company")
+    # Current business rule: exactly one ACTIVE GST registration per company.
+    # (The schema supports many; this limits active ones. Deactivate the existing
+    # one first to replace it.)
+    active_exists = db.execute(select(GSTRegistration).where(
+        GSTRegistration.company_id == p.company_id,
+        GSTRegistration.is_active.is_(True))).first()
+    if active_exists is not None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Company already has an active GST registration (one active GSTIN per "
+            "company). Deactivate the existing registration before adding another.")
     if p.is_primary:
         for g in db.execute(select(GSTRegistration).where(
                 GSTRegistration.company_id == p.company_id,
