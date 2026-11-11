@@ -254,3 +254,55 @@ def cost_per_kg_summary(db: Session, company_id: uuid.UUID) -> dict:
         "dyed_kg": quantize(dyed_kg, QTY_SCALE), "dyeing_cost": dye_total,
         "dyeing_cost_per_kg": quantize(dye_total / dyed_kg, MONEY_SCALE) if dyed_kg else MZERO,
     }
+
+
+def production_by_factory(db: Session, company_id: uuid.UUID) -> list[dict]:
+    """Factory-wise manufacturing throughput & efficiency.
+
+    Groups knitting production (and dyeing throughput) by the owning factory
+    (``factory_id`` on the production records). Reports actual physical output,
+    consumption, wastage and rejection per factory, and knitting efficiency
+    (produced / (produced + wastage + rejection)). Rows with no factory assigned
+    (legacy/unassigned) are grouped under a null factory so they remain visible
+    for reconciliation.
+    """
+    from app.models.core import Branch
+
+    kn = db.execute(
+        select(
+            KnittingProduction.factory_id,
+            func.coalesce(func.sum(KnittingProduction.produced_kg), 0),
+            func.coalesce(func.sum(KnittingProduction.yarn_consumed_kg), 0),
+            func.coalesce(func.sum(KnittingProduction.wastage_kg), 0),
+            func.coalesce(func.sum(KnittingProduction.rejection_kg), 0),
+        ).where(KnittingProduction.company_id == company_id)
+        .group_by(KnittingProduction.factory_id)
+    ).all()
+    dye = dict(db.execute(
+        select(DyeBatch.factory_id, func.coalesce(func.sum(DyeBatch.fabric_kg), 0))
+        .where(DyeBatch.company_id == company_id).group_by(DyeBatch.factory_id)
+    ).all())
+    names = {b.id: f"{b.code} — {b.name}" for b in db.execute(
+        select(Branch).where(Branch.company_id == company_id)).scalars()}
+
+    rows = []
+    factory_ids = {r[0] for r in kn} | set(dye.keys())
+    for fid in factory_ids:
+        produced = next((Decimal(str(r[1])) for r in kn if r[0] == fid), Decimal("0"))
+        consumed = next((Decimal(str(r[2])) for r in kn if r[0] == fid), Decimal("0"))
+        wastage = next((Decimal(str(r[3])) for r in kn if r[0] == fid), Decimal("0"))
+        rejection = next((Decimal(str(r[4])) for r in kn if r[0] == fid), Decimal("0"))
+        gross = produced + wastage + rejection
+        efficiency = quantize((produced / gross * Decimal("100")) if gross > 0 else Decimal("0"), MONEY_SCALE)
+        rows.append({
+            "factory_id": str(fid) if fid else None,
+            "factory": names.get(fid, "— unassigned —") if fid else "— unassigned —",
+            "knitting_produced_kg": quantize(produced, QTY_SCALE),
+            "yarn_consumed_kg": quantize(consumed, QTY_SCALE),
+            "wastage_kg": quantize(wastage, QTY_SCALE),
+            "rejection_kg": quantize(rejection, QTY_SCALE),
+            "knitting_efficiency_pct": efficiency,
+            "dyeing_fabric_kg": quantize(Decimal(str(dye.get(fid, 0))), QTY_SCALE),
+        })
+    rows.sort(key=lambda r: r["factory"] or "")
+    return rows

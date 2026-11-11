@@ -79,3 +79,9 @@ def shades(db: Session = Depends(get_db), user: User = Depends(require_permissio
 @router.get("/cost-per-kg")
 def cost_per_kg(db: Session = Depends(get_db), user: User = Depends(require_permission("report.financial"))):
     return _s(costing.cost_per_kg_summary(db, user.company_id))
+
+
+@router.get("/by-factory")
+def by_factory(db: Session = Depends(get_db), user: User = Depends(require_permission("report.financial"))):
+    """Factory-wise manufacturing throughput & efficiency for the acting company."""
+    return _s(costing.production_by_factory(db, user.company_id))
