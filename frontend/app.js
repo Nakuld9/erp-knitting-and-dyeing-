@@ -137,11 +137,13 @@ function DataTable({
   empty = "Nothing to show.",
   initialSort,
   right,
-  rowClass
+  rowClass,
+  expand
 }) {
   const [q, setQ] = useState("");
   const [sort, setSort] = useState(initialSort || null);
   const [page, setPage] = useState(0);
+  const [open, setOpen] = useState(null); // id of the expanded row
   const sk = searchKeys || columns.map(c => c.key);
   let data = rows || [];
   if (q) {
@@ -198,17 +200,34 @@ function DataTable({
     className: "dt-count"
   }, total, " row", total !== 1 ? "s" : "")), total === 0 ? /*#__PURE__*/React.createElement("div", {
     className: "muted"
-  }, empty) : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, columns.map(c => /*#__PURE__*/React.createElement("th", {
+  }, empty) : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, expand && /*#__PURE__*/React.createElement("th", {
+    className: "dt-expcol"
+  }), columns.map(c => /*#__PURE__*/React.createElement("th", {
     key: c.key,
     className: (c.num ? "num " : "") + (c.sortable !== false ? "dt-th" : ""),
     onClick: () => c.sortable !== false && toggle(c.key)
-  }, c.label, c.sortable !== false ? arrow(c.key) : "")))), /*#__PURE__*/React.createElement("tbody", null, slice.map((r, i) => /*#__PURE__*/React.createElement("tr", {
-    key: r.id || i,
-    className: rowClass ? rowClass(r) : undefined
-  }, columns.map(c => /*#__PURE__*/React.createElement("td", {
-    key: c.key,
-    className: c.num ? "num" : ""
-  }, c.render ? c.render(r) : r[c.key] ?? "")))))), pages > 1 && /*#__PURE__*/React.createElement("div", {
+  }, c.label, c.sortable !== false ? arrow(c.key) : "")))), /*#__PURE__*/React.createElement("tbody", null, slice.map((r, i) => {
+    const id = r.id || i;
+    const isOpen = expand && open === id;
+    return /*#__PURE__*/React.createElement(React.Fragment, {
+      key: id
+    }, /*#__PURE__*/React.createElement("tr", {
+      className: rowClass ? rowClass(r) : undefined
+    }, expand && /*#__PURE__*/React.createElement("td", {
+      className: "dt-expcol"
+    }, /*#__PURE__*/React.createElement("button", {
+      className: "dt-exp",
+      "aria-label": "expand",
+      onClick: () => setOpen(isOpen ? null : id)
+    }, isOpen ? "▾" : "▸")), columns.map(c => /*#__PURE__*/React.createElement("td", {
+      key: c.key,
+      className: c.num ? "num" : ""
+    }, c.render ? c.render(r) : r[c.key] ?? ""))), isOpen && /*#__PURE__*/React.createElement("tr", {
+      className: "dt-detail"
+    }, /*#__PURE__*/React.createElement("td", {
+      colSpan: columns.length + 1
+    }, expand(r))));
+  }))), pages > 1 && /*#__PURE__*/React.createElement("div", {
     className: "dt-pager"
   }, /*#__PURE__*/React.createElement("button", {
     className: "btn sec",
@@ -221,6 +240,52 @@ function DataTable({
     disabled: pg >= pages - 1,
     onClick: () => setPage(pg + 1)
   }, "Next \u203A")));
+}
+
+// Lazy line-item detail panels for expandable order rows.
+function PODetail({
+  id,
+  names
+}) {
+  const [d] = useData("/api/procurement/purchase-orders/" + id);
+  if (!d) return /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "Loading\u2026");
+  const nm = l => l.description || names && names[l.chemical_id] || (l.chemical_id ? "Chemical" : "—");
+  return /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "#"), /*#__PURE__*/React.createElement("th", null, "Item"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Ordered"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Received"))), /*#__PURE__*/React.createElement("tbody", null, (d.lines || []).map(l => /*#__PURE__*/React.createElement("tr", {
+    key: l.id
+  }, /*#__PURE__*/React.createElement("td", null, l.line_no), /*#__PURE__*/React.createElement("td", null, nm(l)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(l.qty)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(l.received_qty))))));
+}
+function SODetail({
+  id
+}) {
+  const [d] = useData("/api/sales/orders/" + id);
+  if (!d) return /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "Loading\u2026");
+  return /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "#"), /*#__PURE__*/React.createElement("th", null, "Fabric"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Qty (kg)"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Rate"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Amount"))), /*#__PURE__*/React.createElement("tbody", null, (d.lines || []).map(l => /*#__PURE__*/React.createElement("tr", {
+    key: l.id
+  }, /*#__PURE__*/React.createElement("td", null, l.line_no), /*#__PURE__*/React.createElement("td", null, l.description || l.fabric_type_id || "—"), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(l.qty_kg)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(l.rate)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(Number(l.qty_kg) * Number(l.rate)))))));
 }
 
 // ---- login ----------------------------------------------------------------
@@ -4660,40 +4725,47 @@ function PurchaseOrders() {
     r: res
   })), /*#__PURE__*/React.createElement(Panel, {
     title: "Purchase orders"
-  }, pos.length === 0 ? /*#__PURE__*/React.createElement("div", {
-    className: "muted"
-  }, "None yet. GRNs raised against a confirmed PO roll it to PARTIAL / COMPLETED.") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Number"), /*#__PURE__*/React.createElement("th", null, "Date"), /*#__PURE__*/React.createElement("th", {
-    className: "num"
-  }, "Lines"), /*#__PURE__*/React.createElement("th", null, "Status"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, pos.map(p => [/*#__PURE__*/React.createElement("tr", {
-    key: p.id
-  }, /*#__PURE__*/React.createElement("td", null, p.number), /*#__PURE__*/React.createElement("td", null, p.order_date), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, p.lines), /*#__PURE__*/React.createElement("td", null, stBadge(p.status)), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, /*#__PURE__*/React.createElement("button", {
-    className: "btn sec",
-    onClick: () => view(p.id)
-  }, "View"), " ", p.status === "DRAFT" && /*#__PURE__*/React.createElement("button", {
-    className: "btn sec",
-    onClick: () => submitApproval(p.id)
-  }, "Submit for approval"), " ", p.status === "DRAFT" && /*#__PURE__*/React.createElement("button", {
-    className: "btn",
-    onClick: () => confirm(p.id)
-  }, "Confirm"))), open && open.id === p.id ? /*#__PURE__*/React.createElement("tr", {
-    key: p.id + "x"
-  }, /*#__PURE__*/React.createElement("td", {
-    colSpan: "5"
-  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "#"), /*#__PURE__*/React.createElement("th", null, "Item"), /*#__PURE__*/React.createElement("th", {
-    className: "num"
-  }, "Ordered"), /*#__PURE__*/React.createElement("th", {
-    className: "num"
-  }, "Received"))), /*#__PURE__*/React.createElement("tbody", null, open.lines.map(l => /*#__PURE__*/React.createElement("tr", {
-    key: l.id
-  }, /*#__PURE__*/React.createElement("td", null, l.line_no), /*#__PURE__*/React.createElement("td", null, l.description || l.chemical_id || "—"), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, inr2(l.qty)), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, inr2(l.received_qty)))))))) : null])))), /*#__PURE__*/React.createElement(Panel, {
+  }, /*#__PURE__*/React.createElement(DataTable, {
+    rows: pos,
+    pageSize: 10,
+    initialSort: {
+      key: "order_date",
+      dir: "desc"
+    },
+    empty: "None yet. GRNs raised against a confirmed PO roll it to PARTIAL / COMPLETED.",
+    searchKeys: ["number", "order_date", "status"],
+    expand: p => /*#__PURE__*/React.createElement(PODetail, {
+      id: p.id,
+      names: Object.fromEntries((chemicals || []).map(c => [c.id, c.name || c.label || c.code]))
+    }),
+    columns: [{
+      key: "number",
+      label: "Number"
+    }, {
+      key: "order_date",
+      label: "Date"
+    }, {
+      key: "lines",
+      label: "Lines",
+      num: true
+    }, {
+      key: "status",
+      label: "Status",
+      render: p => stBadge(p.status)
+    }, {
+      key: "act",
+      label: "",
+      sortable: false,
+      num: true,
+      render: p => /*#__PURE__*/React.createElement(React.Fragment, null, p.status === "DRAFT" && /*#__PURE__*/React.createElement("button", {
+        className: "btn sec",
+        onClick: () => submitApproval(p.id)
+      }, "Submit for approval"), " ", p.status === "DRAFT" && /*#__PURE__*/React.createElement("button", {
+        className: "btn",
+        onClick: () => confirm(p.id)
+      }, "Confirm"))
+    }]
+  })), /*#__PURE__*/React.createElement(Panel, {
     title: "Debit note (return chemicals to supplier)"
   }, /*#__PURE__*/React.createElement("form", {
     onSubmit: createDN
@@ -5044,24 +5116,49 @@ function SalesOrders() {
     r: res
   })), /*#__PURE__*/React.createElement(Panel, {
     title: "Sales orders"
-  }, sos.length === 0 ? /*#__PURE__*/React.createElement("div", {
-    className: "muted"
-  }, "None yet.") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Number"), /*#__PURE__*/React.createElement("th", null, "Date"), /*#__PURE__*/React.createElement("th", {
-    className: "num"
-  }, "Ordered kg"), /*#__PURE__*/React.createElement("th", {
-    className: "num"
-  }, "Delivered kg"), /*#__PURE__*/React.createElement("th", null, "Status"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, sos.map(s => /*#__PURE__*/React.createElement("tr", {
-    key: s.id
-  }, /*#__PURE__*/React.createElement("td", null, s.number), /*#__PURE__*/React.createElement("td", null, s.order_date), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, s.ordered_kg ? inr2(s.ordered_kg) : "—"), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, s.delivered_kg ? inr2(s.delivered_kg) : "—"), /*#__PURE__*/React.createElement("td", null, stBadge(s.status)), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, s.status === "DRAFT" && /*#__PURE__*/React.createElement("button", {
-    className: "btn",
-    onClick: () => confirm(s.id)
-  }, "Confirm"))))))), /*#__PURE__*/React.createElement(Panel, {
+  }, /*#__PURE__*/React.createElement(DataTable, {
+    rows: sos,
+    pageSize: 10,
+    empty: "None yet.",
+    initialSort: {
+      key: "order_date",
+      dir: "desc"
+    },
+    searchKeys: ["number", "order_date", "status"],
+    expand: s => /*#__PURE__*/React.createElement(SODetail, {
+      id: s.id
+    }),
+    columns: [{
+      key: "number",
+      label: "Number"
+    }, {
+      key: "order_date",
+      label: "Date"
+    }, {
+      key: "ordered_kg",
+      label: "Ordered kg",
+      num: true,
+      render: s => s.ordered_kg ? inr2(s.ordered_kg) : "—"
+    }, {
+      key: "delivered_kg",
+      label: "Delivered kg",
+      num: true,
+      render: s => s.delivered_kg ? inr2(s.delivered_kg) : "—"
+    }, {
+      key: "status",
+      label: "Status",
+      render: s => stBadge(s.status)
+    }, {
+      key: "act",
+      label: "",
+      sortable: false,
+      num: true,
+      render: s => s.status === "DRAFT" ? /*#__PURE__*/React.createElement("button", {
+        className: "btn",
+        onClick: () => confirm(s.id)
+      }, "Confirm") : null
+    }]
+  })), /*#__PURE__*/React.createElement(Panel, {
     title: "Dispatch finished rolls (delivery challan \u2192 COGS)"
   }, /*#__PURE__*/React.createElement("form", {
     onSubmit: dispatch

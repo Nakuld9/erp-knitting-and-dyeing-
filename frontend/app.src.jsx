@@ -53,8 +53,9 @@ function Panel({title, children}){ return (
 // Reusable enterprise table: client-side search, sortable headers, pagination.
 // columns: [{key, label, num?, sortable?, render?(row)}]. searchKeys defaults to
 // all column keys. Row actions = a column with a render returning buttons.
-function DataTable({columns, rows, searchKeys, pageSize=10, empty="Nothing to show.", initialSort, right, rowClass}){
+function DataTable({columns, rows, searchKeys, pageSize=10, empty="Nothing to show.", initialSort, right, rowClass, expand}){
   const [q,setQ]=useState(""); const [sort,setSort]=useState(initialSort||null); const [page,setPage]=useState(0);
+  const [open,setOpen]=useState(null);   // id of the expanded row
   const sk = searchKeys || columns.map(c=>c.key);
   let data = rows||[];
   if(q){ const qq=q.toLowerCase(); data=data.filter(r=> sk.some(k=> String(r[k]??"").toLowerCase().includes(qq))); }
@@ -75,16 +76,43 @@ function DataTable({columns, rows, searchKeys, pageSize=10, empty="Nothing to sh
       <span className="dt-count">{total} row{total!==1?"s":""}</span>
     </div>
     {total===0? <div className="muted">{empty}</div> :
-    <table><thead><tr>{columns.map(c=><th key={c.key} className={(c.num?"num ":"")+(c.sortable!==false?"dt-th":"")}
+    <table><thead><tr>
+      {expand && <th className="dt-expcol"></th>}
+      {columns.map(c=><th key={c.key} className={(c.num?"num ":"")+(c.sortable!==false?"dt-th":"")}
         onClick={()=>c.sortable!==false&&toggle(c.key)}>{c.label}{c.sortable!==false?arrow(c.key):""}</th>)}</tr></thead>
-    <tbody>{slice.map((r,i)=><tr key={r.id||i} className={rowClass?rowClass(r):undefined}>{columns.map(c=><td key={c.key} className={c.num?"num":""}>
-      {c.render?c.render(r):(r[c.key]??"")}</td>)}</tr>)}</tbody></table>}
+    <tbody>{slice.map((r,i)=>{ const id=r.id||i; const isOpen=expand&&open===id;
+      return <React.Fragment key={id}>
+        <tr className={rowClass?rowClass(r):undefined}>
+          {expand && <td className="dt-expcol"><button className="dt-exp" aria-label="expand"
+            onClick={()=>setOpen(isOpen?null:id)}>{isOpen?"▾":"▸"}</button></td>}
+          {columns.map(c=><td key={c.key} className={c.num?"num":""}>{c.render?c.render(r):(r[c.key]??"")}</td>)}
+        </tr>
+        {isOpen && <tr className="dt-detail"><td colSpan={columns.length+1}>{expand(r)}</td></tr>}
+      </React.Fragment>; })}</tbody></table>}
     {pages>1 && <div className="dt-pager">
       <button className="btn sec" disabled={pg===0} onClick={()=>setPage(pg-1)}>‹ Prev</button>
       <span className="muted">Page {pg+1} of {pages}</span>
       <button className="btn sec" disabled={pg>=pages-1} onClick={()=>setPage(pg+1)}>Next ›</button>
     </div>}
   </div>);
+}
+
+// Lazy line-item detail panels for expandable order rows.
+function PODetail({id, names}){
+  const [d]=useData("/api/procurement/purchase-orders/"+id);
+  if(!d) return <div className="muted">Loading…</div>;
+  const nm=l=>l.description||(names&&names[l.chemical_id])||(l.chemical_id?"Chemical":"—");
+  return (<table><thead><tr><th>#</th><th>Item</th><th className="num">Ordered</th><th className="num">Received</th></tr></thead>
+    <tbody>{(d.lines||[]).map(l=><tr key={l.id}><td>{l.line_no}</td><td>{nm(l)}</td>
+      <td className="num">{inr2(l.qty)}</td><td className="num">{inr2(l.received_qty)}</td></tr>)}</tbody></table>);
+}
+function SODetail({id}){
+  const [d]=useData("/api/sales/orders/"+id);
+  if(!d) return <div className="muted">Loading…</div>;
+  return (<table><thead><tr><th>#</th><th>Fabric</th><th className="num">Qty (kg)</th><th className="num">Rate</th><th className="num">Amount</th></tr></thead>
+    <tbody>{(d.lines||[]).map(l=><tr key={l.id}><td>{l.line_no}</td><td>{l.description||l.fabric_type_id||"—"}</td>
+      <td className="num">{inr2(l.qty_kg)}</td><td className="num">{inr2(l.rate)}</td>
+      <td className="num">{inr2(Number(l.qty_kg)*Number(l.rate))}</td></tr>)}</tbody></table>);
 }
 
 // ---- login ----------------------------------------------------------------
@@ -1535,19 +1563,19 @@ function PurchaseOrders(){
       <Result r={res}/>
     </Panel>
     <Panel title="Purchase orders">
-      {pos.length===0?<div className="muted">None yet. GRNs raised against a confirmed PO roll it to PARTIAL / COMPLETED.</div>:
-      <table><thead><tr><th>Number</th><th>Date</th><th className="num">Lines</th><th>Status</th><th></th></tr></thead>
-      <tbody>{pos.map(p=>[
-        <tr key={p.id}><td>{p.number}</td><td>{p.order_date}</td><td className="num">{p.lines}</td><td>{stBadge(p.status)}</td>
-          <td className="num"><button className="btn sec" onClick={()=>view(p.id)}>View</button>{" "}
+      <DataTable rows={pos} pageSize={10} initialSort={{key:"order_date",dir:"desc"}}
+        empty="None yet. GRNs raised against a confirmed PO roll it to PARTIAL / COMPLETED."
+        searchKeys={["number","order_date","status"]}
+        expand={p=><PODetail id={p.id} names={Object.fromEntries((chemicals||[]).map(c=>[c.id, c.name||c.label||c.code]))}/>}
+        columns={[
+          {key:"number",label:"Number"},
+          {key:"order_date",label:"Date"},
+          {key:"lines",label:"Lines",num:true},
+          {key:"status",label:"Status",render:p=>stBadge(p.status)},
+          {key:"act",label:"",sortable:false,num:true,render:p=><>
             {p.status==="DRAFT" && <button className="btn sec" onClick={()=>submitApproval(p.id)}>Submit for approval</button>}{" "}
-            {p.status==="DRAFT" && <button className="btn" onClick={()=>confirm(p.id)}>Confirm</button>}</td></tr>,
-        open&&open.id===p.id ? <tr key={p.id+"x"}><td colSpan="5">
-          <table><thead><tr><th>#</th><th>Item</th><th className="num">Ordered</th><th className="num">Received</th></tr></thead>
-          <tbody>{open.lines.map(l=><tr key={l.id}><td>{l.line_no}</td><td>{l.description||l.chemical_id||"—"}</td>
-            <td className="num">{inr2(l.qty)}</td><td className="num">{inr2(l.received_qty)}</td></tr>)}</tbody></table>
-        </td></tr> : null
-      ])}</tbody></table>}
+            {p.status==="DRAFT" && <button className="btn" onClick={()=>confirm(p.id)}>Confirm</button>}</>},
+        ]}/>
     </Panel>
     <Panel title="Debit note (return chemicals to supplier)">
       <form onSubmit={createDN}>
@@ -1636,12 +1664,16 @@ function SalesOrders(){
       <Result r={res}/>
     </Panel>
     <Panel title="Sales orders">
-      {sos.length===0?<div className="muted">None yet.</div>:
-      <table><thead><tr><th>Number</th><th>Date</th><th className="num">Ordered kg</th><th className="num">Delivered kg</th><th>Status</th><th></th></tr></thead>
-      <tbody>{sos.map(s=><tr key={s.id}><td>{s.number}</td><td>{s.order_date}</td>
-        <td className="num">{s.ordered_kg?inr2(s.ordered_kg):"—"}</td><td className="num">{s.delivered_kg?inr2(s.delivered_kg):"—"}</td>
-        <td>{stBadge(s.status)}</td>
-        <td className="num">{s.status==="DRAFT" && <button className="btn" onClick={()=>confirm(s.id)}>Confirm</button>}</td></tr>)}</tbody></table>}
+      <DataTable rows={sos} pageSize={10} empty="None yet." initialSort={{key:"order_date",dir:"desc"}}
+        searchKeys={["number","order_date","status"]} expand={s=><SODetail id={s.id}/>}
+        columns={[
+          {key:"number",label:"Number"},
+          {key:"order_date",label:"Date"},
+          {key:"ordered_kg",label:"Ordered kg",num:true,render:s=>s.ordered_kg?inr2(s.ordered_kg):"—"},
+          {key:"delivered_kg",label:"Delivered kg",num:true,render:s=>s.delivered_kg?inr2(s.delivered_kg):"—"},
+          {key:"status",label:"Status",render:s=>stBadge(s.status)},
+          {key:"act",label:"",sortable:false,num:true,render:s=>s.status==="DRAFT"?<button className="btn" onClick={()=>confirm(s.id)}>Confirm</button>:null},
+        ]}/>
     </Panel>
     <Panel title="Dispatch finished rolls (delivery challan → COGS)">
       <form onSubmit={dispatch}>
