@@ -136,3 +136,31 @@ def test_consolidation_requires_access_to_all_companies(client, auth_headers, db
     r = client.get(f"/api/reports/consolidated?organization_id={org.id}",
                    headers={**headers, "X-Company-Id": str(a.id)})
     assert r.status_code == 403, r.text
+
+
+def test_consolidated_pnl(db, monkeypatch):
+    org, a, b = _org_with_two_companies(db)
+
+    def fake_tb(_db, company_id, *, date_from=None, date_to=None):
+        if company_id == a.id:
+            return {"rows": [_row("4000", "Sales", "INCOME", "0", "1000"),
+                             _row("5000", "COGS", "EXPENSE", "400", "0")]}
+        if company_id == b.id:
+            return {"rows": [_row("4000", "Sales", "INCOME", "0", "500"),
+                             _row("5000", "COGS", "EXPENSE", "100", "0")]}
+        return {"rows": []}
+
+    monkeypatch.setattr(consol.tb, "trial_balance", fake_tb)
+    out = consol.consolidated_profit_and_loss(db, org.id)
+    assert out["total_income"] == Decimal("1500")
+    assert out["total_expense"] == Decimal("500")
+    assert out["net_profit"] == Decimal("1000")
+    assert {c["code"] for c in out["companies"]} == {"DEMO", "CON-B"}
+
+
+def test_consolidated_pnl_api(client, auth_headers, db):
+    org, a, b = _org_with_two_companies(db)
+    r = client.get(f"/api/reports/consolidated/pnl?organization_id={org.id}", headers=auth_headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert "net_profit" in body and "No entries are posted" in body["note"]

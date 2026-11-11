@@ -497,6 +497,22 @@ def post_intercompany(p: IntercompanyPostingIn, db: Session = Depends(get_db),
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e))
 
 
+@router.get("/api/reports/consolidated/pnl")
+def consolidated_pnl(organization_id: uuid.UUID, date_from: str | None = None,
+                     date_to: str | None = None, db: Session = Depends(get_db),
+                     user: User = Depends(require_permission("report.financial"))):
+    """Group consolidated Profit & Loss (read-only)."""
+    from datetime import date as _date
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
+    member_ids = consol.member_company_ids(db, organization_id)
+    _require_group_access(db, user, member_ids)
+    df = _date.fromisoformat(date_from) if date_from else None
+    dt = _date.fromisoformat(date_to) if date_to else None
+    return _stringify(consol.consolidated_profit_and_loss(db, organization_id, date_from=df, date_to=dt))
+
+
 @router.get("/api/reports/consolidated/elimination-suggestions")
 def consolidated_elimination_suggestions(organization_id: uuid.UUID, db: Session = Depends(get_db),
                                          user: User = Depends(require_permission("report.financial"))):

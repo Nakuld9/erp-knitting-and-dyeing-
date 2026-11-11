@@ -211,3 +211,42 @@ def compute_elimination_suggestions(pairs) -> list[dict]:
             suggestions.append({"account_code": dt_code, "debit": str(-dt_net), "credit": "0",
                                 "counterparty_ref": ref, "basis": "due_to payable"})
     return suggestions
+
+
+def consolidated_profit_and_loss(db: Session, organization_id: uuid.UUID, *,
+                                 date_from: date | None = None,
+                                 date_to: date | None = None) -> dict:
+    """Group consolidated Profit & Loss, derived from the consolidated trial
+    balance (income minus expense across member companies, after approved
+    eliminations). Read-only; posts nothing."""
+    ctb = consolidated_trial_balance(db, organization_id, date_from=date_from, date_to=date_to)
+    income_rows, expense_rows = [], []
+    total_income = total_expense = ZERO
+    for r in ctb["rows"]:
+        atype = r.get("account_type")
+        nd = Decimal(str(r["consolidated_debit"]))
+        nc = Decimal(str(r["consolidated_credit"]))
+        if atype == "INCOME":
+            amt = nc - nd  # income is credit-positive
+            if amt != ZERO:
+                income_rows.append({"account_code": r["account_code"],
+                                    "account_name": r["account_name"], "amount": amt})
+                total_income += amt
+        elif atype == "EXPENSE":
+            amt = nd - nc  # expense is debit-positive
+            if amt != ZERO:
+                expense_rows.append({"account_code": r["account_code"],
+                                     "account_name": r["account_name"], "amount": amt})
+                total_expense += amt
+    return {
+        "organization": ctb["organization"],
+        "companies": ctb["companies"],
+        "income": income_rows,
+        "expense": expense_rows,
+        "total_income": total_income,
+        "total_expense": total_expense,
+        "net_profit": total_income - total_expense,
+        "eliminations_pending": ctb["eliminations_pending"],
+        "approved": ctb["approved"],
+        "note": "Read-only consolidated P&L. No entries are posted to any company ledger.",
+    }
