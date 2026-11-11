@@ -176,9 +176,24 @@ def seed_uoms(db: Session) -> None:
         )
 
 
+_WEAK_ADMIN_PASSWORDS = {"admin123", "change-this-admin-password", "password", "admin"}
+
+
 def seed_admin(db: Session, company: Company, roles: dict[str, Role]) -> User:
+    from app.core.config import settings
+
     username = os.getenv("ERP_ADMIN_USERNAME", "admin")
-    password = os.getenv("ERP_ADMIN_PASSWORD", "admin123")
+    password = os.getenv("ERP_ADMIN_PASSWORD")
+    is_prod = (settings.environment or "").strip().lower() == "production"
+    if is_prod:
+        # Fail closed: production must set a strong initial admin password, and we
+        # never fall back to a predictable default or print the password anywhere.
+        if not password or len(password) < 12 or password in _WEAK_ADMIN_PASSWORDS:
+            raise RuntimeError(
+                "ERP_ADMIN_PASSWORD must be set to a strong value (>= 12 chars, not a "
+                "known default) before seeding the administrator in production.")
+    else:
+        password = password or "admin123"   # development / test convenience only
     user = db.execute(select(User).filter_by(username=username)).scalar_one_or_none()
     if user is None:
         user = User(

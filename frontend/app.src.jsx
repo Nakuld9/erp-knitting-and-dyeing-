@@ -148,17 +148,16 @@ function SODetail({id}){
 
 // ---- login ----------------------------------------------------------------
 function Login({onLogin}){
-  const [u,setU]=useState("admin"); const [p,setP]=useState("admin123"); const [err,setErr]=useState("");
-  const submit=async e=>{ e.preventDefault(); setErr("");
+  const [u,setU]=useState(""); const [p,setP]=useState(""); const [err,setErr]=useState(""); const [busy,setBusy]=useState(false);
+  const submit=async e=>{ e.preventDefault(); setErr(""); setBusy(true);
     try{ const r=await api("/api/auth/login",{form:{username:u,password:p}}); setToken(r.access_token); onLogin(); }
-    catch(ex){ setErr("Invalid username or password"); } };
+    catch(ex){ setErr("Invalid username or password"); } finally{ setBusy(false); } };
   return (<div className="login"><form className="box" onSubmit={submit}>
     <h2>Textile ERP</h2><p>Integrated Knitting &amp; Dyeing ERP</p>
-    <div className="field"><label>Username</label><input value={u} onChange={e=>setU(e.target.value)} /></div>
-    <div className="field"><label>Password</label><input type="password" value={p} onChange={e=>setP(e.target.value)} /></div>
-    <button className="btn" style={{width:"100%"}}>Sign in</button>
+    <div className="field"><label>Username</label><input value={u} autoComplete="username" autoFocus onChange={e=>setU(e.target.value)} /></div>
+    <div className="field"><label>Password</label><input type="password" autoComplete="current-password" value={p} onChange={e=>setP(e.target.value)} /></div>
+    <button className="btn" style={{width:"100%"}} disabled={busy||!u||!p}>{busy?"Signing in…":"Sign in"}</button>
     {err && <div className="err">{err}</div>}
-    <p className="muted" style={{marginTop:16,fontSize:12}}>Demo: admin / admin123</p>
   </form></div>);
 }
 

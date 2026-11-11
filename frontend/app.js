@@ -375,12 +375,14 @@ function SODetail({
 function Login({
   onLogin
 }) {
-  const [u, setU] = useState("admin");
-  const [p, setP] = useState("admin123");
+  const [u, setU] = useState("");
+  const [p, setP] = useState("");
   const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
   const submit = async e => {
     e.preventDefault();
     setErr("");
+    setBusy(true);
     try {
       const r = await api("/api/auth/login", {
         form: {
@@ -392,6 +394,8 @@ function Login({
       onLogin();
     } catch (ex) {
       setErr("Invalid username or password");
+    } finally {
+      setBusy(false);
     }
   };
   return /*#__PURE__*/React.createElement("div", {
@@ -403,27 +407,25 @@ function Login({
     className: "field"
   }, /*#__PURE__*/React.createElement("label", null, "Username"), /*#__PURE__*/React.createElement("input", {
     value: u,
+    autoComplete: "username",
+    autoFocus: true,
     onChange: e => setU(e.target.value)
   })), /*#__PURE__*/React.createElement("div", {
     className: "field"
   }, /*#__PURE__*/React.createElement("label", null, "Password"), /*#__PURE__*/React.createElement("input", {
     type: "password",
+    autoComplete: "current-password",
     value: p,
     onChange: e => setP(e.target.value)
   })), /*#__PURE__*/React.createElement("button", {
     className: "btn",
     style: {
       width: "100%"
-    }
-  }, "Sign in"), err && /*#__PURE__*/React.createElement("div", {
+    },
+    disabled: busy || !u || !p
+  }, busy ? "Signing in…" : "Sign in"), err && /*#__PURE__*/React.createElement("div", {
     className: "err"
-  }, err), /*#__PURE__*/React.createElement("p", {
-    className: "muted",
-    style: {
-      marginTop: 16,
-      fontSize: 12
-    }
-  }, "Demo: admin / admin123")));
+  }, err)));
 }
 
 // ---- data hook ------------------------------------------------------------
