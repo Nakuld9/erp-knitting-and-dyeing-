@@ -138,6 +138,12 @@ from app.models.hardware import (  # noqa: F401
     ScaleReading,
     WeighingScale,
 )
+from app.models.tenancy import (  # noqa: F401
+    GSTRegistration,
+    Organization,
+    UserCompanyMembership,
+    UserFactoryMembership,
+)
 
 # Registering the guard activates the immutable-ledger Session listeners.
 from app.core import ledger_guard  # noqa: E402,F401

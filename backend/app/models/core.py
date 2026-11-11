@@ -33,6 +33,10 @@ role_permissions = Table(
 class Company(AuditMixin, Base):
     __tablename__ = "companies"
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    # Optional group/holding parent for consolidated reporting (additive; nullable
+    # so standalone companies and all existing rows are unaffected).
+    organization_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("organizations.id"), nullable=True, index=True)
     code: Mapped[str] = mapped_column(String(20), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(200))
     legal_name: Mapped[str | None] = mapped_column(String(200), nullable=True)

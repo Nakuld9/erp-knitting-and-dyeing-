@@ -4,6 +4,18 @@ Audit of the implementation against the master specification (the 24-section
 brief). Updated **2026-11-11**. Test suite: **263 passing** (+1 Postgres-gated)
 (`cd backend && pytest`).
 
+> **Multi-company / multi-factory programme (branch `feat/multi-company-production-ready`).**
+> Phase 0 (baseline audit) and Phase 1 (architecture design + additive
+> foundation) are done. See `docs/PRODUCTION_READINESS_BASELINE.md` and
+> `docs/MULTI_COMPANY_ARCHITECTURE.md`. The foundation adds — non-destructively —
+> an `Organization` group entity, a normalised `GSTRegistration`,
+> `UserCompanyMembership` / `UserFactoryMembership` tables, a nullable
+> `companies.organization_id`, a **backward-compatible** request-scoped tenant
+> resolver (`app/core/context.py`, falls back to `User.company_id`), and the
+> first **incremental** Alembic migration (`0002`, additive-only, upgrade+downgrade
+> proven). Enforcement across routes and any legacy-data backfill are **gated on
+> business decisions** (see the architecture doc §6) and not yet applied.
+
 Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ not built.
 
 ---
