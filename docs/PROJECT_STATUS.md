@@ -1,7 +1,7 @@
 # Project status & pending list
 
 Audit of the implementation against the master specification (the 24-section
-brief). Updated **2026-11-08**. Test suite: **217 passing**
+brief). Updated **2026-11-11**. Test suite: **240 passing**
 (`cd backend && pytest`).
 
 Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ not built.
@@ -48,6 +48,11 @@ Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ no
 | **Observability / ops** | readiness probe (`/health/ready`, DB-checked), in-process metrics (`/health/metrics`), structured per-request logging with correlation id (`X-Request-ID`), unhandled-error capture → clean JSON 500; committed backup / restore / health-probe scripts + cron example; Docker/compose `HEALTHCHECK` |
 | **E-invoice (IRN)** | canonical NIC payload (v1.1) from a posted sales invoice with intra/inter-state CGST-SGST/IGST split; pluggable adapter (offline **simulator** + configurable **GSP** REST adapter for Webtel / Pinnacle, with subscription-key header); IRN/Ack/signed-QR stored, idempotent generate, cancel, `integration_events` audit; generate/cancel from the Sales Invoice page |
 | **E-way bill** | NIC EWB payload from the invoice + transport details (mode/vehicle/distance/transporter); same GSP connection as e-invoice, **links to the IRN** when present; EWB no + validity stored, idempotent generate, cancel, audit; transport form + generate/cancel on the Sales Invoice page |
+| **Chart-of-accounts management** | create ledger accounts from the UI (code, name, type, parent group, heading) with validation; full COA list — add a specific loan / bank / expense head yourself |
+| **Stock on hand** | live stock position (qty + value) by item and warehouse from open FIFO layers; warehouse and item-type filters; fabric grouped by type + greige/finished |
+| **Job work** | inward (process others' fabric → bill processing-charge income) and outward subcontracting (send ours out → book the dyer's charge as cost + payable), GST-split, posted via the engine, on a Job Work page |
+| **Stores & spares** | needles / machine spares as store items; receive into FIFO stock (Dr Stores Inventory) and issue-to-machine expensed at FIFO cost (Dr Stores Consumption); shows in stock-on-hand |
+| **Party & GL ledgers on screen** | customer/supplier running ledgers on their pages; trial balance + general ledger (drill-down by account) on the Reports page |
 
 ### Completed in the latest work cycle
 - PO / SO lifecycle (receipt & dispatch roll-up, COGS on delivery)
@@ -68,6 +73,8 @@ Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ no
 - Operability scaffolding: readiness + metrics endpoints, structured request logging with correlation ids, unhandled-error capture; backup/restore/health scripts + cron example + container HEALTHCHECK; OPERATIONS.md runbook
 - E-invoice (IRN): canonical NIC payload, simulator + configurable GSP adapter, IRN/QR storage, idempotent generate + cancel, UI on the Sales Invoice page (see EINVOICE_INTEGRATION.md)
 - E-way bill: NIC EWB payload + transport details, same GSP connection, links to the IRN, EWB no/validity storage, generate + cancel, UI on the Sales Invoice page
+- Chart-of-accounts management (create accounts from the UI); on-screen trial balance + general ledger with drill-down; customer/supplier ledgers on their pages
+- Live stock-on-hand by warehouse; job work (inward + outward subcontracting); stores & spares (needle/spare issue-to-machine, costed on issue)
 
 ---
 
