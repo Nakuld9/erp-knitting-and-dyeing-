@@ -29,14 +29,18 @@ function Kpi({label, value, cls}){ return (
   <div className="card"><div className="label">{label}</div>
     <div className={"value "+(cls||"")}>{value}</div></div> ); }
 
-// Richer KPI card: coloured icon chip + value + optional % delta.
-function Stat({icon, label, value, delta, tone}){
+// Richer KPI card: coloured icon chip + value + optional % delta. Clickable when
+// onClick is given (shows a hover affordance + drills into the module).
+function Stat({icon, label, value, sub, delta, tone, onClick}){
   const d = (delta===undefined||delta===null) ? null : Number(delta);
-  return (<div className={"stat "+(tone||"")}>
+  return (<div className={"stat "+(tone||"")+(onClick?" clickable":"")}
+      onClick={onClick} role={onClick?"button":undefined} tabIndex={onClick?0:undefined}
+      onKeyDown={onClick?(e=>{(e.key==="Enter"||e.key===" ")&&onClick();}):undefined}>
     <div className="stat-icon">{icon}</div>
     <div className="stat-body">
       <div className="stat-label">{label}</div>
       <div className="stat-value">{value}</div>
+      {sub && <div className="stat-sub">{sub}</div>}
       {d!==null && <div className={"stat-delta "+(d>=0?"up":"down")}>
         {d>=0?"▲":"▼"} {Math.abs(d).toFixed(1)}% vs last month</div>}
     </div>
@@ -88,7 +92,9 @@ const genNo = pfx => pfx+"-"+Date.now().toString().slice(-8);
 
 const DONUT=["#2563eb","#16a34a","#f59e0b","#7c3aed","#0d9488","#e11d48","#64748b"];
 
-function OwnerDash(){
+const FLOW_NAV={"Yarn Issue":"knitting","Knitting":"knitting","Greige":"stock","Dyeing":"dyeing","Finishing":"quality","Finished Goods":"stock"};
+function OwnerDash({onNav}){
+  const nav=onNav||(()=>{});
   const [d,err]=useData("/api/dashboard/owner");
   const trend=useList("/api/dashboard/production-trend");
   const chem=useData("/api/dashboard/chemical")[0];
@@ -96,19 +102,57 @@ function OwnerDash(){
   const batches=useList("/api/dyeing/batches");
   const acts=useList("/api/vouchers");
   if(err) return <Panel>{err}</Panel>; if(!d) return <Panel>Loading…</Panel>;
-  const dl=d.deltas||{};
+  const dl=d.deltas||{}; const k=d.kpis||{};
   const mix=((chem&&chem.top_consumption)||[]).map((m,i)=>({name:m.material, value:Number(m.cost), c:DONUT[i%DONUT.length]}));
   const mixTotal=mix.reduce((s,m)=>s+m.value,0);
-  const alerts=(chem&&chem.stock_alerts)||[];
+  const alerts=d.alerts||[];
   const dayShort=s=>s?s.slice(5):"";
+  const sevCls={bad:"bad",warn:"warn",info:"info"};
   return (<div>
+    {/* ---- operational KPI grid (the 8 headline KPIs) ---- */}
+    <div className="kpi-grid">
+      <Stat tone="" icon="🧶" label="Today's Production" value={inr2(k.production_today_kg)+" kg"} onClick={()=>nav("knitting")} />
+      <Stat tone="teal" icon="📅" label="Monthly Production" value={inr2(k.production_month_kg)+" kg"} onClick={()=>nav("knitting")} />
+      <Stat tone="green" icon="🛒" label="Active Orders" value={k.active_orders} onClick={()=>nav("salesorders")} />
+      <Stat tone="amber" icon="⏳" label="Pending Orders" value={k.pending_orders} onClick={()=>nav("salesorders")} />
+      <Stat tone="violet" icon="📦" label="Finished Goods" value={inr2(k.finished_goods_kg)+" kg"} sub={inr(k.finished_goods_value)} onClick={()=>nav("stock")} />
+      <Stat tone="" icon="🧵" label="Greige Stock" value={inr2(k.greige_kg)+" kg"} sub={inr(k.greige_value)} onClick={()=>nav("stock")} />
+      <Stat tone="amber" icon="📥" label="Receivables" value={inr(k.receivables)} sub={Number(d.overdue_receivables)>0?("overdue "+inr(d.overdue_receivables)):""} onClick={()=>nav("customers")} />
+      <Stat tone="rose" icon="📤" label="Payables" value={inr(k.payables)} sub={Number(d.overdue_payables)>0?("overdue "+inr(d.overdue_payables)):""} onClick={()=>nav("suppliers")} />
+    </div>
+
+    {/* ---- manufacturing process flow ---- */}
+    <Panel title="Manufacturing flow">
+      <div className="flow">
+        {(d.manufacturing_flow||[]).map((s,i,arr)=><React.Fragment key={s.stage}>
+          <div className="flow-stage" onClick={()=>nav(FLOW_NAV[s.stage]||"owner")} role="button" tabIndex={0}>
+            <div className="flow-stage-name">{s.stage}</div>
+            <div className="flow-stage-val">{isNaN(Number(s.value))?s.value:inr2(s.value)}</div>
+            <div className="flow-stage-metric">{s.metric}</div>
+          </div>
+          {i<arr.length-1 && <div className="flow-arrow">→</div>}
+        </React.Fragment>)}
+      </div>
+    </Panel>
+
+    {/* ---- alerts & approvals ---- */}
+    {alerts.length>0 && <Panel title="Alerts & approvals">
+      <div className="alert-list">{alerts.map((a,i)=>
+        <div className={"alert-row "+(sevCls[a.severity]||"")} key={i} onClick={()=>nav(a.page)} role="button" tabIndex={0}>
+          <span className="alert-dot"></span>
+          <span className="alert-kind">{a.kind}</span>
+          <span style={{flex:1}}>{a.text}</span>
+          <span className="alert-go">View →</span>
+        </div>)}</div>
+    </Panel>}
+
+    {/* ---- financial overview ---- */}
+    <div className="section-head">Financial overview</div>
     <div className="stats">
       <Stat tone="" icon="₹" label="Revenue (YTD)" value={inr(d.revenue)} delta={dl.revenue} />
       <Stat tone="green" icon="📈" label="Gross Profit" value={inr(d.gross_profit)} delta={dl.gross_profit} />
       <Stat tone="violet" icon="％" label="Net Profit" value={inr(d.net_profit)} delta={dl.net_profit} />
       <Stat tone="teal" icon="🏦" label="Cash & Bank" value={inr(d.cash_and_bank)} />
-      <Stat tone="amber" icon="📥" label="Receivables" value={inr(d.receivables)} />
-      <Stat tone="rose" icon="📤" label="Payables" value={inr(d.payables)} />
     </div>
     <div className="grid2">
       <Panel title="Production vs dyeing output (last 14 days)">
@@ -2242,10 +2286,13 @@ function App(){
   const loadNotif=useCallback(()=>api("/api/notifications/unread-count").then(r=>setNotif(r.count||0)).catch(()=>{}),[]);
   useEffect(()=>{ api("/api/auth/me").then(setMe).catch(()=>{}); loadNotif();
     const t=setInterval(loadNotif,30000); return ()=>clearInterval(t); },[loadNotif]);
+  const [drawer,setDrawer]=useState(false);   // mobile nav drawer open
+  const go=id=>{ setPage(id); setDrawer(false); };
   const Cur=PAGES[page].c;
-  const navBtn=(id,label)=> <button className={page===id?"active":""} onClick={()=>setPage(id)}>
+  const navBtn=(id,label)=> <button className={page===id?"active":""} onClick={()=>go(id)}>
     <span className="nav-ico">{NAV_ICON[id]||"•"}</span>{label}</button>;
-  return (<div className="app">
+  return (<div className={"app"+(drawer?" drawer-open":"")}>
+    <div className="scrim" onClick={()=>setDrawer(false)}></div>
     <aside className="sidebar">
       <div className="brand">◆ Textile ERP<small>Knit · Dye · Finish · Grow</small></div>
       <nav className="nav">
@@ -2270,14 +2317,16 @@ function App(){
       </nav>
     </aside>
     <div className="main">
-      <div className="topbar"><h1>{PAGES[page].t}</h1>
+      <div className="topbar">
+        <button className="hamburger" aria-label="Menu" onClick={()=>setDrawer(v=>!v)}>☰</button>
+        <h1>{PAGES[page].t}</h1>
         <div className="who-wrap">
-          <button className="bell" title="Notifications" onClick={()=>{setPage("notifications"); loadNotif();}}>
+          <button className="bell" title="Notifications" onClick={()=>{go("notifications"); loadNotif();}}>
             🔔{notif>0 && <span className="bell-dot">{notif>99?"99+":notif}</span>}</button>
           <span className="fychip">{fyLabel()}</span>
           <div className="who">{me? (me.full_name||me.username) : ""} · {new Date().toLocaleDateString("en-IN")}</div>
         </div></div>
-      <div className="content">{page==="notifications"? <Notifications onChange={loadNotif}/> : <Cur/>}</div>
+      <div className="content">{page==="notifications"? <Notifications onChange={loadNotif}/> : page==="owner"? <OwnerDash onNav={go}/> : <Cur/>}</div>
     </div>
   </div>);
 }

@@ -83,17 +83,26 @@ function Kpi({
   }, value));
 }
 
-// Richer KPI card: coloured icon chip + value + optional % delta.
+// Richer KPI card: coloured icon chip + value + optional % delta. Clickable when
+// onClick is given (shows a hover affordance + drills into the module).
 function Stat({
   icon,
   label,
   value,
+  sub,
   delta,
-  tone
+  tone,
+  onClick
 }) {
   const d = delta === undefined || delta === null ? null : Number(delta);
   return /*#__PURE__*/React.createElement("div", {
-    className: "stat " + (tone || "")
+    className: "stat " + (tone || "") + (onClick ? " clickable" : ""),
+    onClick: onClick,
+    role: onClick ? "button" : undefined,
+    tabIndex: onClick ? 0 : undefined,
+    onKeyDown: onClick ? e => {
+      (e.key === "Enter" || e.key === " ") && onClick();
+    } : undefined
   }, /*#__PURE__*/React.createElement("div", {
     className: "stat-icon"
   }, icon), /*#__PURE__*/React.createElement("div", {
@@ -102,7 +111,9 @@ function Stat({
     className: "stat-label"
   }, label), /*#__PURE__*/React.createElement("div", {
     className: "stat-value"
-  }, value), d !== null && /*#__PURE__*/React.createElement("div", {
+  }, value), sub && /*#__PURE__*/React.createElement("div", {
+    className: "stat-sub"
+  }, sub), d !== null && /*#__PURE__*/React.createElement("div", {
     className: "stat-delta " + (d >= 0 ? "up" : "down")
   }, d >= 0 ? "▲" : "▼", " ", Math.abs(d).toFixed(1), "% vs last month")));
 }
@@ -233,7 +244,18 @@ function Result({
 }
 const genNo = pfx => pfx + "-" + Date.now().toString().slice(-8);
 const DONUT = ["#2563eb", "#16a34a", "#f59e0b", "#7c3aed", "#0d9488", "#e11d48", "#64748b"];
-function OwnerDash() {
+const FLOW_NAV = {
+  "Yarn Issue": "knitting",
+  "Knitting": "knitting",
+  "Greige": "stock",
+  "Dyeing": "dyeing",
+  "Finishing": "quality",
+  "Finished Goods": "stock"
+};
+function OwnerDash({
+  onNav
+}) {
+  const nav = onNav || (() => {});
   const [d, err] = useData("/api/dashboard/owner");
   const trend = useList("/api/dashboard/production-trend");
   const chem = useData("/api/dashboard/chemical")[0];
@@ -243,15 +265,116 @@ function OwnerDash() {
   if (err) return /*#__PURE__*/React.createElement(Panel, null, err);
   if (!d) return /*#__PURE__*/React.createElement(Panel, null, "Loading\u2026");
   const dl = d.deltas || {};
+  const k = d.kpis || {};
   const mix = (chem && chem.top_consumption || []).map((m, i) => ({
     name: m.material,
     value: Number(m.cost),
     c: DONUT[i % DONUT.length]
   }));
   const mixTotal = mix.reduce((s, m) => s + m.value, 0);
-  const alerts = chem && chem.stock_alerts || [];
+  const alerts = d.alerts || [];
   const dayShort = s => s ? s.slice(5) : "";
+  const sevCls = {
+    bad: "bad",
+    warn: "warn",
+    info: "info"
+  };
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "kpi-grid"
+  }, /*#__PURE__*/React.createElement(Stat, {
+    tone: "",
+    icon: "\uD83E\uDDF6",
+    label: "Today's Production",
+    value: inr2(k.production_today_kg) + " kg",
+    onClick: () => nav("knitting")
+  }), /*#__PURE__*/React.createElement(Stat, {
+    tone: "teal",
+    icon: "\uD83D\uDCC5",
+    label: "Monthly Production",
+    value: inr2(k.production_month_kg) + " kg",
+    onClick: () => nav("knitting")
+  }), /*#__PURE__*/React.createElement(Stat, {
+    tone: "green",
+    icon: "\uD83D\uDED2",
+    label: "Active Orders",
+    value: k.active_orders,
+    onClick: () => nav("salesorders")
+  }), /*#__PURE__*/React.createElement(Stat, {
+    tone: "amber",
+    icon: "\u23F3",
+    label: "Pending Orders",
+    value: k.pending_orders,
+    onClick: () => nav("salesorders")
+  }), /*#__PURE__*/React.createElement(Stat, {
+    tone: "violet",
+    icon: "\uD83D\uDCE6",
+    label: "Finished Goods",
+    value: inr2(k.finished_goods_kg) + " kg",
+    sub: inr(k.finished_goods_value),
+    onClick: () => nav("stock")
+  }), /*#__PURE__*/React.createElement(Stat, {
+    tone: "",
+    icon: "\uD83E\uDDF5",
+    label: "Greige Stock",
+    value: inr2(k.greige_kg) + " kg",
+    sub: inr(k.greige_value),
+    onClick: () => nav("stock")
+  }), /*#__PURE__*/React.createElement(Stat, {
+    tone: "amber",
+    icon: "\uD83D\uDCE5",
+    label: "Receivables",
+    value: inr(k.receivables),
+    sub: Number(d.overdue_receivables) > 0 ? "overdue " + inr(d.overdue_receivables) : "",
+    onClick: () => nav("customers")
+  }), /*#__PURE__*/React.createElement(Stat, {
+    tone: "rose",
+    icon: "\uD83D\uDCE4",
+    label: "Payables",
+    value: inr(k.payables),
+    sub: Number(d.overdue_payables) > 0 ? "overdue " + inr(d.overdue_payables) : "",
+    onClick: () => nav("suppliers")
+  })), /*#__PURE__*/React.createElement(Panel, {
+    title: "Manufacturing flow"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flow"
+  }, (d.manufacturing_flow || []).map((s, i, arr) => /*#__PURE__*/React.createElement(React.Fragment, {
+    key: s.stage
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flow-stage",
+    onClick: () => nav(FLOW_NAV[s.stage] || "owner"),
+    role: "button",
+    tabIndex: 0
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "flow-stage-name"
+  }, s.stage), /*#__PURE__*/React.createElement("div", {
+    className: "flow-stage-val"
+  }, isNaN(Number(s.value)) ? s.value : inr2(s.value)), /*#__PURE__*/React.createElement("div", {
+    className: "flow-stage-metric"
+  }, s.metric)), i < arr.length - 1 && /*#__PURE__*/React.createElement("div", {
+    className: "flow-arrow"
+  }, "\u2192"))))), alerts.length > 0 && /*#__PURE__*/React.createElement(Panel, {
+    title: "Alerts & approvals"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "alert-list"
+  }, alerts.map((a, i) => /*#__PURE__*/React.createElement("div", {
+    className: "alert-row " + (sevCls[a.severity] || ""),
+    key: i,
+    onClick: () => nav(a.page),
+    role: "button",
+    tabIndex: 0
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "alert-dot"
+  }), /*#__PURE__*/React.createElement("span", {
+    className: "alert-kind"
+  }, a.kind), /*#__PURE__*/React.createElement("span", {
+    style: {
+      flex: 1
+    }
+  }, a.text), /*#__PURE__*/React.createElement("span", {
+    className: "alert-go"
+  }, "View \u2192"))))), /*#__PURE__*/React.createElement("div", {
+    className: "section-head"
+  }, "Financial overview"), /*#__PURE__*/React.createElement("div", {
     className: "stats"
   }, /*#__PURE__*/React.createElement(Stat, {
     tone: "",
@@ -276,16 +399,6 @@ function OwnerDash() {
     icon: "\uD83C\uDFE6",
     label: "Cash & Bank",
     value: inr(d.cash_and_bank)
-  }), /*#__PURE__*/React.createElement(Stat, {
-    tone: "amber",
-    icon: "\uD83D\uDCE5",
-    label: "Receivables",
-    value: inr(d.receivables)
-  }), /*#__PURE__*/React.createElement(Stat, {
-    tone: "rose",
-    icon: "\uD83D\uDCE4",
-    label: "Payables",
-    value: inr(d.payables)
   })), /*#__PURE__*/React.createElement("div", {
     className: "grid2"
   }, /*#__PURE__*/React.createElement(Panel, {
@@ -7356,16 +7469,24 @@ function App() {
     const t = setInterval(loadNotif, 30000);
     return () => clearInterval(t);
   }, [loadNotif]);
+  const [drawer, setDrawer] = useState(false); // mobile nav drawer open
+  const go = id => {
+    setPage(id);
+    setDrawer(false);
+  };
   const Cur = PAGES[page].c;
   const navBtn = (id, label) => /*#__PURE__*/React.createElement("button", {
     className: page === id ? "active" : "",
-    onClick: () => setPage(id)
+    onClick: () => go(id)
   }, /*#__PURE__*/React.createElement("span", {
     className: "nav-ico"
   }, NAV_ICON[id] || "•"), label);
   return /*#__PURE__*/React.createElement("div", {
-    className: "app"
-  }, /*#__PURE__*/React.createElement("aside", {
+    className: "app" + (drawer ? " drawer-open" : "")
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "scrim",
+    onClick: () => setDrawer(false)
+  }), /*#__PURE__*/React.createElement("aside", {
     className: "sidebar"
   }, /*#__PURE__*/React.createElement("div", {
     className: "brand"
@@ -7402,13 +7523,17 @@ function App() {
     className: "main"
   }, /*#__PURE__*/React.createElement("div", {
     className: "topbar"
-  }, /*#__PURE__*/React.createElement("h1", null, PAGES[page].t), /*#__PURE__*/React.createElement("div", {
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "hamburger",
+    "aria-label": "Menu",
+    onClick: () => setDrawer(v => !v)
+  }, "\u2630"), /*#__PURE__*/React.createElement("h1", null, PAGES[page].t), /*#__PURE__*/React.createElement("div", {
     className: "who-wrap"
   }, /*#__PURE__*/React.createElement("button", {
     className: "bell",
     title: "Notifications",
     onClick: () => {
-      setPage("notifications");
+      go("notifications");
       loadNotif();
     }
   }, "\uD83D\uDD14", notif > 0 && /*#__PURE__*/React.createElement("span", {
@@ -7421,6 +7546,8 @@ function App() {
     className: "content"
   }, page === "notifications" ? /*#__PURE__*/React.createElement(Notifications, {
     onChange: loadNotif
+  }) : page === "owner" ? /*#__PURE__*/React.createElement(OwnerDash, {
+    onNav: go
   }) : /*#__PURE__*/React.createElement(Cur, null))));
 }
 function Root() {
