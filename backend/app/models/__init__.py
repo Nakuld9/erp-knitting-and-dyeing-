@@ -141,6 +141,7 @@ from app.models.hardware import (  # noqa: F401
 from app.models.tenancy import (  # noqa: F401
     ConsolidationElimination,
     GSTRegistration,
+    IntercompanyAccountMapping,
     Organization,
     UserCompanyMembership,
     UserFactoryMembership,

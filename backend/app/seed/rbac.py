@@ -31,6 +31,7 @@ PERMISSIONS: list[tuple[str, str, str]] = [
     ("admin.manage", "admin", "Manage users, roles and configuration"),
     ("factory.access_all", "tenancy", "Access every factory of the acting company (company-wide)"),
     ("consolidation.approve", "reports", "Approve group consolidation eliminations (finance)"),
+    ("intercompany.approve", "accounting", "Approve inter-company account mappings (accountant)"),
 ]
 
 # role_code -> (name, [permission codes]); "*" means all permissions.
@@ -56,7 +57,7 @@ ROLES: dict[str, tuple[str, list[str]]] = {
     "ACCOUNTANT": (
         "Accountant",
         ["master.read", "voucher.create", "voucher.post", "bank.reconcile", "report.read",
-         "report.financial", "asset.manage", "payroll.manage"],
+         "report.financial", "asset.manage", "payroll.manage", "intercompany.approve"],
     ),
     "FINANCE_CONTROLLER": (
         "Finance Controller",
@@ -64,6 +65,7 @@ ROLES: dict[str, tuple[str, list[str]]] = {
             "master.read", "voucher.create", "voucher.post", "voucher.approve",
             "voucher.reverse", "period.close", "bank.reconcile", "report.read", "report.financial",
             "inventory.adjust", "asset.manage", "payroll.manage", "consolidation.approve",
+            "intercompany.approve",
         ],
     ),
     "AUDITOR": ("Auditor", ["master.read", "report.read", "report.financial"]),

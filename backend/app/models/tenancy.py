@@ -127,3 +127,32 @@ class ConsolidationElimination(AuditMixin, Base):
     is_approved: Mapped[bool] = mapped_column(Boolean, default=False)
     approved_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class IntercompanyAccountMapping(AuditMixin, Base):
+    """Configurable control accounts for transactions with a related company.
+
+    From ``company_id``'s books, toward ``counterparty_company_id``:
+    - ``due_from_account_id``  (asset)     — amounts the counterparty owes us
+    - ``due_to_account_id``    (liability) — amounts we owe the counterparty
+
+    Account codes are NOT hardcoded or assumed: an authorized admin picks accounts
+    that already exist in this company's chart of accounts, and an accountant must
+    APPROVE the mapping before any inter-company posting may use it (fail-closed).
+    """
+
+    __tablename__ = "intercompany_account_mappings"
+    __table_args__ = (
+        UniqueConstraint("company_id", "counterparty_company_id", name="uq_ica_company_counterparty"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    counterparty_company_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("companies.id", ondelete="CASCADE"), index=True)
+    due_from_account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("chart_of_accounts.id"))
+    due_to_account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("chart_of_accounts.id"))
+    is_approved: Mapped[bool] = mapped_column(Boolean, default=False)
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)

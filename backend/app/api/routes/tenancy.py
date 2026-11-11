@@ -35,6 +35,7 @@ from app.models.core import Branch, Company, User
 from app.models.tenancy import (
     ConsolidationElimination,
     GSTRegistration,
+    IntercompanyAccountMapping,
     Organization,
     UserCompanyMembership,
     UserFactoryMembership,
@@ -383,3 +384,69 @@ def approve_elimination(elim_id: uuid.UUID, db: Session = Depends(get_db),
     e.approved_at = datetime.now(timezone.utc)
     db.commit()
     return {"id": str(e.id), "is_approved": True, "approved_at": e.approved_at.isoformat()}
+
+
+# --- inter-company account mappings (configurable, accountant-approved) ------
+
+from app.services.accounting import intercompany as ic  # noqa: E402
+from app.services.accounting.intercompany import IntercompanyConfigError  # noqa: E402
+from app.models.accounting import ChartOfAccount  # noqa: E402
+
+
+class IntercompanyMappingIn(BaseModel):
+    company_id: uuid.UUID
+    counterparty_company_id: uuid.UUID
+    due_from_account_code: str = Field(min_length=1, max_length=20)
+    due_to_account_code: str = Field(min_length=1, max_length=20)
+
+
+def _account_id_by_code(db, company_id, code):
+    acct = db.execute(select(ChartOfAccount).where(
+        ChartOfAccount.company_id == company_id, ChartOfAccount.code == code)).scalar_one_or_none()
+    if acct is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND,
+                            f"Account {code} not found in this company's chart of accounts")
+    return acct.id
+
+
+@router.get("/api/admin/intercompany-mappings")
+def list_intercompany_mappings(db: Session = Depends(get_db),
+                               user: User = Depends(require_permission("report.financial"))):
+    rows = db.execute(select(IntercompanyAccountMapping)).scalars().all()
+    return [{"id": str(m.id), "company_id": str(m.company_id),
+             "counterparty_company_id": str(m.counterparty_company_id),
+             "due_from_account_id": str(m.due_from_account_id),
+             "due_to_account_id": str(m.due_to_account_id),
+             "is_approved": m.is_approved, "is_active": m.is_active} for m in rows]
+
+
+@router.post("/api/admin/intercompany-mappings", status_code=status.HTTP_201_CREATED)
+def create_intercompany_mapping(p: IntercompanyMappingIn, db: Session = Depends(get_db),
+                                user: User = Depends(require_permission("admin.manage"))):
+    due_from_id = _account_id_by_code(db, p.company_id, p.due_from_account_code)
+    due_to_id = _account_id_by_code(db, p.company_id, p.due_to_account_code)
+    try:
+        m = ic.create_mapping(db, company_id=p.company_id,
+                              counterparty_company_id=p.counterparty_company_id,
+                              due_from_account_id=due_from_id, due_to_account_id=due_to_id,
+                              created_by=user.id)
+    except IntercompanyConfigError as e:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e))
+    return {"id": str(m.id), "is_approved": m.is_approved}
+
+
+@router.post("/api/admin/intercompany-mappings/{mapping_id}/approve")
+def approve_intercompany_mapping(mapping_id: uuid.UUID, db: Session = Depends(get_db),
+                                 user: User = Depends(require_permission("intercompany.approve"))):
+    try:
+        m = ic.approve_mapping(db, mapping_id, user.id)
+    except IntercompanyConfigError as e:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(e))
+    return {"id": str(m.id), "is_approved": True,
+            "approved_at": m.approved_at.isoformat() if m.approved_at else None}
+
+
+@router.get("/api/admin/intercompany-reconciliation")
+def intercompany_reconciliation(db: Session = Depends(get_db),
+                                user: User = Depends(require_permission("report.financial"))):
+    return ic.reconciliation(db)
