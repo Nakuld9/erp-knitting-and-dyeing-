@@ -621,18 +621,23 @@ function Quality(){
       {err && <div className="err">{err}</div>}
     </Panel>
     <Panel title="Recent inspections">
-      {insp.length===0 ? <div className="muted">No inspections yet.</div> :
-      <table><thead><tr><th>No.</th><th>Date</th><th>Delta E</th><th>Fastness</th><th>Result</th></tr></thead>
-      <tbody>{insp.slice(0,15).map(r=><tr key={r.id}><td>{r.number}</td><td>{r.inspection_date}</td>
-        <td>{r.delta_e||"-"}</td><td>{r.colour_fastness||"-"}</td>
-        <td><span className={"badge "+(RESULT_CLS[r.result]||"")}>{r.result}</span></td></tr>)}</tbody></table>}
+      <DataTable rows={insp} pageSize={10} empty="No inspections yet." initialSort={{key:"inspection_date",dir:"desc"}}
+        searchKeys={["number","inspection_date","result","colour_fastness"]}
+        columns={[
+          {key:"number",label:"No."},{key:"inspection_date",label:"Date"},
+          {key:"delta_e",label:"Delta E",render:r=>r.delta_e||"-"},
+          {key:"colour_fastness",label:"Fastness",render:r=>r.colour_fastness||"-"},
+          {key:"result",label:"Result",render:r=><span className={"badge "+(RESULT_CLS[r.result]||"")}>{r.result}</span>},
+        ]}/>
     </Panel>
     <Panel title="Customer complaints">
-      {comp.length===0 ? <div className="muted">No complaints.</div> :
-      <table><thead><tr><th>No.</th><th>Date</th><th>Severity</th><th>Status</th><th>Description</th></tr></thead>
-      <tbody>{comp.slice(0,15).map(r=><tr key={r.id}><td>{r.number}</td><td>{r.complaint_date}</td>
-        <td>{r.severity}</td><td><span className={"badge "+(r.status==="OPEN"?"warn":"ok")}>{r.status}</span></td>
-        <td>{r.description}</td></tr>)}</tbody></table>}
+      <DataTable rows={comp} pageSize={10} empty="No complaints." initialSort={{key:"complaint_date",dir:"desc"}}
+        searchKeys={["number","complaint_date","severity","status","description"]}
+        columns={[
+          {key:"number",label:"No."},{key:"complaint_date",label:"Date"},{key:"severity",label:"Severity"},
+          {key:"status",label:"Status",render:r=><span className={"badge "+(r.status==="OPEN"?"warn":"ok")}>{r.status}</span>},
+          {key:"description",label:"Description"},
+        ]}/>
     </Panel>
   </div>);
 }
@@ -1783,13 +1788,15 @@ function FixedAssets(){
       <Result r={dep}/>
     </Panel>
     <Panel title="Asset register">
-      {assets.length===0?<div className="muted">None yet.</div>:
-      <table><thead><tr><th>Code</th><th>Name</th><th>Method</th><th className="num">Cost</th>
-        <th className="num">Accum. dep.</th><th className="num">Book value</th><th>Status</th><th></th></tr></thead>
-      <tbody>{assets.map(a=><tr key={a.id}><td>{a.code}</td><td>{a.name}</td><td>{a.method}</td>
-        <td className="num">{inr2(a.cost)}</td><td className="num">{inr2(a.accumulated_depreciation)}</td>
-        <td className="num">{inr2(a.book_value)}</td><td>{stBadge(a.status)}</td>
-        <td className="num">{a.status==="ACTIVE" && <button className="btn sec" onClick={()=>dispose(a)}>Dispose</button>}</td></tr>)}</tbody></table>}
+      <DataTable rows={assets} pageSize={12} empty="None yet." searchKeys={["code","name","method","status"]}
+        columns={[
+          {key:"code",label:"Code"},{key:"name",label:"Name"},{key:"method",label:"Method"},
+          {key:"cost",label:"Cost",num:true,render:a=>inr2(a.cost)},
+          {key:"accumulated_depreciation",label:"Accum. dep.",num:true,render:a=>inr2(a.accumulated_depreciation)},
+          {key:"book_value",label:"Book value",num:true,render:a=>inr2(a.book_value)},
+          {key:"status",label:"Status",render:a=>stBadge(a.status)},
+          {key:"act",label:"",sortable:false,num:true,render:a=>a.status==="ACTIVE"?<button className="btn sec" onClick={()=>dispose(a)}>Dispose</button>:null},
+        ]}/>
     </Panel>
   </div>);
 }
@@ -1850,12 +1857,15 @@ function Payroll(){
       </Panel></div>
     </div>
     <Panel title="Salary structures">
-      {structs.length===0?<div className="muted">None yet — add an employee and set a structure.</div>:
-      <table><thead><tr><th>Employee</th><th className="num">Basic</th><th className="num">Gross</th>
-        <th className="num">Deductions</th><th className="num">Net pay</th></tr></thead>
-      <tbody>{structs.map(s=><tr key={s.id}><td>{s.employee_code} — {s.employee}</td>
-        <td className="num">{inr2(s.basic)}</td><td className="num">{inr2(s.gross)}</td>
-        <td className="num">{inr2(s.deductions)}</td><td className="num">{inr2(s.net_pay)}</td></tr>)}</tbody></table>}
+      <DataTable rows={structs.map(s=>({...s, employee_disp:(s.employee_code?s.employee_code+" — ":"")+s.employee}))}
+        pageSize={12} empty="None yet — add an employee and set a structure." searchKeys={["employee_disp"]}
+        columns={[
+          {key:"employee_disp",label:"Employee"},
+          {key:"basic",label:"Basic",num:true,render:s=>inr2(s.basic)},
+          {key:"gross",label:"Gross",num:true,render:s=>inr2(s.gross)},
+          {key:"deductions",label:"Deductions",num:true,render:s=>inr2(s.deductions)},
+          {key:"net_pay",label:"Net pay",num:true,render:s=>inr2(s.net_pay)},
+        ]}/>
     </Panel>
     <Panel title="Run monthly payroll">
       <div className="row">
@@ -1866,12 +1876,15 @@ function Payroll(){
       {err && <div className="err">{err}</div>}
     </Panel>
     <Panel title="Payroll runs">
-      {runs.length===0?<div className="muted">None yet.</div>:
-      <table><thead><tr><th>Period</th><th className="num">Employees</th><th className="num">Gross</th>
-        <th className="num">Net paid</th><th>Status</th></tr></thead>
-      <tbody>{runs.map(r=><tr key={r.id}><td>{r.period}</td><td className="num">{r.employees}</td>
-        <td className="num">{inr2(r.total_gross)}</td><td className="num">{inr2(r.total_net)}</td>
-        <td>{stBadge(r.status)}</td></tr>)}</tbody></table>}
+      <DataTable rows={runs} pageSize={12} empty="None yet." initialSort={{key:"period",dir:"desc"}}
+        searchKeys={["period","status"]}
+        columns={[
+          {key:"period",label:"Period"},
+          {key:"employees",label:"Employees",num:true},
+          {key:"total_gross",label:"Gross",num:true,render:r=>inr2(r.total_gross)},
+          {key:"total_net",label:"Net paid",num:true,render:r=>inr2(r.total_net)},
+          {key:"status",label:"Status",render:r=>stBadge(r.status)},
+        ]}/>
     </Panel>
   </div>);
 }
@@ -1922,12 +1935,15 @@ function Approvals(){
     </div>
     <Panel title="Pending approvals">
       <div className="muted" style={{marginBottom:8,fontSize:12}}>Maker-checker: the person who requested a payment cannot approve it — a different approver must sign off.</div>
-      {reqs.length===0?<div className="muted">Nothing awaiting approval.</div>:
-      <table><thead><tr><th>Document</th><th className="num">Amount</th><th className="num">Approvals</th><th></th></tr></thead>
-      <tbody>{reqs.map(r=><tr key={r.id}><td>{r.title}</td><td className="num">{inr2(r.amount)}</td>
-        <td className="num">{r.approvals_received}/{r.approvals_required}</td>
-        <td className="num"><button className="btn" onClick={()=>decide(r.id,"approve")}>Approve</button>{" "}
-          <button className="btn sec" onClick={()=>decide(r.id,"reject")}>Reject</button></td></tr>)}</tbody></table>}
+      <DataTable rows={reqs} pageSize={10} empty="Nothing awaiting approval." searchKeys={["title","doc_type"]}
+        columns={[
+          {key:"title",label:"Document"},
+          {key:"amount",label:"Amount",num:true,render:r=>inr2(r.amount)},
+          {key:"approvals",label:"Approvals",num:true,sortable:false,render:r=>`${r.approvals_received}/${r.approvals_required}`},
+          {key:"act",label:"",sortable:false,num:true,render:r=><>
+            <button className="btn" onClick={()=>decide(r.id,"approve")}>Approve</button>{" "}
+            <button className="btn sec" onClick={()=>decide(r.id,"reject")}>Reject</button></>},
+        ]}/>
       {err && <div className="err">{err}</div>}
     </Panel>
   </div>);
@@ -2064,8 +2080,13 @@ function InventoryOps(){
         </div>
       </form>
       <Result r={tRes}/>
-      {transfers.length>0 && <table style={{marginTop:12}}><thead><tr><th>Number</th><th>Date</th><th className="num">Qty</th><th className="num">Value</th></tr></thead>
-        <tbody>{transfers.map(t=><tr key={t.id}><td>{t.number}</td><td>{t.date}</td><td className="num">{inr2(t.qty)}</td><td className="num">{inr2(t.cost_value)}</td></tr>)}</tbody></table>}
+      {transfers.length>0 && <div style={{marginTop:12}}><DataTable rows={transfers} pageSize={8}
+        searchKeys={["number","date"]} initialSort={{key:"date",dir:"desc"}}
+        columns={[
+          {key:"number",label:"Number"},{key:"date",label:"Date"},
+          {key:"qty",label:"Qty",num:true,render:t=>inr2(t.qty)},
+          {key:"cost_value",label:"Value",num:true,render:t=>inr2(t.cost_value)},
+        ]}/></div>}
     </Panel>
     <Panel title="Split a fabric roll">
       <form onSubmit={split}>

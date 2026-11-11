@@ -1562,21 +1562,67 @@ function Quality() {
     className: "err"
   }, err)), /*#__PURE__*/React.createElement(Panel, {
     title: "Recent inspections"
-  }, insp.length === 0 ? /*#__PURE__*/React.createElement("div", {
-    className: "muted"
-  }, "No inspections yet.") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "No."), /*#__PURE__*/React.createElement("th", null, "Date"), /*#__PURE__*/React.createElement("th", null, "Delta E"), /*#__PURE__*/React.createElement("th", null, "Fastness"), /*#__PURE__*/React.createElement("th", null, "Result"))), /*#__PURE__*/React.createElement("tbody", null, insp.slice(0, 15).map(r => /*#__PURE__*/React.createElement("tr", {
-    key: r.id
-  }, /*#__PURE__*/React.createElement("td", null, r.number), /*#__PURE__*/React.createElement("td", null, r.inspection_date), /*#__PURE__*/React.createElement("td", null, r.delta_e || "-"), /*#__PURE__*/React.createElement("td", null, r.colour_fastness || "-"), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", {
-    className: "badge " + (RESULT_CLS[r.result] || "")
-  }, r.result))))))), /*#__PURE__*/React.createElement(Panel, {
+  }, /*#__PURE__*/React.createElement(DataTable, {
+    rows: insp,
+    pageSize: 10,
+    empty: "No inspections yet.",
+    initialSort: {
+      key: "inspection_date",
+      dir: "desc"
+    },
+    searchKeys: ["number", "inspection_date", "result", "colour_fastness"],
+    columns: [{
+      key: "number",
+      label: "No."
+    }, {
+      key: "inspection_date",
+      label: "Date"
+    }, {
+      key: "delta_e",
+      label: "Delta E",
+      render: r => r.delta_e || "-"
+    }, {
+      key: "colour_fastness",
+      label: "Fastness",
+      render: r => r.colour_fastness || "-"
+    }, {
+      key: "result",
+      label: "Result",
+      render: r => /*#__PURE__*/React.createElement("span", {
+        className: "badge " + (RESULT_CLS[r.result] || "")
+      }, r.result)
+    }]
+  })), /*#__PURE__*/React.createElement(Panel, {
     title: "Customer complaints"
-  }, comp.length === 0 ? /*#__PURE__*/React.createElement("div", {
-    className: "muted"
-  }, "No complaints.") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "No."), /*#__PURE__*/React.createElement("th", null, "Date"), /*#__PURE__*/React.createElement("th", null, "Severity"), /*#__PURE__*/React.createElement("th", null, "Status"), /*#__PURE__*/React.createElement("th", null, "Description"))), /*#__PURE__*/React.createElement("tbody", null, comp.slice(0, 15).map(r => /*#__PURE__*/React.createElement("tr", {
-    key: r.id
-  }, /*#__PURE__*/React.createElement("td", null, r.number), /*#__PURE__*/React.createElement("td", null, r.complaint_date), /*#__PURE__*/React.createElement("td", null, r.severity), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", {
-    className: "badge " + (r.status === "OPEN" ? "warn" : "ok")
-  }, r.status)), /*#__PURE__*/React.createElement("td", null, r.description)))))));
+  }, /*#__PURE__*/React.createElement(DataTable, {
+    rows: comp,
+    pageSize: 10,
+    empty: "No complaints.",
+    initialSort: {
+      key: "complaint_date",
+      dir: "desc"
+    },
+    searchKeys: ["number", "complaint_date", "severity", "status", "description"],
+    columns: [{
+      key: "number",
+      label: "No."
+    }, {
+      key: "complaint_date",
+      label: "Date"
+    }, {
+      key: "severity",
+      label: "Severity"
+    }, {
+      key: "status",
+      label: "Status",
+      render: r => /*#__PURE__*/React.createElement("span", {
+        className: "badge " + (r.status === "OPEN" ? "warn" : "ok")
+      }, r.status)
+    }, {
+      key: "description",
+      label: "Description"
+    }]
+  })));
 }
 
 // ---- masters: parties -----------------------------------------------------
@@ -5597,28 +5643,50 @@ function FixedAssets() {
     r: dep
   })), /*#__PURE__*/React.createElement(Panel, {
     title: "Asset register"
-  }, assets.length === 0 ? /*#__PURE__*/React.createElement("div", {
-    className: "muted"
-  }, "None yet.") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Code"), /*#__PURE__*/React.createElement("th", null, "Name"), /*#__PURE__*/React.createElement("th", null, "Method"), /*#__PURE__*/React.createElement("th", {
-    className: "num"
-  }, "Cost"), /*#__PURE__*/React.createElement("th", {
-    className: "num"
-  }, "Accum. dep."), /*#__PURE__*/React.createElement("th", {
-    className: "num"
-  }, "Book value"), /*#__PURE__*/React.createElement("th", null, "Status"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, assets.map(a => /*#__PURE__*/React.createElement("tr", {
-    key: a.id
-  }, /*#__PURE__*/React.createElement("td", null, a.code), /*#__PURE__*/React.createElement("td", null, a.name), /*#__PURE__*/React.createElement("td", null, a.method), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, inr2(a.cost)), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, inr2(a.accumulated_depreciation)), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, inr2(a.book_value)), /*#__PURE__*/React.createElement("td", null, stBadge(a.status)), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, a.status === "ACTIVE" && /*#__PURE__*/React.createElement("button", {
-    className: "btn sec",
-    onClick: () => dispose(a)
-  }, "Dispose"))))))));
+  }, /*#__PURE__*/React.createElement(DataTable, {
+    rows: assets,
+    pageSize: 12,
+    empty: "None yet.",
+    searchKeys: ["code", "name", "method", "status"],
+    columns: [{
+      key: "code",
+      label: "Code"
+    }, {
+      key: "name",
+      label: "Name"
+    }, {
+      key: "method",
+      label: "Method"
+    }, {
+      key: "cost",
+      label: "Cost",
+      num: true,
+      render: a => inr2(a.cost)
+    }, {
+      key: "accumulated_depreciation",
+      label: "Accum. dep.",
+      num: true,
+      render: a => inr2(a.accumulated_depreciation)
+    }, {
+      key: "book_value",
+      label: "Book value",
+      num: true,
+      render: a => inr2(a.book_value)
+    }, {
+      key: "status",
+      label: "Status",
+      render: a => stBadge(a.status)
+    }, {
+      key: "act",
+      label: "",
+      sortable: false,
+      num: true,
+      render: a => a.status === "ACTIVE" ? /*#__PURE__*/React.createElement("button", {
+        className: "btn sec",
+        onClick: () => dispose(a)
+      }, "Dispose") : null
+    }]
+  })));
 }
 
 // ---- payroll --------------------------------------------------------------
@@ -5850,27 +5918,39 @@ function Payroll() {
     r: sRes
   })))), /*#__PURE__*/React.createElement(Panel, {
     title: "Salary structures"
-  }, structs.length === 0 ? /*#__PURE__*/React.createElement("div", {
-    className: "muted"
-  }, "None yet \u2014 add an employee and set a structure.") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Employee"), /*#__PURE__*/React.createElement("th", {
-    className: "num"
-  }, "Basic"), /*#__PURE__*/React.createElement("th", {
-    className: "num"
-  }, "Gross"), /*#__PURE__*/React.createElement("th", {
-    className: "num"
-  }, "Deductions"), /*#__PURE__*/React.createElement("th", {
-    className: "num"
-  }, "Net pay"))), /*#__PURE__*/React.createElement("tbody", null, structs.map(s => /*#__PURE__*/React.createElement("tr", {
-    key: s.id
-  }, /*#__PURE__*/React.createElement("td", null, s.employee_code, " \u2014 ", s.employee), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, inr2(s.basic)), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, inr2(s.gross)), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, inr2(s.deductions)), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, inr2(s.net_pay))))))), /*#__PURE__*/React.createElement(Panel, {
+  }, /*#__PURE__*/React.createElement(DataTable, {
+    rows: structs.map(s => ({
+      ...s,
+      employee_disp: (s.employee_code ? s.employee_code + " — " : "") + s.employee
+    })),
+    pageSize: 12,
+    empty: "None yet \u2014 add an employee and set a structure.",
+    searchKeys: ["employee_disp"],
+    columns: [{
+      key: "employee_disp",
+      label: "Employee"
+    }, {
+      key: "basic",
+      label: "Basic",
+      num: true,
+      render: s => inr2(s.basic)
+    }, {
+      key: "gross",
+      label: "Gross",
+      num: true,
+      render: s => inr2(s.gross)
+    }, {
+      key: "deductions",
+      label: "Deductions",
+      num: true,
+      render: s => inr2(s.deductions)
+    }, {
+      key: "net_pay",
+      label: "Net pay",
+      num: true,
+      render: s => inr2(s.net_pay)
+    }]
+  })), /*#__PURE__*/React.createElement(Panel, {
     title: "Run monthly payroll"
   }, /*#__PURE__*/React.createElement("div", {
     className: "row"
@@ -5894,23 +5974,38 @@ function Payroll() {
     className: "err"
   }, err)), /*#__PURE__*/React.createElement(Panel, {
     title: "Payroll runs"
-  }, runs.length === 0 ? /*#__PURE__*/React.createElement("div", {
-    className: "muted"
-  }, "None yet.") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Period"), /*#__PURE__*/React.createElement("th", {
-    className: "num"
-  }, "Employees"), /*#__PURE__*/React.createElement("th", {
-    className: "num"
-  }, "Gross"), /*#__PURE__*/React.createElement("th", {
-    className: "num"
-  }, "Net paid"), /*#__PURE__*/React.createElement("th", null, "Status"))), /*#__PURE__*/React.createElement("tbody", null, runs.map(r => /*#__PURE__*/React.createElement("tr", {
-    key: r.id
-  }, /*#__PURE__*/React.createElement("td", null, r.period), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, r.employees), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, inr2(r.total_gross)), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, inr2(r.total_net)), /*#__PURE__*/React.createElement("td", null, stBadge(r.status))))))));
+  }, /*#__PURE__*/React.createElement(DataTable, {
+    rows: runs,
+    pageSize: 12,
+    empty: "None yet.",
+    initialSort: {
+      key: "period",
+      dir: "desc"
+    },
+    searchKeys: ["period", "status"],
+    columns: [{
+      key: "period",
+      label: "Period"
+    }, {
+      key: "employees",
+      label: "Employees",
+      num: true
+    }, {
+      key: "total_gross",
+      label: "Gross",
+      num: true,
+      render: r => inr2(r.total_gross)
+    }, {
+      key: "total_net",
+      label: "Net paid",
+      num: true,
+      render: r => inr2(r.total_net)
+    }, {
+      key: "status",
+      label: "Status",
+      render: r => stBadge(r.status)
+    }]
+  })));
 }
 
 // ---- approvals (maker-checker) --------------------------------------------
@@ -6100,27 +6195,39 @@ function Approvals() {
       marginBottom: 8,
       fontSize: 12
     }
-  }, "Maker-checker: the person who requested a payment cannot approve it \u2014 a different approver must sign off."), reqs.length === 0 ? /*#__PURE__*/React.createElement("div", {
-    className: "muted"
-  }, "Nothing awaiting approval.") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Document"), /*#__PURE__*/React.createElement("th", {
-    className: "num"
-  }, "Amount"), /*#__PURE__*/React.createElement("th", {
-    className: "num"
-  }, "Approvals"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, reqs.map(r => /*#__PURE__*/React.createElement("tr", {
-    key: r.id
-  }, /*#__PURE__*/React.createElement("td", null, r.title), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, inr2(r.amount)), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, r.approvals_received, "/", r.approvals_required), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, /*#__PURE__*/React.createElement("button", {
-    className: "btn",
-    onClick: () => decide(r.id, "approve")
-  }, "Approve"), " ", /*#__PURE__*/React.createElement("button", {
-    className: "btn sec",
-    onClick: () => decide(r.id, "reject")
-  }, "Reject")))))), err && /*#__PURE__*/React.createElement("div", {
+  }, "Maker-checker: the person who requested a payment cannot approve it \u2014 a different approver must sign off."), /*#__PURE__*/React.createElement(DataTable, {
+    rows: reqs,
+    pageSize: 10,
+    empty: "Nothing awaiting approval.",
+    searchKeys: ["title", "doc_type"],
+    columns: [{
+      key: "title",
+      label: "Document"
+    }, {
+      key: "amount",
+      label: "Amount",
+      num: true,
+      render: r => inr2(r.amount)
+    }, {
+      key: "approvals",
+      label: "Approvals",
+      num: true,
+      sortable: false,
+      render: r => `${r.approvals_received}/${r.approvals_required}`
+    }, {
+      key: "act",
+      label: "",
+      sortable: false,
+      num: true,
+      render: r => /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("button", {
+        className: "btn",
+        onClick: () => decide(r.id, "approve")
+      }, "Approve"), " ", /*#__PURE__*/React.createElement("button", {
+        className: "btn sec",
+        onClick: () => decide(r.id, "reject")
+      }, "Reject"))
+    }]
+  }), err && /*#__PURE__*/React.createElement("div", {
     className: "err"
   }, err)));
 }
@@ -6592,21 +6699,36 @@ function InventoryOps() {
     className: "btn"
   }, "Transfer")))), /*#__PURE__*/React.createElement(Result, {
     r: tRes
-  }), transfers.length > 0 && /*#__PURE__*/React.createElement("table", {
+  }), transfers.length > 0 && /*#__PURE__*/React.createElement("div", {
     style: {
       marginTop: 12
     }
-  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Number"), /*#__PURE__*/React.createElement("th", null, "Date"), /*#__PURE__*/React.createElement("th", {
-    className: "num"
-  }, "Qty"), /*#__PURE__*/React.createElement("th", {
-    className: "num"
-  }, "Value"))), /*#__PURE__*/React.createElement("tbody", null, transfers.map(t => /*#__PURE__*/React.createElement("tr", {
-    key: t.id
-  }, /*#__PURE__*/React.createElement("td", null, t.number), /*#__PURE__*/React.createElement("td", null, t.date), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, inr2(t.qty)), /*#__PURE__*/React.createElement("td", {
-    className: "num"
-  }, inr2(t.cost_value))))))), /*#__PURE__*/React.createElement(Panel, {
+  }, /*#__PURE__*/React.createElement(DataTable, {
+    rows: transfers,
+    pageSize: 8,
+    searchKeys: ["number", "date"],
+    initialSort: {
+      key: "date",
+      dir: "desc"
+    },
+    columns: [{
+      key: "number",
+      label: "Number"
+    }, {
+      key: "date",
+      label: "Date"
+    }, {
+      key: "qty",
+      label: "Qty",
+      num: true,
+      render: t => inr2(t.qty)
+    }, {
+      key: "cost_value",
+      label: "Value",
+      num: true,
+      render: t => inr2(t.cost_value)
+    }]
+  }))), /*#__PURE__*/React.createElement(Panel, {
     title: "Split a fabric roll"
   }, /*#__PURE__*/React.createElement("form", {
     onSubmit: split
