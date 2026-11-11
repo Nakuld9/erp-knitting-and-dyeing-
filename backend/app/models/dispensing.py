@@ -47,6 +47,8 @@ class DispensingTransaction(AuditMixin, Base):
     )
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"), index=True)
+    # factory/branch owner (additive; nullable — backfill is approval-gated)
+    factory_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("branches.id"), nullable=True, index=True)
     bath_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("dye_baths.id"), index=True)
     device_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dispensing_devices.id"), nullable=True)
     chemical_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("chemicals.id"), index=True)

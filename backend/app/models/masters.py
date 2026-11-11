@@ -173,6 +173,8 @@ class Machine(AuditMixin, Base):
     __tablename__ = "machines"
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"), index=True)
+    # factory/branch owner (additive; nullable — backfill is approval-gated)
+    factory_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("branches.id"), nullable=True, index=True)
     machine_type: Mapped[MachineType] = mapped_column(String(12), index=True)
     code: Mapped[str] = mapped_column(String(30), index=True)
     name: Mapped[str] = mapped_column(String(120))

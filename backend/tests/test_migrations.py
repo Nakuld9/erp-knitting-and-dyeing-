@@ -23,6 +23,15 @@ NEW_TABLES = [
     "user_company_memberships",
     "user_factory_memberships",
 ]
+FACTORY_TABLES = [
+    "machines",
+    "knitting_production",
+    "fabric_rolls",
+    "dye_batches",
+    "finishing_transactions",
+    "quality_inspections",
+    "dispensing_transactions",
+]
 BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -49,6 +58,14 @@ def _has_org_column(path: str) -> bool:
     con = sqlite3.connect(path)
     try:
         return any(r[1] == "organization_id" for r in con.execute("PRAGMA table_info(companies)"))
+    finally:
+        con.close()
+
+
+def _has_column(path: str, table: str, column: str) -> bool:
+    con = sqlite3.connect(path)
+    try:
+        return any(r[1] == column for r in con.execute(f"PRAGMA table_info({table})"))
     finally:
         con.close()
 
@@ -102,3 +119,17 @@ def test_roundtrip_is_repeatable(temp_db):
     for t in NEW_TABLES:
         assert _has_table(path, t)
     assert _has_org_column(path)
+
+
+def test_factory_columns_added_and_reversible(temp_db):
+    """0003 adds nullable factory_id to factory-owned tables; downgrade to 0002
+    removes only those columns, leaving the tables intact."""
+    url, path = temp_db
+    cfg = _alembic_cfg(url)
+    command.upgrade(cfg, "head")
+    for t in FACTORY_TABLES:
+        assert _has_column(path, t, "factory_id"), f"{t}.factory_id should exist after upgrade"
+    command.downgrade(cfg, "0002_multicompany_foundation")
+    for t in FACTORY_TABLES:
+        assert not _has_column(path, t, "factory_id"), f"{t}.factory_id should be gone after downgrade"
+        assert _has_table(path, t), f"{t} itself must survive the downgrade"

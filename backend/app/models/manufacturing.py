@@ -38,6 +38,8 @@ class KnittingProduction(AuditMixin, Base):
     __tablename__ = "knitting_production"
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"), index=True)
+    # factory/branch owner (additive; nullable — backfill is approval-gated)
+    factory_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("branches.id"), nullable=True, index=True)
     number: Mapped[str] = mapped_column(String(40), index=True)
     machine_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("machines.id"), index=True)
     sales_order_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sales_orders.id"), nullable=True)
@@ -63,6 +65,8 @@ class FabricRoll(AuditMixin, Base):
     __tablename__ = "fabric_rolls"
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"), index=True)
+    # factory/branch owner (additive; nullable — backfill is approval-gated)
+    factory_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("branches.id"), nullable=True, index=True)
     roll_no: Mapped[str] = mapped_column(String(40), index=True)
     barcode: Mapped[str | None] = mapped_column(String(60), nullable=True, index=True)
     kind: Mapped[RollKind] = mapped_column(String(10), default=RollKind.GREIGE)
@@ -96,6 +100,8 @@ class DyeBatch(AuditMixin, Base):
     __tablename__ = "dye_batches"
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"), index=True)
+    # factory/branch owner (additive; nullable — backfill is approval-gated)
+    factory_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("branches.id"), nullable=True, index=True)
     batch_code: Mapped[str] = mapped_column(String(40), index=True)   # e.g. DY-26001
     sales_order_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sales_orders.id"), nullable=True)
     shade_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("shade_codes.id"), nullable=True)

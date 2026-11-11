@@ -46,6 +46,8 @@ class FinishingTransaction(AuditMixin, Base):
     __tablename__ = "finishing_transactions"
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"), index=True)
+    # factory/branch owner (additive; nullable — backfill is approval-gated)
+    factory_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("branches.id"), nullable=True, index=True)
     number: Mapped[str] = mapped_column(String(40), index=True)
     process_type: Mapped[FinishingProcess] = mapped_column(String(16), index=True)
     fabric_roll_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("fabric_rolls.id"), nullable=True)
@@ -65,6 +67,8 @@ class QualityInspection(AuditMixin, Base):
     __tablename__ = "quality_inspections"
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"), index=True)
+    # factory/branch owner (additive; nullable — backfill is approval-gated)
+    factory_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("branches.id"), nullable=True, index=True)
     number: Mapped[str] = mapped_column(String(40), index=True)
     fabric_roll_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("fabric_rolls.id"), nullable=True)
     dye_batch_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dye_batches.id"), nullable=True)

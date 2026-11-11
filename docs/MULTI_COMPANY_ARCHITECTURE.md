@@ -141,3 +141,32 @@ The following cannot be guessed and block enforcement/backfill:
 
 Until these are answered, we ship only the **additive foundation** and keep the
 running system behaving exactly as it does today.
+
+---
+
+## 7. Implemented so far (additive, non-destructive)
+
+- **Migration 0002** — `organizations`, `gst_registrations`,
+  `user_company_memberships`, `user_factory_memberships`, nullable
+  `companies.organization_id`. Upgrade/downgrade proven.
+- **Migration 0003** — nullable `factory_id` (→ branches.id) on the factory-owned
+  operational tables: `machines`, `knitting_production`, `fabric_rolls`,
+  `dye_batches`, `finishing_transactions`, `quality_inspections`,
+  `dispensing_transactions`. **Columns only — no backfill, no enforcement.**
+- **Resolver** `app/core/context.py` — membership-aware, backward-compatible.
+- **API** `app/api/routes/tenancy.py` — `GET /api/me/context` (authorized
+  companies/factories + resolved active scope), and `admin.manage`-guarded CRUD
+  for organizations, company/factory memberships, and GST registrations.
+- **Tests** — foundation (7), migrations (4), tenancy API (6) incl. forged
+  `X-Company-Id` → 403 for a scoped non-superuser.
+
+### Still to do (safe, next)
+- Wire the resolved acting-company into the existing routes so switching
+  `X-Company-Id` actually changes the data a multi-company user sees (today the
+  routes still read `User.company_id`; the resolver falls back to it, so this is
+  backward-compatible — it is deferred only to keep it a single reviewable change
+  and because the **factory** dimension needs the §6 policy).
+
+### Still blocked on §6 business decisions
+- Backfilling `factory_id` on existing rows; `NOT NULL`/constraints; factory
+  isolation enforcement; inter-company accounting; consolidation.
