@@ -144,8 +144,10 @@ def so_gross_value(db: Session, so: SalesOrder) -> Decimal:
     from app.services.tax import compute_gst
     company = db.get(Company, so.company_id)
     customer = db.get(Customer, so.customer_id)
-    intra = (company.state_code == customer.state_code) if (company and customer
-             and company.state_code and customer.state_code) else True
+    from app.services.tax import resolve_intra_state
+    intra = resolve_intra_state(company.state_code if company else None,
+                                customer.state_code if customer else None,
+                                context="Sales order invoice")
     gross = quantize(Decimal("0"), MONEY_SCALE)
     for ln in so.lines:
         amount = quantize(Decimal(str(ln.qty_kg)) * Decimal(str(ln.rate)), MONEY_SCALE)

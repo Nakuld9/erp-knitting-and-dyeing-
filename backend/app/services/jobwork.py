@@ -96,8 +96,10 @@ def bill(db: Session, jw: JobWork, *, created_by: uuid.UUID | None = None):
 
     company = db.get(Company, jw.company_id)
     party = _party(db, jw)
-    intra = (company.state_code == getattr(party, "state_code", None)) if (
-        company and company.state_code and getattr(party, "state_code", None)) else True
+    from app.services.tax import resolve_intra_state
+    intra = resolve_intra_state(company.state_code if company else None,
+                                getattr(party, "state_code", None),
+                                context=f"Job work {jw.number}")
     taxable = _charge(jw)
     if taxable <= 0:
         raise JobWorkError("Processing charge must be positive (set a rate)")

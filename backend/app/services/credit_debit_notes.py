@@ -34,9 +34,8 @@ MZERO = quantize(0, MONEY_SCALE)
 
 
 def _intra(company: Company, state_code: str | None) -> bool:
-    if company.state_code and state_code:
-        return company.state_code == state_code
-    return True
+    from app.services.tax import resolve_intra_state
+    return resolve_intra_state(company.state_code, state_code, context="Credit/debit note")
 
 
 # ------------------------------ sales credit note ---------------------------

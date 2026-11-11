@@ -21,9 +21,9 @@ from app.services.tax import compute_gst
 
 
 def _intra_state(company: Company, supplier: Supplier) -> bool:
-    if company.state_code and supplier.state_code:
-        return company.state_code == supplier.state_code
-    return True  # default to intra-state when unknown
+    from app.services.tax import resolve_intra_state
+    return resolve_intra_state(company.state_code, supplier.state_code if supplier else None,
+                               context="Purchase")
 
 
 def post_chemical_grn(db: Session, grn: GoodsReceiptNote, *, created_by: uuid.UUID | None = None) -> object:

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -69,6 +70,21 @@ class Settings(BaseSettings):
     # Number of decimal places kept for monetary amounts and quantities.
     money_scale: int = 2
     quantity_scale: int = 4
+
+    @model_validator(mode="after")
+    def _validate_production_security(self):
+        """Fail closed in production: no debug, no weak/placeholder secret, no
+        default database credentials. Dev/test are unaffected."""
+        if (self.environment or "").strip().lower() == "production":
+            if self.debug:
+                raise ValueError("DEBUG must be false in production")
+            if len(self.secret_key.encode("utf-8")) < 32 or self.secret_key.startswith("CHANGE-ME"):
+                raise ValueError(
+                    "SECRET_KEY must be a strong, unique value of at least 32 bytes in production")
+            url = (self.database_url or "").lower()
+            if "erp:erp@" in url or "user:pass@" in url or "password@" in url:
+                raise ValueError("Default or placeholder database credentials are not allowed in production")
+        return self
 
 
 @lru_cache
