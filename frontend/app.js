@@ -809,7 +809,10 @@ function SalesTable({
     className: "num"
   }, inr2(r.amount))))));
 }
-function FactoryDash() {
+function FactoryDash({
+  onNav
+}) {
+  const nav = onNav || (() => {});
   const [d, err] = useData("/api/dashboard/factory");
   const trend = useList("/api/dashboard/production-trend");
   const util = useList("/api/hardware/knitting-summary");
@@ -818,27 +821,31 @@ function FactoryDash() {
   if (!d) return /*#__PURE__*/React.createElement(Panel, null, "Loading\u2026");
   const dayShort = s => s ? s.slice(5) : "";
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-    className: "stats"
+    className: "kpi-grid"
   }, /*#__PURE__*/React.createElement(Stat, {
     tone: "",
     icon: "\uD83E\uDDF6",
     label: "Knitting output (kg)",
-    value: inr2(d.knitting_output_kg)
+    value: inr2(d.knitting_output_kg),
+    onClick: () => nav("knitting")
   }), /*#__PURE__*/React.createElement(Stat, {
     tone: "violet",
     icon: "\uD83C\uDFA8",
     label: "Dyeing output (kg)",
-    value: inr2(d.dyeing_output_kg)
+    value: inr2(d.dyeing_output_kg),
+    onClick: () => nav("dyeing")
   }), /*#__PURE__*/React.createElement(Stat, {
     tone: "amber",
     icon: "\u2699\uFE0F",
     label: "Active batches",
-    value: d.active_batches
+    value: d.active_batches,
+    onClick: () => nav("batching")
   }), /*#__PURE__*/React.createElement(Stat, {
     tone: "teal",
     icon: "\uD83E\uDDEA",
     label: "Chemical consumption",
-    value: inr(d.chemical_consumption_cost)
+    value: inr(d.chemical_consumption_cost),
+    onClick: () => nav("chemical")
   })), /*#__PURE__*/React.createElement(Panel, {
     title: "Production vs dyeing output (last 14 days)"
   }, R ? /*#__PURE__*/React.createElement("div", {
@@ -916,42 +923,51 @@ function FactoryDash() {
     className: "num"
   }, b.rolls), /*#__PURE__*/React.createElement("td", null, stBadge(b.status)))))))));
 }
-function AccountsDash() {
+function AccountsDash({
+  onNav
+}) {
+  const nav = onNav || (() => {});
   const [d, err] = useData("/api/dashboard/accounts");
   const acts = useList("/api/vouchers");
   if (err) return /*#__PURE__*/React.createElement(Panel, null, err);
   if (!d) return /*#__PURE__*/React.createElement(Panel, null, "Loading\u2026");
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-    className: "stats"
+    className: "kpi-grid"
   }, /*#__PURE__*/React.createElement(Stat, {
     tone: "green",
     icon: "\uD83D\uDCE5",
     label: "Today's receipts",
-    value: inr(d.today_receipts)
+    value: inr(d.today_receipts),
+    onClick: () => nav("vouchers")
   }), /*#__PURE__*/React.createElement(Stat, {
     tone: "rose",
     icon: "\uD83D\uDCE4",
     label: "Today's payments",
-    value: inr(d.today_payments)
+    value: inr(d.today_payments),
+    onClick: () => nav("vouchers")
   }), /*#__PURE__*/React.createElement(Stat, {
     tone: "amber",
     icon: "\uD83D\uDC64",
     label: "Debtors outstanding",
-    value: inr(d.debtors_total)
+    value: inr(d.debtors_total),
+    onClick: () => nav("customers")
   }), /*#__PURE__*/React.createElement(Stat, {
     tone: "violet",
     icon: "\uD83C\uDFE2",
     label: "Creditors outstanding",
-    value: inr(d.creditors_total)
+    value: inr(d.creditors_total),
+    onClick: () => nav("suppliers")
   }), /*#__PURE__*/React.createElement(Stat, {
     tone: "teal",
     icon: "\uD83E\uDDFE",
     label: "GST net payable",
-    value: inr(d.gst_net_payable)
+    value: inr(d.gst_net_payable),
+    onClick: () => nav("acctops")
   }), /*#__PURE__*/React.createElement(Stat, {
     tone: "",
     icon: d.trial_balance_balanced ? "✅" : "⚠️",
     label: "Trial balance",
+    onClick: () => nav("reports"),
     value: /*#__PURE__*/React.createElement("span", {
       className: "badge " + (d.trial_balance_balanced ? "ok" : "bad")
     }, d.trial_balance_balanced ? "Balanced" : "Out of balance")
@@ -989,7 +1005,10 @@ function AccountsDash() {
     className: "badge info"
   }, a.status))))));
 }
-function ChemicalDash() {
+function ChemicalDash({
+  onNav
+}) {
+  const nav = onNav || (() => {});
   const [d, err] = useData("/api/dashboard/chemical");
   if (err) return /*#__PURE__*/React.createElement(Panel, null, err);
   if (!d) return /*#__PURE__*/React.createElement(Panel, null, "Loading\u2026");
@@ -998,27 +1017,31 @@ function ChemicalDash() {
     cost: Number(r.cost)
   }));
   return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
-    className: "stats"
+    className: "kpi-grid"
   }, /*#__PURE__*/React.createElement(Stat, {
     tone: "violet",
     icon: "\uD83C\uDFA8",
     label: "Dye cost",
-    value: inr(d.dye_cost)
+    value: inr(d.dye_cost),
+    onClick: () => nav("dyeing")
   }), /*#__PURE__*/React.createElement(Stat, {
     tone: "teal",
     icon: "\uD83E\uDDEA",
     label: "Chemical cost",
-    value: inr(d.chemical_cost)
+    value: inr(d.chemical_cost),
+    onClick: () => nav("stock")
   }), /*#__PURE__*/React.createElement(Stat, {
     tone: "",
     icon: "\u03A3",
     label: "Total consumption",
-    value: inr(d.total_consumption_cost)
+    value: inr(d.total_consumption_cost),
+    onClick: () => nav("costing")
   }), /*#__PURE__*/React.createElement(Stat, {
     tone: d.dispensing_errors ? "rose" : "green",
     icon: d.dispensing_errors ? "⚠️" : "✅",
     label: "Dispensing errors",
-    value: d.dispensing_errors
+    value: d.dispensing_errors,
+    onClick: () => nav("devices")
   })), /*#__PURE__*/React.createElement(Panel, {
     title: "Top consumption by material"
   }, R ? /*#__PURE__*/React.createElement("div", {
@@ -8034,6 +8057,12 @@ function App() {
   }, page === "notifications" ? /*#__PURE__*/React.createElement(Notifications, {
     onChange: loadNotif
   }) : page === "owner" ? /*#__PURE__*/React.createElement(OwnerDash, {
+    onNav: go
+  }) : page === "factory" ? /*#__PURE__*/React.createElement(FactoryDash, {
+    onNav: go
+  }) : page === "accounts" ? /*#__PURE__*/React.createElement(AccountsDash, {
+    onNav: go
+  }) : page === "chemical" ? /*#__PURE__*/React.createElement(ChemicalDash, {
     onNav: go
   }) : /*#__PURE__*/React.createElement(Cur, null))));
 }

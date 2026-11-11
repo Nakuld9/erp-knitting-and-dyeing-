@@ -310,7 +310,8 @@ function OwnerDash({onNav}){
 function SalesTable({rows}){ return (<table><thead><tr><th>Month</th><th className="num">Sales</th></tr></thead>
   <tbody>{(rows||[]).map((r,i)=><tr key={i}><td>{r.month}</td><td className="num">{inr2(r.amount)}</td></tr>)}</tbody></table>); }
 
-function FactoryDash(){
+function FactoryDash({onNav}){
+  const nav=onNav||(()=>{});
   const [d,err]=useData("/api/dashboard/factory");
   const trend=useList("/api/dashboard/production-trend");
   const util=useList("/api/hardware/knitting-summary");
@@ -318,11 +319,11 @@ function FactoryDash(){
   if(err) return <Panel>{err}</Panel>; if(!d) return <Panel>Loading…</Panel>;
   const dayShort=s=>s?s.slice(5):"";
   return (<div>
-    <div className="stats">
-      <Stat tone="" icon="🧶" label="Knitting output (kg)" value={inr2(d.knitting_output_kg)} />
-      <Stat tone="violet" icon="🎨" label="Dyeing output (kg)" value={inr2(d.dyeing_output_kg)} />
-      <Stat tone="amber" icon="⚙️" label="Active batches" value={d.active_batches} />
-      <Stat tone="teal" icon="🧪" label="Chemical consumption" value={inr(d.chemical_consumption_cost)} />
+    <div className="kpi-grid">
+      <Stat tone="" icon="🧶" label="Knitting output (kg)" value={inr2(d.knitting_output_kg)} onClick={()=>nav("knitting")} />
+      <Stat tone="violet" icon="🎨" label="Dyeing output (kg)" value={inr2(d.dyeing_output_kg)} onClick={()=>nav("dyeing")} />
+      <Stat tone="amber" icon="⚙️" label="Active batches" value={d.active_batches} onClick={()=>nav("batching")} />
+      <Stat tone="teal" icon="🧪" label="Chemical consumption" value={inr(d.chemical_consumption_cost)} onClick={()=>nav("chemical")} />
     </div>
     <Panel title="Production vs dyeing output (last 14 days)">
       {R ? <div className="chartbox"><R.ResponsiveContainer>
@@ -352,18 +353,19 @@ function FactoryDash(){
   </div>);
 }
 
-function AccountsDash(){
+function AccountsDash({onNav}){
+  const nav=onNav||(()=>{});
   const [d,err]=useData("/api/dashboard/accounts");
   const acts=useList("/api/vouchers");
   if(err) return <Panel>{err}</Panel>; if(!d) return <Panel>Loading…</Panel>;
   return (<div>
-    <div className="stats">
-      <Stat tone="green" icon="📥" label="Today's receipts" value={inr(d.today_receipts)} />
-      <Stat tone="rose" icon="📤" label="Today's payments" value={inr(d.today_payments)} />
-      <Stat tone="amber" icon="👤" label="Debtors outstanding" value={inr(d.debtors_total)} />
-      <Stat tone="violet" icon="🏢" label="Creditors outstanding" value={inr(d.creditors_total)} />
-      <Stat tone="teal" icon="🧾" label="GST net payable" value={inr(d.gst_net_payable)} />
-      <Stat tone="" icon={d.trial_balance_balanced?"✅":"⚠️"} label="Trial balance"
+    <div className="kpi-grid">
+      <Stat tone="green" icon="📥" label="Today's receipts" value={inr(d.today_receipts)} onClick={()=>nav("vouchers")} />
+      <Stat tone="rose" icon="📤" label="Today's payments" value={inr(d.today_payments)} onClick={()=>nav("vouchers")} />
+      <Stat tone="amber" icon="👤" label="Debtors outstanding" value={inr(d.debtors_total)} onClick={()=>nav("customers")} />
+      <Stat tone="violet" icon="🏢" label="Creditors outstanding" value={inr(d.creditors_total)} onClick={()=>nav("suppliers")} />
+      <Stat tone="teal" icon="🧾" label="GST net payable" value={inr(d.gst_net_payable)} onClick={()=>nav("acctops")} />
+      <Stat tone="" icon={d.trial_balance_balanced?"✅":"⚠️"} label="Trial balance" onClick={()=>nav("reports")}
         value={<span className={"badge "+(d.trial_balance_balanced?"ok":"bad")}>{d.trial_balance_balanced?"Balanced":"Out of balance"}</span>} />
     </div>
     <div className="grid-half">
@@ -385,16 +387,17 @@ function AccountsDash(){
   </div>);
 }
 
-function ChemicalDash(){
+function ChemicalDash({onNav}){
+  const nav=onNav||(()=>{});
   const [d,err]=useData("/api/dashboard/chemical");
   if(err) return <Panel>{err}</Panel>; if(!d) return <Panel>Loading…</Panel>;
   const bars=(d.top_consumption||[]).map(r=>({material:r.material, cost:Number(r.cost)}));
   return (<div>
-    <div className="stats">
-      <Stat tone="violet" icon="🎨" label="Dye cost" value={inr(d.dye_cost)} />
-      <Stat tone="teal" icon="🧪" label="Chemical cost" value={inr(d.chemical_cost)} />
-      <Stat tone="" icon="Σ" label="Total consumption" value={inr(d.total_consumption_cost)} />
-      <Stat tone={d.dispensing_errors?"rose":"green"} icon={d.dispensing_errors?"⚠️":"✅"} label="Dispensing errors" value={d.dispensing_errors} />
+    <div className="kpi-grid">
+      <Stat tone="violet" icon="🎨" label="Dye cost" value={inr(d.dye_cost)} onClick={()=>nav("dyeing")} />
+      <Stat tone="teal" icon="🧪" label="Chemical cost" value={inr(d.chemical_cost)} onClick={()=>nav("stock")} />
+      <Stat tone="" icon="Σ" label="Total consumption" value={inr(d.total_consumption_cost)} onClick={()=>nav("costing")} />
+      <Stat tone={d.dispensing_errors?"rose":"green"} icon={d.dispensing_errors?"⚠️":"✅"} label="Dispensing errors" value={d.dispensing_errors} onClick={()=>nav("devices")} />
     </div>
     <Panel title="Top consumption by material">
       {R ? <div className="chartbox"><R.ResponsiveContainer>
@@ -2471,7 +2474,13 @@ function App(){
           <span className="fychip">{fyLabel()}</span>
           <div className="who">{me? (me.full_name||me.username) : ""} · {new Date().toLocaleDateString("en-IN")}</div>
         </div></div>
-      <div className="content">{page==="notifications"? <Notifications onChange={loadNotif}/> : page==="owner"? <OwnerDash onNav={go}/> : <Cur/>}</div>
+      <div className="content">{
+        page==="notifications"? <Notifications onChange={loadNotif}/>
+        : page==="owner"? <OwnerDash onNav={go}/>
+        : page==="factory"? <FactoryDash onNav={go}/>
+        : page==="accounts"? <AccountsDash onNav={go}/>
+        : page==="chemical"? <ChemicalDash onNav={go}/>
+        : <Cur/>}</div>
     </div>
   </div>);
 }
