@@ -5,16 +5,31 @@ brief). Updated **2026-11-11**. Test suite: **263 passing** (+1 Postgres-gated)
 (`cd backend && pytest`).
 
 > **Multi-company / multi-factory programme (branch `feat/multi-company-production-ready`).**
-> Phase 0 (baseline audit) and Phase 1 (architecture design + additive
-> foundation) are done. See `docs/PRODUCTION_READINESS_BASELINE.md` and
-> `docs/MULTI_COMPANY_ARCHITECTURE.md`. The foundation adds — non-destructively —
-> an `Organization` group entity, a normalised `GSTRegistration`,
-> `UserCompanyMembership` / `UserFactoryMembership` tables, a nullable
-> `companies.organization_id`, a **backward-compatible** request-scoped tenant
-> resolver (`app/core/context.py`, falls back to `User.company_id`), and the
-> first **incremental** Alembic migration (`0002`, additive-only, upgrade+downgrade
-> proven). Enforcement across routes and any legacy-data backfill are **gated on
-> business decisions** (see the architecture doc §6) and not yet applied.
+> Migrations `0001`→`0008`, all additive and upgrade/downgrade-proven. Delivered:
+> - Phase 0 baseline audit + Phase 1 architecture/foundation (orgs, memberships,
+>   GSTRegistration, request-scoped resolver) — `PRODUCTION_READINESS_BASELINE.md`,
+>   `MULTI_COMPANY_ARCHITECTURE.md`.
+> - Phase 2 incremental migrations + Legacy/Unassigned factory backfill tooling
+>   (`LEGACY_FACTORY_BACKFILL.md`, `DATABASE_MIGRATION_RUNBOOK.md`).
+> - Phase 3 tenancy + **real acting-company route wiring** (forged-id → 403) —
+>   `ROUTE_WIRING_REPORT.md`.
+> - Phase 4 inter-company accounting: configurable approved mappings + dual-leg
+>   atomic posting + elimination suggestions — `INTERCOMPANY_ACCOUNTING.md`.
+> - Phase 5 GST one-active-GSTIN-per-company + validation.
+> - Phase 6 factory-scoped stock position.
+> - Phase 8 same-company factory transfers (goods-in-transit) — `FACTORY_TRANSFERS.md`.
+> - Phase 9 factory-wise throughput/efficiency.
+> - Phase 11 group consolidation (trial balance + **P&L**) + report-only
+>   eliminations — `CONSOLIDATION.md`.
+> - Phase 12 integrations classification — `INTEGRATIONS.md`.
+> - Phase 13 production runbook — `PRODUCTION_DEPLOYMENT_RUNBOOK.md`.
+> - **Database-per-company** foundation (registry + router + provisioning) —
+>   `DATABASE_PER_COMPANY.md`.
+>
+> **Gated on you (Phases 15–16):** running the legacy backfill on real data +
+> reconciliation then `NOT NULL`; database-per-company live cutover on real
+> PostgreSQL; GST professional review; independent security review; load test;
+> UAT with two real companies; management sign-off. Status: **DEVELOPMENT READY.**
 
 Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ not built.
 
