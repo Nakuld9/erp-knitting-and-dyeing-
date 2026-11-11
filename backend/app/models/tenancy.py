@@ -17,10 +17,12 @@ Access control:
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 
-from sqlalchemy import Boolean, ForeignKey, String, Uuid, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Uuid, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
+from app.core.types import Money
 from app.models.base import AuditMixin, Base
 
 
@@ -100,3 +102,28 @@ class UserFactoryMembership(AuditMixin, Base):
         ForeignKey("branches.id", ondelete="CASCADE"), index=True)
     role_code: Mapped[str | None] = mapped_column(String(40), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class ConsolidationElimination(AuditMixin, Base):
+    """A report-only consolidation adjustment for a group (Organization).
+
+    Eliminations exist ONLY in the consolidated report — they are NEVER posted to
+    any company's ledger, so each company's statutory books stay independent.
+    They apply to the consolidated figures for a given account code and must be
+    approved by finance before they count toward an approved consolidation.
+    """
+
+    __tablename__ = "consolidation_eliminations"
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), index=True)
+    account_code: Mapped[str] = mapped_column(String(40), index=True)
+    description: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    # elimination amounts applied to the consolidated view for this account
+    debit: Mapped[object] = mapped_column(Money, default=0)
+    credit: Mapped[object] = mapped_column(Money, default=0)
+    # optional cross-reference to the matching inter-company entries
+    counterparty_ref: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    is_approved: Mapped[bool] = mapped_column(Boolean, default=False)
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -121,6 +121,17 @@ def test_roundtrip_is_repeatable(temp_db):
     assert _has_org_column(path)
 
 
+def test_consolidation_table_added_and_reversible(temp_db):
+    """0005 adds consolidation_eliminations; downgrade to 0004 removes it."""
+    url, path = temp_db
+    cfg = _alembic_cfg(url)
+    command.upgrade(cfg, "head")
+    assert _has_table(path, "consolidation_eliminations")
+    command.downgrade(cfg, "0004_branch_legacy_flag")
+    assert not _has_table(path, "consolidation_eliminations")
+    assert _has_table(path, "companies")
+
+
 def test_branch_legacy_flag_added_and_reversible(temp_db):
     """0004 adds branches.is_legacy_unassigned; downgrade to 0003 removes it."""
     url, path = temp_db

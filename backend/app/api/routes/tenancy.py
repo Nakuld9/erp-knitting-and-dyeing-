@@ -25,16 +25,31 @@ _GSTIN_RE = re.compile(r"^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$")
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from datetime import datetime, timezone
+from decimal import Decimal
+
 from app.core.context import TenantContext, get_tenant_context, _authorized_company_ids
 from app.core.database import get_db
 from app.core.deps import get_current_user, require_permission
 from app.models.core import Branch, Company, User
 from app.models.tenancy import (
+    ConsolidationElimination,
     GSTRegistration,
     Organization,
     UserCompanyMembership,
     UserFactoryMembership,
 )
+from app.services.accounting import consolidation as consol
+
+
+def _stringify(obj):
+    if isinstance(obj, Decimal):
+        return str(obj)
+    if isinstance(obj, dict):
+        return {k: _stringify(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_stringify(v) for v in obj]
+    return obj
 
 router = APIRouter(tags=["tenancy"])
 
@@ -290,3 +305,81 @@ def create_gst_registration(p: GstRegistrationIn, db: Session = Depends(get_db),
     db.add(g)
     db.commit()
     return {"id": str(g.id), "gstin": g.gstin}
+
+
+# --- consolidation (group-level, read-only reporting) -----------------------
+
+def _require_group_access(db, user, member_ids):
+    """Consolidation spans companies; the caller must be authorized for all
+    member companies (or be a superuser)."""
+    if user.is_superuser:
+        return
+    authorized = _authorized_company_ids(db, user)
+    if not set(member_ids).issubset(authorized):
+        raise HTTPException(status.HTTP_403_FORBIDDEN,
+                            "Not authorized for every company in this group")
+
+
+@router.get("/api/reports/consolidated")
+def consolidated_report(organization_id: uuid.UUID, date_from: str | None = None,
+                        date_to: str | None = None, db: Session = Depends(get_db),
+                        user: User = Depends(require_permission("report.financial"))):
+    from datetime import date as _date
+    org = db.get(Organization, organization_id)
+    if org is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
+    member_ids = consol.member_company_ids(db, organization_id)
+    _require_group_access(db, user, member_ids)
+    df = _date.fromisoformat(date_from) if date_from else None
+    dt = _date.fromisoformat(date_to) if date_to else None
+    return _stringify(consol.consolidated_trial_balance(db, organization_id, date_from=df, date_to=dt))
+
+
+class EliminationIn(BaseModel):
+    organization_id: uuid.UUID
+    account_code: str = Field(min_length=1, max_length=40)
+    description: str | None = None
+    debit: Decimal = Decimal("0")
+    credit: Decimal = Decimal("0")
+    counterparty_ref: str | None = None
+
+
+@router.get("/api/admin/consolidation-eliminations")
+def list_eliminations(organization_id: uuid.UUID, db: Session = Depends(get_db),
+                      user: User = Depends(require_permission("report.financial"))):
+    rows = db.execute(select(ConsolidationElimination).where(
+        ConsolidationElimination.organization_id == organization_id)
+        .order_by(ConsolidationElimination.account_code)).scalars().all()
+    return [{"id": str(e.id), "account_code": e.account_code, "description": e.description,
+             "debit": str(e.debit or 0), "credit": str(e.credit or 0),
+             "counterparty_ref": e.counterparty_ref, "is_approved": e.is_approved,
+             "approved_at": e.approved_at.isoformat() if e.approved_at else None} for e in rows]
+
+
+@router.post("/api/admin/consolidation-eliminations", status_code=status.HTTP_201_CREATED)
+def create_elimination(p: EliminationIn, db: Session = Depends(get_db),
+                       user: User = Depends(require_permission("admin.manage"))):
+    if db.get(Organization, p.organization_id) is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Organization not found")
+    if p.debit < 0 or p.credit < 0:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Amounts must be non-negative")
+    e = ConsolidationElimination(
+        organization_id=p.organization_id, account_code=p.account_code.strip(),
+        description=p.description, debit=p.debit, credit=p.credit,
+        counterparty_ref=p.counterparty_ref, is_approved=False, created_by=user.id)
+    db.add(e)
+    db.commit()
+    return {"id": str(e.id), "is_approved": e.is_approved}
+
+
+@router.post("/api/admin/consolidation-eliminations/{elim_id}/approve")
+def approve_elimination(elim_id: uuid.UUID, db: Session = Depends(get_db),
+                        user: User = Depends(require_permission("consolidation.approve"))):
+    e = db.get(ConsolidationElimination, elim_id)
+    if e is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Elimination not found")
+    e.is_approved = True
+    e.approved_by = user.id
+    e.approved_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"id": str(e.id), "is_approved": True, "approved_at": e.approved_at.isoformat()}

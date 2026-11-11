@@ -139,6 +139,7 @@ from app.models.hardware import (  # noqa: F401
     WeighingScale,
 )
 from app.models.tenancy import (  # noqa: F401
+    ConsolidationElimination,
     GSTRegistration,
     Organization,
     UserCompanyMembership,
