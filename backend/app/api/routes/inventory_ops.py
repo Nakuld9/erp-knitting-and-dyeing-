@@ -27,10 +27,14 @@ router = APIRouter(prefix="/api/inventory", tags=["inventory-ops"])
 
 @router.get("/stock-on-hand")
 def stock_on_hand(warehouse_id: uuid.UUID | None = None, item_type: str | None = None,
+                  factory_id: uuid.UUID | None = None,
                   db: Session = Depends(get_db),
                   user: User = Depends(require_permission("report.read"))):
     """Live stock position (qty + value) by item and warehouse, from open FIFO
-    layers. Optionally filter to one warehouse and/or item type."""
+    layers. Optionally filter to one warehouse, item type and/or factory. When a
+    factory is in request scope (authorized X-Factory-Id) and no explicit
+    factory_id is given, the position is restricted to the acting factory."""
+    from app.core.context import acting_factory_id
     it = None
     if item_type:
         try:
@@ -38,7 +42,9 @@ def stock_on_hand(warehouse_id: uuid.UUID | None = None, item_type: str | None =
         except ValueError:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY,
                                 f"item_type must be one of {[t.value for t in ItemType]}")
-    rows = inventory.stock_on_hand(db, user.company_id, warehouse_id=warehouse_id, item_type=it)
+    fac = factory_id or acting_factory_id(user)
+    rows = inventory.stock_on_hand(db, user.company_id, warehouse_id=warehouse_id,
+                                   item_type=it, factory_id=fac)
     return [{**r, "qty": str(r["qty"]), "value": str(r["value"])} for r in rows]
 
 

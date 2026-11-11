@@ -228,12 +228,15 @@ def transfer_stock(db: Session, *, company_id: uuid.UUID, item_type: ItemType, i
 
 def stock_on_hand(db: Session, company_id: uuid.UUID, *,
                   warehouse_id: uuid.UUID | None = None,
-                  item_type: ItemType | None = None) -> list[dict]:
+                  item_type: ItemType | None = None,
+                  factory_id: uuid.UUID | None = None) -> list[dict]:
     """Live on-hand stock from open FIFO layers, grouped by item and warehouse.
 
     Yarn and chemicals group by their master; fabric groups by type + kind
     (greige/finished) so individual rolls collapse into a readable line. Returns
-    rows with quantity and value, ready for a stock-position screen.
+    rows with quantity and value, ready for a stock-position screen. Each row
+    carries the owning factory (``factory_id``, from the warehouse's branch), and
+    passing ``factory_id`` restricts the position to that factory's warehouses.
     """
     from app.models.manufacturing import FabricRoll
     from app.models.masters import Chemical, FabricType, Warehouse, YarnMaster
@@ -243,6 +246,10 @@ def stock_on_hand(db: Session, company_id: uuid.UUID, *,
         StockLayer.company_id == company_id, StockLayer.qty_remaining > QZERO)
     if warehouse_id is not None:
         stmt = stmt.where(StockLayer.warehouse_id == warehouse_id)
+    if factory_id is not None:
+        branch_wh = db.execute(select(Warehouse.id).where(
+            Warehouse.company_id == company_id, Warehouse.branch_id == factory_id)).scalars().all()
+        stmt = stmt.where(StockLayer.warehouse_id.in_(branch_wh))
     if item_type is not None:
         stmt = stmt.where(StockLayer.item_type == item_type.value)
     layers = db.execute(stmt).scalars().all()
@@ -257,7 +264,7 @@ def stock_on_hand(db: Session, company_id: uuid.UUID, *,
         select(FabricType).where(FabricType.company_id == company_id)).scalars()}
     store = {s.id: (s.code, s.name) for s in db.execute(
         select(StoreItem).where(StoreItem.company_id == company_id)).scalars()}
-    whs = {w.id: (w.code, w.name) for w in db.execute(
+    whs = {w.id: (w.code, w.name, w.branch_id) for w in db.execute(
         select(Warehouse).where(Warehouse.company_id == company_id)).scalars()}
 
     agg: dict = {}
@@ -278,12 +285,13 @@ def stock_on_hand(db: Session, company_id: uuid.UUID, *,
             code = kind
             name = f"{kind.title()} — {ftypes.get(ft, 'Fabric')}"
             gid = ("FABRIC", f"{ft}:{kind}")
-        wcode, wname = whs.get(ly.warehouse_id, ("", "— unassigned —"))
+        wcode, wname, wbranch = whs.get(ly.warehouse_id, ("", "— unassigned —", None))
         key = (gid, str(ly.warehouse_id))
         row = agg.setdefault(key, {
             "item_type": it, "item_code": code, "item_name": name,
             "warehouse_id": str(ly.warehouse_id) if ly.warehouse_id else None,
             "warehouse_code": wcode, "warehouse": wname,
+            "factory_id": str(wbranch) if wbranch else None,
             "qty": QZERO, "value": MZERO})
         row["qty"] = quantize(row["qty"] + (ly.qty_remaining or QZERO), QTY_SCALE)
         row["value"] = quantize(row["value"] + (ly.value_remaining or MZERO), MONEY_SCALE)
