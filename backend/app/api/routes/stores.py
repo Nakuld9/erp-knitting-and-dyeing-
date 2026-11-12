@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.deps import get_company_db
 from app.core.deps import require_permission
 from app.models.core import User
 from app.models.stores import StoreItem
@@ -29,7 +30,7 @@ class ItemIn(BaseModel):
 
 
 @router.post("/items", status_code=status.HTTP_201_CREATED)
-def create_item(payload: ItemIn, db: Session = Depends(get_db),
+def create_item(payload: ItemIn, db: Session = Depends(get_company_db),
                 user: User = Depends(require_permission("master.write"))):
     try:
         item = svc.create_item(db, company_id=user.company_id, created_by=user.id,
@@ -42,7 +43,7 @@ def create_item(payload: ItemIn, db: Session = Depends(get_db),
 
 
 @router.get("/items")
-def list_items(db: Session = Depends(get_db),
+def list_items(db: Session = Depends(get_company_db),
                user: User = Depends(require_permission("master.read"))):
     rows = db.execute(select(StoreItem).where(StoreItem.company_id == user.company_id)
                       .order_by(StoreItem.code)).scalars().all()
@@ -62,7 +63,7 @@ class ReceiptIn(BaseModel):
 
 
 @router.post("/receipts", status_code=status.HTTP_201_CREATED)
-def receive(payload: ReceiptIn, db: Session = Depends(get_db),
+def receive(payload: ReceiptIn, db: Session = Depends(get_company_db),
             user: User = Depends(require_permission("purchase.manage"))):
     try:
         res = svc.receive(db, company_id=user.company_id, created_by=user.id,
@@ -83,7 +84,7 @@ class IssueIn(BaseModel):
 
 
 @router.post("/issues", status_code=status.HTTP_201_CREATED)
-def issue(payload: IssueIn, db: Session = Depends(get_db),
+def issue(payload: IssueIn, db: Session = Depends(get_company_db),
           user: User = Depends(require_permission("voucher.create"))):
     try:
         res = svc.issue(db, company_id=user.company_id, created_by=user.id, **payload.model_dump())

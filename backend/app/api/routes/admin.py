@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.deps import require_permission
+from app.core.deps import get_company_db, require_permission
 from app.core.security import hash_password
 from app.models.accounting import AccountingPeriod, PeriodStatus
 from app.models.core import Role, User
@@ -20,7 +20,7 @@ router = APIRouter(prefix="/api/admin", tags=["admin"])
 # --- accounting periods -----------------------------------------------------
 
 @router.get("/periods")
-def list_periods(db: Session = Depends(get_db), user: User = Depends(require_permission("report.read"))):
+def list_periods(db: Session = Depends(get_company_db), user: User = Depends(require_permission("report.read"))):
     rows = db.execute(select(AccountingPeriod).where(
         AccountingPeriod.company_id == user.company_id).order_by(AccountingPeriod.start_date)).scalars().all()
     return [{"id": str(p.id), "code": p.code, "name": p.name, "fiscal_year": p.fiscal_year,
@@ -38,13 +38,13 @@ def _set_period(db, user, period_id, new_status):
 
 
 @router.post("/periods/{period_id}/close")
-def close_period(period_id: uuid.UUID, db: Session = Depends(get_db),
+def close_period(period_id: uuid.UUID, db: Session = Depends(get_company_db),
                  user: User = Depends(require_permission("period.close"))):
     return _set_period(db, user, period_id, PeriodStatus.CLOSED)
 
 
 @router.post("/periods/{period_id}/reopen")
-def reopen_period(period_id: uuid.UUID, db: Session = Depends(get_db),
+def reopen_period(period_id: uuid.UUID, db: Session = Depends(get_company_db),
                   user: User = Depends(require_permission("period.close"))):
     return _set_period(db, user, period_id, PeriodStatus.OPEN)
 

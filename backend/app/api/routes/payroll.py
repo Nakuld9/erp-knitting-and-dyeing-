@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.deps import get_company_db
 from app.core.deps import require_permission
 from app.models.core import Employee, User
 from app.models.payroll import PayrollRun, Payslip, SalaryStructure
@@ -29,7 +30,7 @@ class EmployeeIn(BaseModel):
 
 
 @router.post("/employees", status_code=status.HTTP_201_CREATED)
-def create_employee(payload: EmployeeIn, db: Session = Depends(get_db),
+def create_employee(payload: EmployeeIn, db: Session = Depends(get_company_db),
                     user: User = Depends(require_permission("payroll.manage"))):
     emp = Employee(company_id=user.company_id, **payload.model_dump())
     db.add(emp)
@@ -38,7 +39,7 @@ def create_employee(payload: EmployeeIn, db: Session = Depends(get_db),
 
 
 @router.get("/employees")
-def list_employees(db: Session = Depends(get_db),
+def list_employees(db: Session = Depends(get_company_db),
                    user: User = Depends(require_permission("payroll.manage"))):
     rows = db.execute(select(Employee).where(Employee.company_id == user.company_id,
                                              Employee.is_active.is_(True))
@@ -68,7 +69,7 @@ class StructureIn(BaseModel):
 
 
 @router.post("/salary-structures", status_code=status.HTTP_201_CREATED)
-def upsert_structure(payload: StructureIn, db: Session = Depends(get_db),
+def upsert_structure(payload: StructureIn, db: Session = Depends(get_company_db),
                      user: User = Depends(require_permission("payroll.manage"))):
     data = payload.model_dump()
     emp_id = data.pop("employee_id")
@@ -82,7 +83,7 @@ def upsert_structure(payload: StructureIn, db: Session = Depends(get_db),
 
 
 @router.get("/salary-structures")
-def list_structures(db: Session = Depends(get_db),
+def list_structures(db: Session = Depends(get_company_db),
                     user: User = Depends(require_permission("payroll.manage"))):
     rows = db.execute(select(SalaryStructure).where(
         SalaryStructure.company_id == user.company_id, SalaryStructure.is_active.is_(True))).scalars().all()
@@ -104,7 +105,7 @@ class RunIn(BaseModel):
 
 
 @router.post("/runs", status_code=status.HTTP_201_CREATED)
-def run_payroll(payload: RunIn, db: Session = Depends(get_db),
+def run_payroll(payload: RunIn, db: Session = Depends(get_company_db),
                 user: User = Depends(require_permission("payroll.manage"))):
     try:
         res = svc.run_payroll(db, company_id=user.company_id, period_month=payload.period_month,
@@ -122,7 +123,7 @@ def run_payroll(payload: RunIn, db: Session = Depends(get_db),
 
 
 @router.get("/runs")
-def list_runs(db: Session = Depends(get_db),
+def list_runs(db: Session = Depends(get_company_db),
               user: User = Depends(require_permission("payroll.manage"))):
     rows = db.execute(select(PayrollRun).where(PayrollRun.company_id == user.company_id)
                       .order_by(PayrollRun.period_month.desc())).scalars().all()
@@ -132,7 +133,7 @@ def list_runs(db: Session = Depends(get_db),
 
 
 @router.get("/runs/{run_id}/payslips")
-def run_payslips(run_id: uuid.UUID, db: Session = Depends(get_db),
+def run_payslips(run_id: uuid.UUID, db: Session = Depends(get_company_db),
                  user: User = Depends(require_permission("payroll.manage"))):
     run = db.get(PayrollRun, run_id)
     if run is None or run.company_id != user.company_id:

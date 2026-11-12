@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.deps import get_company_db
 from app.core.deps import require_permission
 from app.models.approvals import ApprovalRequest, ApprovalRule, PaymentApproval
 from app.models.core import User
@@ -29,7 +30,7 @@ class RuleIn(BaseModel):
 
 
 @router.post("/rules", status_code=status.HTTP_201_CREATED)
-def create_rule(payload: RuleIn, db: Session = Depends(get_db),
+def create_rule(payload: RuleIn, db: Session = Depends(get_company_db),
                 user: User = Depends(require_permission("admin.manage"))):
     rule = ApprovalRule(company_id=user.company_id, **payload.model_dump())
     db.add(rule)
@@ -39,7 +40,7 @@ def create_rule(payload: RuleIn, db: Session = Depends(get_db),
 
 
 @router.get("/rules")
-def list_rules(db: Session = Depends(get_db),
+def list_rules(db: Session = Depends(get_company_db),
                user: User = Depends(require_permission("voucher.approve"))):
     rows = db.execute(select(ApprovalRule).where(ApprovalRule.company_id == user.company_id,
                                                  ApprovalRule.is_active.is_(True))).scalars().all()
@@ -58,7 +59,7 @@ class PaymentIn(BaseModel):
 
 
 @router.post("/payments", status_code=status.HTTP_201_CREATED)
-def request_payment(payload: PaymentIn, db: Session = Depends(get_db),
+def request_payment(payload: PaymentIn, db: Session = Depends(get_company_db),
                     user: User = Depends(require_permission("voucher.create"))):
     try:
         res = payments.request_payment(
@@ -76,7 +77,7 @@ def request_payment(payload: PaymentIn, db: Session = Depends(get_db),
 
 
 @router.get("/payments")
-def list_payments(db: Session = Depends(get_db),
+def list_payments(db: Session = Depends(get_company_db),
                   user: User = Depends(require_permission("voucher.create"))):
     rows = db.execute(select(PaymentApproval).where(PaymentApproval.company_id == user.company_id)
                       .order_by(PaymentApproval.created_at.desc())).scalars().all()
@@ -105,7 +106,7 @@ def _request_out(db: Session, r: ApprovalRequest) -> dict:
 
 
 @router.get("/requests")
-def list_requests(status_filter: str | None = None, db: Session = Depends(get_db),
+def list_requests(status_filter: str | None = None, db: Session = Depends(get_company_db),
                   user: User = Depends(require_permission("voucher.approve"))):
     stmt = select(ApprovalRequest).where(ApprovalRequest.company_id == user.company_id)
     if status_filter:
@@ -115,7 +116,7 @@ def list_requests(status_filter: str | None = None, db: Session = Depends(get_db
 
 
 @router.post("/requests/{request_id}/approve")
-def approve_request(request_id: uuid.UUID, payload: DecisionIn, db: Session = Depends(get_db),
+def approve_request(request_id: uuid.UUID, payload: DecisionIn, db: Session = Depends(get_company_db),
                     user: User = Depends(require_permission("voucher.approve"))):
     req = db.get(ApprovalRequest, request_id)
     if req is None or req.company_id != user.company_id:
@@ -134,7 +135,7 @@ def approve_request(request_id: uuid.UUID, payload: DecisionIn, db: Session = De
 
 
 @router.post("/requests/{request_id}/reject")
-def reject_request(request_id: uuid.UUID, payload: DecisionIn, db: Session = Depends(get_db),
+def reject_request(request_id: uuid.UUID, payload: DecisionIn, db: Session = Depends(get_company_db),
                    user: User = Depends(require_permission("voucher.approve"))):
     req = db.get(ApprovalRequest, request_id)
     if req is None or req.company_id != user.company_id:

@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.core.context import apply_factory_scope
 from app.core.database import get_db
+from app.core.deps import get_company_db
 from app.core.deps import require_permission
 from app.models.commercial import (
     CreditNote,
@@ -61,7 +62,7 @@ class GRNIn(BaseModel):
 
 
 @router.post("/procurement/grn", status_code=status.HTTP_201_CREATED)
-def post_grn(payload: GRNIn, db: Session = Depends(get_db),
+def post_grn(payload: GRNIn, db: Session = Depends(get_company_db),
             user: User = Depends(require_permission("purchase.manage"))):
     from app.core.tenancy import require_company_record
     from app.models.commercial import PurchaseOrder as _PO
@@ -111,7 +112,7 @@ class SalesInvoiceIn(BaseModel):
 
 
 @router.post("/sales/invoices", status_code=status.HTTP_201_CREATED)
-def post_sales_invoice(payload: SalesInvoiceIn, db: Session = Depends(get_db),
+def post_sales_invoice(payload: SalesInvoiceIn, db: Session = Depends(get_company_db),
                        user: User = Depends(require_permission("sales.manage"))):
     from app.core.tenancy import require_company_record
     from app.models.commercial import SalesOrder as _SO
@@ -155,7 +156,7 @@ class CreditNoteIn(BaseModel):
 
 
 @router.post("/sales/credit-notes", status_code=status.HTTP_201_CREATED)
-def post_credit_note(payload: CreditNoteIn, db: Session = Depends(get_db),
+def post_credit_note(payload: CreditNoteIn, db: Session = Depends(get_company_db),
                      user: User = Depends(require_permission("sales.manage"))):
     note = CreditNote(company_id=user.company_id, customer_id=payload.customer_id,
                       number=payload.number, note_date=payload.note_date, reason=payload.reason,
@@ -181,7 +182,7 @@ class SalesReturnIn(BaseModel):
 
 
 @router.post("/sales/returns", status_code=status.HTTP_201_CREATED)
-def post_sales_return(payload: SalesReturnIn, db: Session = Depends(get_db),
+def post_sales_return(payload: SalesReturnIn, db: Session = Depends(get_company_db),
                       user: User = Depends(require_permission("sales.manage"))):
     note = CreditNote(company_id=user.company_id, customer_id=payload.customer_id,
                       number=payload.number, note_date=payload.note_date, reason=payload.reason,
@@ -221,7 +222,7 @@ class DebitNoteIn(BaseModel):
 
 
 @router.post("/purchase/debit-notes", status_code=status.HTTP_201_CREATED)
-def post_debit_note(payload: DebitNoteIn, db: Session = Depends(get_db),
+def post_debit_note(payload: DebitNoteIn, db: Session = Depends(get_company_db),
                     user: User = Depends(require_permission("purchase.manage"))):
     note = DebitNote(company_id=user.company_id, supplier_id=payload.supplier_id,
                      number=payload.number, note_date=payload.note_date, reason=payload.reason,
@@ -265,7 +266,7 @@ class BathIn(BaseModel):
 
 
 @router.post("/dyeing/batches", status_code=status.HTTP_201_CREATED)
-def create_batch(payload: BatchIn, db: Session = Depends(get_db),
+def create_batch(payload: BatchIn, db: Session = Depends(get_company_db),
                  user: User = Depends(require_permission("dyeing.manage"))):
     batch = DyeBatch(company_id=user.company_id, status=BatchStatus.PLANNED, created_by=user.id,
                      batch_code=payload.batch_code, fabric_kg=payload.fabric_kg,
@@ -284,7 +285,7 @@ def create_batch(payload: BatchIn, db: Session = Depends(get_db),
 
 
 @router.post("/dyeing/batches/{batch_id}/assign-rolls")
-def assign_rolls(batch_id: uuid.UUID, payload: AssignRollsIn, db: Session = Depends(get_db),
+def assign_rolls(batch_id: uuid.UUID, payload: AssignRollsIn, db: Session = Depends(get_company_db),
                  user: User = Depends(require_permission("dyeing.manage"))):
     batch = db.get(DyeBatch, batch_id)
     if batch is None or batch.company_id != user.company_id:
@@ -299,7 +300,7 @@ def assign_rolls(batch_id: uuid.UUID, payload: AssignRollsIn, db: Session = Depe
 
 
 @router.get("/dyeing/batches")
-def list_batches(db: Session = Depends(get_db), user: User = Depends(require_permission("dyeing.manage"))):
+def list_batches(db: Session = Depends(get_company_db), user: User = Depends(require_permission("dyeing.manage"))):
     from sqlalchemy import select
     stmt = apply_factory_scope(select(DyeBatch).where(DyeBatch.company_id == user.company_id),
                                DyeBatch, user)
@@ -310,7 +311,7 @@ def list_batches(db: Session = Depends(get_db), user: User = Depends(require_per
 
 
 @router.get("/dyeing/batches/{batch_id}/rolls")
-def batch_rolls(batch_id: uuid.UUID, db: Session = Depends(get_db),
+def batch_rolls(batch_id: uuid.UUID, db: Session = Depends(get_company_db),
                 user: User = Depends(require_permission("dyeing.manage"))):
     batch = db.get(DyeBatch, batch_id)
     if batch is None or batch.company_id != user.company_id:
@@ -319,7 +320,7 @@ def batch_rolls(batch_id: uuid.UUID, db: Session = Depends(get_db),
 
 
 @router.post("/dyeing/baths", status_code=status.HTTP_201_CREATED)
-def create_bath(payload: BathIn, db: Session = Depends(get_db),
+def create_bath(payload: BathIn, db: Session = Depends(get_company_db),
                 user: User = Depends(require_permission("dyeing.manage"))):
     bath = DyeBath(company_id=user.company_id, status=BatchStatus.RUNNING,
                    actual_start=datetime.now(timezone.utc), created_by=user.id, **payload.model_dump())
@@ -329,7 +330,7 @@ def create_bath(payload: BathIn, db: Session = Depends(get_db),
 
 
 @router.get("/dyeing/baths/{bath_id}/dose-order")
-def preview_dose_order(bath_id: uuid.UUID, db: Session = Depends(get_db),
+def preview_dose_order(bath_id: uuid.UUID, db: Session = Depends(get_company_db),
                        user: User = Depends(require_permission("dyeing.manage"))):
     bath = db.get(DyeBath, bath_id)
     if bath is None or bath.company_id != user.company_id:
@@ -344,7 +345,7 @@ def preview_dose_order(bath_id: uuid.UUID, db: Session = Depends(get_db),
 
 
 @router.post("/dyeing/baths/{bath_id}/simulate-dispense")
-def simulate_dispense(bath_id: uuid.UUID, db: Session = Depends(get_db),
+def simulate_dispense(bath_id: uuid.UUID, db: Session = Depends(get_company_db),
                       user: User = Depends(require_permission("dispensing.operate"))):
     """DEV ONLY: run the Color Service simulator for a bath (send + ingest)."""
     bath = db.get(DyeBath, bath_id)
@@ -364,7 +365,7 @@ def simulate_dispense(bath_id: uuid.UUID, db: Session = Depends(get_db),
 
 
 @router.get("/dyeing/baths/{bath_id}/consumption-register")
-def consumption_register(bath_id: uuid.UUID, db: Session = Depends(get_db),
+def consumption_register(bath_id: uuid.UUID, db: Session = Depends(get_company_db),
                          user: User = Depends(require_permission("report.read"))):
     bath = db.get(DyeBath, bath_id)
     if bath is None or bath.company_id != user.company_id:

@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.deps import get_company_db
 from app.core.deps import require_permission
 from app.models.core import User
 from app.models.jobwork import JobWork
@@ -48,7 +49,7 @@ class JobWorkIn(BaseModel):
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
-def create(payload: JobWorkIn, db: Session = Depends(get_db),
+def create(payload: JobWorkIn, db: Session = Depends(get_company_db),
            user: User = Depends(require_permission("voucher.create"))):
     try:
         jw = svc.create(db, company_id=user.company_id, created_by=user.id, **payload.model_dump())
@@ -60,7 +61,7 @@ def create(payload: JobWorkIn, db: Session = Depends(get_db),
 
 
 @router.post("/{jw_id}/dispatch")
-def dispatch(jw_id: uuid.UUID, db: Session = Depends(get_db),
+def dispatch(jw_id: uuid.UUID, db: Session = Depends(get_company_db),
              user: User = Depends(require_permission("voucher.create"))):
     jw = db.get(JobWork, jw_id)
     if jw is None or jw.company_id != user.company_id:
@@ -75,7 +76,7 @@ def dispatch(jw_id: uuid.UUID, db: Session = Depends(get_db),
 
 
 @router.post("/{jw_id}/bill")
-def bill(jw_id: uuid.UUID, db: Session = Depends(get_db),
+def bill(jw_id: uuid.UUID, db: Session = Depends(get_company_db),
          user: User = Depends(require_permission("voucher.create"))):
     jw = db.get(JobWork, jw_id)
     if jw is None or jw.company_id != user.company_id:
@@ -90,7 +91,7 @@ def bill(jw_id: uuid.UUID, db: Session = Depends(get_db),
 
 
 @router.get("")
-def list_jobwork(direction: str | None = None, db: Session = Depends(get_db),
+def list_jobwork(direction: str | None = None, db: Session = Depends(get_company_db),
                  user: User = Depends(require_permission("report.read"))):
     stmt = select(JobWork).where(JobWork.company_id == user.company_id)
     if direction:
@@ -100,7 +101,7 @@ def list_jobwork(direction: str | None = None, db: Session = Depends(get_db),
 
 
 @router.get("/{jw_id}")
-def get_one(jw_id: uuid.UUID, db: Session = Depends(get_db),
+def get_one(jw_id: uuid.UUID, db: Session = Depends(get_company_db),
             user: User = Depends(require_permission("report.read"))):
     jw = db.get(JobWork, jw_id)
     if jw is None or jw.company_id != user.company_id:

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.context import apply_factory_scope
 from app.core.database import get_db
+from app.core.deps import get_company_db
 from app.core.deps import require_permission
 from app.models.core import User
 from app.models.manufacturing import FabricRoll
@@ -19,7 +20,7 @@ router = APIRouter(prefix="/api/rolls", tags=["rolls"])
 
 @router.get("")
 def list_rolls(kind: str | None = None, unbatched: bool = False, undelivered: bool = False,
-               db: Session = Depends(get_db), user: User = Depends(require_permission("report.read"))):
+               db: Session = Depends(get_company_db), user: User = Depends(require_permission("report.read"))):
     stmt = select(FabricRoll).where(FabricRoll.company_id == user.company_id)
     stmt = apply_factory_scope(stmt, FabricRoll, user)
     if kind:
@@ -51,7 +52,7 @@ def list_rolls(kind: str | None = None, unbatched: bool = False, undelivered: bo
 
 
 @router.get("/{roll_id}/label")
-def roll_label(roll_id: uuid.UUID, db: Session = Depends(get_db),
+def roll_label(roll_id: uuid.UUID, db: Session = Depends(get_company_db),
                user: User = Depends(require_permission("report.read"))) -> Response:
     try:
         pdf = roll_label_pdf(db, user.company_id, roll_id)

@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.deps import get_company_db
 from app.core.deps import require_permission
 from app.models.core import User
 from app.models.overhead import AllocationBasis, OverheadAllocationRun, OverheadPool
@@ -34,7 +35,7 @@ class ITCReversalIn(BaseModel):
 
 
 @router.post("/gst-adjustments/itc-reversal", status_code=status.HTTP_201_CREATED)
-def itc_reversal(payload: ITCReversalIn, db: Session = Depends(get_db),
+def itc_reversal(payload: ITCReversalIn, db: Session = Depends(get_company_db),
                  user: User = Depends(require_permission("voucher.post"))):
     try:
         v = gadj.post_itc_reversal(db, company_id=user.company_id, vdate=payload.vdate,
@@ -49,7 +50,7 @@ def itc_reversal(payload: ITCReversalIn, db: Session = Depends(get_db),
 
 
 @router.post("/gst-adjustments/itc-reclaim", status_code=status.HTTP_201_CREATED)
-def itc_reclaim(payload: ITCReversalIn, db: Session = Depends(get_db),
+def itc_reclaim(payload: ITCReversalIn, db: Session = Depends(get_company_db),
                 user: User = Depends(require_permission("voucher.post"))):
     try:
         v = gadj.post_itc_reclaim(db, company_id=user.company_id, vdate=payload.vdate,
@@ -72,7 +73,7 @@ class RoundOffIn(BaseModel):
 
 
 @router.post("/gst-adjustments/round-off", status_code=status.HTTP_201_CREATED)
-def round_off(payload: RoundOffIn, db: Session = Depends(get_db),
+def round_off(payload: RoundOffIn, db: Session = Depends(get_company_db),
               user: User = Depends(require_permission("voucher.post"))):
     try:
         v = gadj.post_round_off(db, company_id=user.company_id, vdate=payload.vdate,
@@ -96,7 +97,7 @@ class RCMIn(BaseModel):
 
 
 @router.post("/gst-adjustments/rcm", status_code=status.HTTP_201_CREATED)
-def rcm(payload: RCMIn, db: Session = Depends(get_db),
+def rcm(payload: RCMIn, db: Session = Depends(get_company_db),
         user: User = Depends(require_permission("voucher.post"))):
     try:
         v = gadj.post_rcm(db, company_id=user.company_id, vdate=payload.vdate,
@@ -119,7 +120,7 @@ class ManualIn(BaseModel):
 
 
 @router.post("/gst-adjustments/manual", status_code=status.HTTP_201_CREATED)
-def manual_adjustment(payload: ManualIn, db: Session = Depends(get_db),
+def manual_adjustment(payload: ManualIn, db: Session = Depends(get_company_db),
                       user: User = Depends(require_permission("voucher.post"))):
     try:
         v = gadj.post_manual(db, company_id=user.company_id, vdate=payload.vdate,
@@ -140,7 +141,7 @@ class YearEndIn(BaseModel):
 
 
 @router.post("/year-end/close", status_code=status.HTTP_201_CREATED)
-def close_year(payload: YearEndIn, db: Session = Depends(get_db),
+def close_year(payload: YearEndIn, db: Session = Depends(get_company_db),
                user: User = Depends(require_permission("period.close"))):
     try:
         res = year_end.close_year(db, company_id=user.company_id,
@@ -168,7 +169,7 @@ class PoolIn(BaseModel):
 
 
 @router.post("/overhead/pools", status_code=status.HTTP_201_CREATED)
-def create_pool(payload: PoolIn, db: Session = Depends(get_db),
+def create_pool(payload: PoolIn, db: Session = Depends(get_company_db),
                 user: User = Depends(require_permission("voucher.post"))):
     try:
         basis = AllocationBasis(payload.basis)
@@ -183,7 +184,7 @@ def create_pool(payload: PoolIn, db: Session = Depends(get_db),
 
 
 @router.get("/overhead/pools")
-def list_pools(db: Session = Depends(get_db),
+def list_pools(db: Session = Depends(get_company_db),
                user: User = Depends(require_permission("report.read"))):
     rows = db.execute(select(OverheadPool).where(OverheadPool.company_id == user.company_id,
                                                  OverheadPool.is_active.is_(True))).scalars().all()
@@ -199,7 +200,7 @@ class AllocateIn(BaseModel):
 
 
 @router.post("/overhead/allocate", status_code=status.HTTP_201_CREATED)
-def allocate(payload: AllocateIn, db: Session = Depends(get_db),
+def allocate(payload: AllocateIn, db: Session = Depends(get_company_db),
              user: User = Depends(require_permission("voucher.post"))):
     pool = db.get(OverheadPool, payload.pool_id)
     if pool is None or pool.company_id != user.company_id:

@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.deps import get_company_db
 from app.core.deps import require_permission
 from app.models.core import User
 from app.models.inventory import ItemType
@@ -57,7 +58,7 @@ def _guard(fn):
 
 
 @router.get("/factory")
-def list_factory_transfers(status_filter: str | None = None, db: Session = Depends(get_db),
+def list_factory_transfers(status_filter: str | None = None, db: Session = Depends(get_company_db),
                            user: User = Depends(require_permission("report.read"))):
     stmt = select(FactoryStockTransfer).where(FactoryStockTransfer.company_id == user.company_id)
     if status_filter:
@@ -67,7 +68,7 @@ def list_factory_transfers(status_filter: str | None = None, db: Session = Depen
 
 
 @router.post("/factory", status_code=status.HTTP_201_CREATED)
-def create_factory_transfer(p: TransferRequestIn, db: Session = Depends(get_db),
+def create_factory_transfer(p: TransferRequestIn, db: Session = Depends(get_company_db),
                             user: User = Depends(require_permission("transfer.manage"))):
     t = _guard(lambda: ft.create_transfer_request(
         db, company_id=user.company_id, item_type=p.item_type, item_id=p.item_id,
@@ -77,19 +78,19 @@ def create_factory_transfer(p: TransferRequestIn, db: Session = Depends(get_db),
 
 
 @router.post("/factory/{transfer_id}/authorize")
-def authorize_factory_transfer(transfer_id: uuid.UUID, db: Session = Depends(get_db),
+def authorize_factory_transfer(transfer_id: uuid.UUID, db: Session = Depends(get_company_db),
                                user: User = Depends(require_permission("transfer.authorize"))):
     return _out(_guard(lambda: ft.authorize_transfer(db, transfer_id, user.company_id, user.id)))
 
 
 @router.post("/factory/{transfer_id}/dispatch")
-def dispatch_factory_transfer(transfer_id: uuid.UUID, db: Session = Depends(get_db),
+def dispatch_factory_transfer(transfer_id: uuid.UUID, db: Session = Depends(get_company_db),
                               user: User = Depends(require_permission("transfer.manage"))):
     return _out(_guard(lambda: ft.dispatch_transfer(db, transfer_id, user.company_id, user.id)))
 
 
 @router.post("/factory/{transfer_id}/receive")
-def receive_factory_transfer(transfer_id: uuid.UUID, p: ReceiveIn, db: Session = Depends(get_db),
+def receive_factory_transfer(transfer_id: uuid.UUID, p: ReceiveIn, db: Session = Depends(get_company_db),
                              user: User = Depends(require_permission("transfer.manage"))):
     return _out(_guard(lambda: ft.receive_transfer(
         db, transfer_id, user.company_id, user.id,
@@ -97,6 +98,6 @@ def receive_factory_transfer(transfer_id: uuid.UUID, p: ReceiveIn, db: Session =
 
 
 @router.post("/factory/{transfer_id}/cancel")
-def cancel_factory_transfer(transfer_id: uuid.UUID, db: Session = Depends(get_db),
+def cancel_factory_transfer(transfer_id: uuid.UUID, db: Session = Depends(get_company_db),
                             user: User = Depends(require_permission("transfer.manage"))):
     return _out(_guard(lambda: ft.cancel_transfer(db, transfer_id, user.company_id, user.id)))

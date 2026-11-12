@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.deps import get_company_db
 from app.core.deps import require_permission
 from app.models.core import User
 from app.services import exports
@@ -40,7 +41,7 @@ def _fy_start(d: date) -> date:
 def get_trial_balance(
     date_from: date | None = None,
     date_to: date | None = None,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_company_db),
     user: User = Depends(require_permission("report.financial")),
 ) -> dict:
     return tb.trial_balance(db, user.company_id, date_from=date_from, date_to=date_to)
@@ -51,7 +52,7 @@ def get_account_ledger(
     account_code: str,
     date_from: date | None = None,
     date_to: date | None = None,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_company_db),
     user: User = Depends(require_permission("report.read")),
 ) -> dict:
     try:
@@ -66,7 +67,7 @@ def get_account_ledger(
 def profit_and_loss(
     date_from: date | None = None,
     date_to: date | None = None,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_company_db),
     user: User = Depends(require_permission("report.financial")),
 ) -> dict:
     to = date_to or date.today()
@@ -77,7 +78,7 @@ def profit_and_loss(
 @router.get("/manufacturing-account")
 def manufacturing_account(
     date_from: date | None = None, date_to: date | None = None,
-    db: Session = Depends(get_db), user: User = Depends(require_permission("report.financial")),
+    db: Session = Depends(get_company_db), user: User = Depends(require_permission("report.financial")),
 ) -> dict:
     to = date_to or date.today(); frm = date_from or _fy_start(to)
     return _stringify(fs.manufacturing_account(db, user.company_id, frm, to))
@@ -86,7 +87,7 @@ def manufacturing_account(
 @router.get("/trading-account")
 def trading_account(
     date_from: date | None = None, date_to: date | None = None,
-    db: Session = Depends(get_db), user: User = Depends(require_permission("report.financial")),
+    db: Session = Depends(get_company_db), user: User = Depends(require_permission("report.financial")),
 ) -> dict:
     to = date_to or date.today(); frm = date_from or _fy_start(to)
     return _stringify(fs.trading_account(db, user.company_id, frm, to))
@@ -95,7 +96,7 @@ def trading_account(
 @router.get("/funds-flow")
 def funds_flow(
     date_from: date | None = None, date_to: date | None = None,
-    db: Session = Depends(get_db), user: User = Depends(require_permission("report.financial")),
+    db: Session = Depends(get_company_db), user: User = Depends(require_permission("report.financial")),
 ) -> dict:
     to = date_to or date.today(); frm = date_from or _fy_start(to)
     return _stringify(fs.funds_flow(db, user.company_id, frm, to))
@@ -106,7 +107,7 @@ def customer_statement(
     customer_id: uuid.UUID,
     date_from: date | None = None,
     date_to: date | None = None,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_company_db),
     user: User = Depends(require_permission("report.read")),
 ) -> dict:
     from app.services.accounting import statements
@@ -120,7 +121,7 @@ def supplier_statement(
     supplier_id: uuid.UUID,
     date_from: date | None = None,
     date_to: date | None = None,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_company_db),
     user: User = Depends(require_permission("report.read")),
 ) -> dict:
     from app.services.accounting import statements
@@ -133,7 +134,7 @@ def supplier_statement(
 def cost_centres(
     date_from: date | None = None,
     date_to: date | None = None,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_company_db),
     user: User = Depends(require_permission("report.read")),
 ) -> dict:
     from app.services.accounting.cost_centres import cost_centre_report
@@ -147,7 +148,7 @@ def cost_centres(
 @router.get("/balance-sheet")
 def balance_sheet(
     as_of: date | None = None,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_company_db),
     user: User = Depends(require_permission("report.financial")),
 ) -> dict:
     return _stringify(fs.balance_sheet(db, user.company_id, as_of or date.today()))
@@ -157,7 +158,7 @@ def balance_sheet(
 def cash_flow(
     date_from: date | None = None,
     date_to: date | None = None,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_company_db),
     user: User = Depends(require_permission("report.financial")),
 ) -> dict:
     to = date_to or date.today()
@@ -168,7 +169,7 @@ def cash_flow(
 @router.get("/debtors-ageing")
 def debtors_ageing(
     as_of: date | None = None,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_company_db),
     user: User = Depends(require_permission("report.read")),
 ) -> dict:
     return _stringify(fs.debtors_ageing(db, user.company_id, as_of or date.today()))
@@ -177,7 +178,7 @@ def debtors_ageing(
 @router.get("/creditors-ageing")
 def creditors_ageing(
     as_of: date | None = None,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_company_db),
     user: User = Depends(require_permission("report.read")),
 ) -> dict:
     return _stringify(fs.creditors_ageing(db, user.company_id, as_of or date.today()))
@@ -190,7 +191,7 @@ def _range(date_from: date | None, date_to: date | None) -> tuple[date, date]:
 
 @router.get("/gst/sales-register")
 def gst_sales_register(date_from: date | None = None, date_to: date | None = None,
-                       db: Session = Depends(get_db),
+                       db: Session = Depends(get_company_db),
                        user: User = Depends(require_permission("report.financial"))) -> dict:
     frm, to = _range(date_from, date_to)
     return _stringify(gst_svc.sales_register(db, user.company_id, frm, to))
@@ -198,7 +199,7 @@ def gst_sales_register(date_from: date | None = None, date_to: date | None = Non
 
 @router.get("/gst/purchase-register")
 def gst_purchase_register(date_from: date | None = None, date_to: date | None = None,
-                          db: Session = Depends(get_db),
+                          db: Session = Depends(get_company_db),
                           user: User = Depends(require_permission("report.financial"))) -> dict:
     frm, to = _range(date_from, date_to)
     return _stringify(gst_svc.purchase_register(db, user.company_id, frm, to))
@@ -206,7 +207,7 @@ def gst_purchase_register(date_from: date | None = None, date_to: date | None = 
 
 @router.get("/gst/gstr1")
 def gst_gstr1(date_from: date | None = None, date_to: date | None = None,
-              db: Session = Depends(get_db),
+              db: Session = Depends(get_company_db),
               user: User = Depends(require_permission("report.financial"))) -> dict:
     frm, to = _range(date_from, date_to)
     return _stringify(gst_svc.gstr1_summary(db, user.company_id, frm, to))
@@ -214,7 +215,7 @@ def gst_gstr1(date_from: date | None = None, date_to: date | None = None,
 
 @router.get("/gst/gstr3b")
 def gst_gstr3b(date_from: date | None = None, date_to: date | None = None,
-               db: Session = Depends(get_db),
+               db: Session = Depends(get_company_db),
                user: User = Depends(require_permission("report.financial"))) -> dict:
     frm, to = _range(date_from, date_to)
     return _stringify(gst_svc.gstr3b_summary(db, user.company_id, frm, to))
@@ -222,14 +223,14 @@ def gst_gstr3b(date_from: date | None = None, date_to: date | None = None,
 
 @router.get("/gst/reconciliation")
 def gst_reconciliation(date_from: date | None = None, date_to: date | None = None,
-                       db: Session = Depends(get_db),
+                       db: Session = Depends(get_company_db),
                        user: User = Depends(require_permission("report.financial"))) -> dict:
     frm, to = _range(date_from, date_to)
     return _stringify(gst_svc.book_vs_gst_reconciliation(db, user.company_id, frm, to))
 
 
 @router.get("/stock-reconciliation")
-def stock_reconciliation(as_of: date | None = None, db: Session = Depends(get_db),
+def stock_reconciliation(as_of: date | None = None, db: Session = Depends(get_company_db),
                          user: User = Depends(require_permission("report.financial"))) -> dict:
     return _stringify(stock_recon.stock_ledger_reconciliation(db, user.company_id, as_of=as_of))
 
@@ -248,7 +249,7 @@ def export_report(
     date_to: date | None = None,
     as_of: date | None = None,
     bath_id: uuid.UUID | None = None,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_company_db),
     user: User = Depends(require_permission("report.read")),
 ) -> Response:
     if format not in _MEDIA:

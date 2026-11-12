@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.deps import get_company_db
 from app.core.deps import require_permission
 from app.models.core import User
 from app.models.hardware import KnittingMachineLog, ScaleReading, WeighingScale
@@ -43,14 +44,14 @@ class ScaleIn(BaseModel):
 
 
 @router.get("/scales")
-def list_scales(db: Session = Depends(get_db), user: User = Depends(require_permission("master.read"))):
+def list_scales(db: Session = Depends(get_company_db), user: User = Depends(require_permission("master.read"))):
     rows = db.execute(select(WeighingScale).where(WeighingScale.company_id == user.company_id)
                       .order_by(WeighingScale.code)).scalars().all()
     return [{"id": str(s.id), "code": s.code, "name": s.name, "location": s.location} for s in rows]
 
 
 @router.post("/scales", status_code=status.HTTP_201_CREATED)
-def create_scale(payload: ScaleIn, db: Session = Depends(get_db),
+def create_scale(payload: ScaleIn, db: Session = Depends(get_company_db),
                  user: User = Depends(require_permission("master.write"))):
     s = WeighingScale(company_id=user.company_id, created_by=user.id, **payload.model_dump())
     db.add(s); db.commit()
@@ -71,7 +72,7 @@ class ScaleReadingIn(BaseModel):
 
 
 @router.post("/scale-readings")
-def ingest_scale(readings: list[ScaleReadingIn], db: Session = Depends(get_db),
+def ingest_scale(readings: list[ScaleReadingIn], db: Session = Depends(get_company_db),
                  user: User = Depends(require_permission("dispensing.operate"))):
     msgs = [hardware.ScaleReadingMsg(**r.model_dump()) for r in readings]
     result = hardware.ingest_scale_readings(db, user.company_id, msgs)
@@ -80,7 +81,7 @@ def ingest_scale(readings: list[ScaleReadingIn], db: Session = Depends(get_db),
 
 
 @router.get("/scale-readings")
-def list_scale_readings(db: Session = Depends(get_db), user: User = Depends(require_permission("report.read"))):
+def list_scale_readings(db: Session = Depends(get_company_db), user: User = Depends(require_permission("report.read"))):
     rows = db.execute(select(ScaleReading).where(ScaleReading.company_id == user.company_id)
                       .order_by(ScaleReading.captured_at.desc())).scalars().all()
     return [{"id": str(r.id), "external_reading_id": r.external_reading_id, "weight": str(r.weight),
@@ -97,7 +98,7 @@ class SimScaleIn(BaseModel):
 
 
 @router.post("/simulate/scale")
-def simulate_scale(payload: SimScaleIn, db: Session = Depends(get_db),
+def simulate_scale(payload: SimScaleIn, db: Session = Depends(get_company_db),
                    user: User = Depends(require_permission("dispensing.operate"))):
     sim = hardware.WeighingScaleSimulator(payload.scale_code)
     msg = sim.read(payload.weight, reference_type=payload.reference_type,
@@ -122,7 +123,7 @@ class KnittingLogIn(BaseModel):
 
 
 @router.post("/knitting-logs")
-def ingest_logs(logs: list[KnittingLogIn], db: Session = Depends(get_db),
+def ingest_logs(logs: list[KnittingLogIn], db: Session = Depends(get_company_db),
                 user: User = Depends(require_permission("knitting.manage"))):
     msgs = [hardware.KnittingLogMsg(**g.model_dump()) for g in logs]
     result = hardware.ingest_knitting_logs(db, user.company_id, msgs)
@@ -136,7 +137,7 @@ class SimKnitIn(BaseModel):
 
 
 @router.post("/simulate/knitting")
-def simulate_knitting(payload: SimKnitIn, db: Session = Depends(get_db),
+def simulate_knitting(payload: SimKnitIn, db: Session = Depends(get_company_db),
                       user: User = Depends(require_permission("knitting.manage"))):
     sim = hardware.KnittingMachineSimulator(payload.machine_code)
     result = hardware.ingest_knitting_logs(db, user.company_id, sim.generate(payload.samples))
@@ -145,5 +146,5 @@ def simulate_knitting(payload: SimKnitIn, db: Session = Depends(get_db),
 
 
 @router.get("/knitting-summary")
-def knitting_summary(db: Session = Depends(get_db), user: User = Depends(require_permission("report.read"))):
+def knitting_summary(db: Session = Depends(get_company_db), user: User = Depends(require_permission("report.read"))):
     return _s(hardware.knitting_machine_summary(db, user.company_id))

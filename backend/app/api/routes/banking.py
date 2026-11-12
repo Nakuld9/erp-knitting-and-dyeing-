@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.deps import get_company_db
 from app.core.deps import require_permission
 from app.models.core import User
 from app.services import banking
@@ -19,7 +20,7 @@ router = APIRouter(prefix="/api/banking", tags=["banking"])
 
 
 @router.get("/accounts")
-def list_bank_accounts(db: Session = Depends(get_db),
+def list_bank_accounts(db: Session = Depends(get_company_db),
                        user: User = Depends(require_permission("report.read"))):
     from sqlalchemy import select
     from app.models.masters import BankAccount
@@ -77,7 +78,7 @@ def _post(db, fn, **kw):
 
 
 @router.post("/receipts", status_code=status.HTTP_201_CREATED)
-def receipt(payload: ReceiptIn, db: Session = Depends(get_db),
+def receipt(payload: ReceiptIn, db: Session = Depends(get_company_db),
             user: User = Depends(require_permission("voucher.post"))):
     v = _post(db, banking.customer_receipt, company_id=user.company_id,
               bank_account_id=payload.bank_account_id, customer_id=payload.customer_id,
@@ -86,7 +87,7 @@ def receipt(payload: ReceiptIn, db: Session = Depends(get_db),
 
 
 @router.post("/payments", status_code=status.HTTP_201_CREATED)
-def payment(payload: PaymentIn, db: Session = Depends(get_db),
+def payment(payload: PaymentIn, db: Session = Depends(get_company_db),
             user: User = Depends(require_permission("voucher.post"))):
     v = _post(db, banking.supplier_payment, company_id=user.company_id,
               bank_account_id=payload.bank_account_id, supplier_id=payload.supplier_id,
@@ -95,7 +96,7 @@ def payment(payload: PaymentIn, db: Session = Depends(get_db),
 
 
 @router.post("/contra", status_code=status.HTTP_201_CREATED)
-def contra(payload: ContraIn, db: Session = Depends(get_db),
+def contra(payload: ContraIn, db: Session = Depends(get_company_db),
            user: User = Depends(require_permission("voucher.post"))):
     v = _post(db, banking.contra, company_id=user.company_id,
               from_bank_account_id=payload.from_bank_account_id,
@@ -105,7 +106,7 @@ def contra(payload: ContraIn, db: Session = Depends(get_db),
 
 
 @router.post("/{bank_account_id}/import-statement")
-def import_statement(bank_account_id: uuid.UUID, payload: ImportIn, db: Session = Depends(get_db),
+def import_statement(bank_account_id: uuid.UUID, payload: ImportIn, db: Session = Depends(get_company_db),
                      user: User = Depends(require_permission("bank.reconcile"))):
     try:
         result = banking.import_statement_csv(
@@ -120,7 +121,7 @@ def import_statement(bank_account_id: uuid.UUID, payload: ImportIn, db: Session 
 
 @router.post("/{bank_account_id}/reconcile")
 def reconcile(bank_account_id: uuid.UUID, as_of: date | None = None, save: bool = True,
-              db: Session = Depends(get_db),
+              db: Session = Depends(get_company_db),
               user: User = Depends(require_permission("bank.reconcile"))):
     try:
         result = banking.reconcile(db, company_id=user.company_id, bank_account_id=bank_account_id,

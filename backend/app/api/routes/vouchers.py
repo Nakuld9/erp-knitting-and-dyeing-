@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.deps import get_company_db
 from app.core.deps import require_permission
 from app.models.accounting import Voucher
 from app.models.core import User
@@ -19,7 +20,7 @@ router = APIRouter(prefix="/api/vouchers", tags=["accounting"])
 @router.post("", response_model=VoucherOut, status_code=status.HTTP_201_CREATED)
 def create_voucher(
     payload: VoucherCreate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_company_db),
     user: User = Depends(require_permission("voucher.post")),
 ) -> Voucher:
     req = pe.PostingRequest(
@@ -55,7 +56,7 @@ def create_voucher(
 @router.post("/submit-approval", status_code=status.HTTP_201_CREATED)
 def submit_voucher_approval(
     payload: VoucherCreate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_company_db),
     user: User = Depends(require_permission("voucher.create")),
 ):
     """Route a journal / voucher through maker-checker: at or above the
@@ -80,7 +81,7 @@ def submit_voucher_approval(
 @router.get("/{voucher_id}", response_model=VoucherOut)
 def get_voucher(
     voucher_id: uuid.UUID,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_company_db),
     user: User = Depends(require_permission("report.read")),
 ) -> Voucher:
     voucher = db.get(Voucher, voucher_id)
@@ -93,7 +94,7 @@ def get_voucher(
 def reverse_voucher(
     voucher_id: uuid.UUID,
     payload: ReverseRequest,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_company_db),
     user: User = Depends(require_permission("voucher.reverse")),
 ) -> Voucher:
     voucher = db.get(Voucher, voucher_id)
@@ -112,7 +113,7 @@ def reverse_voucher(
 
 
 @router.get("", response_model=None)
-def list_vouchers(db: Session = Depends(get_db), user: User = Depends(require_permission("report.read"))):
+def list_vouchers(db: Session = Depends(get_company_db), user: User = Depends(require_permission("report.read"))):
     from sqlalchemy import select
     rows = db.execute(select(Voucher).where(Voucher.company_id == user.company_id)
                       .order_by(Voucher.voucher_date.desc(), Voucher.number.desc())).scalars().all()

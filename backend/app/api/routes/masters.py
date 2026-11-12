@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.context import apply_factory_scope
 from app.core.database import get_db
+from app.core.deps import get_company_db
 from app.core.deps import require_permission
 from app.models.core import User
 from app.models.commercial import SalesOrder
@@ -34,7 +35,7 @@ router = APIRouter(prefix="/api/masters", tags=["masters"])
 
 @router.get("/customers", response_model=list[PartyOut])
 def list_customers(
-    db: Session = Depends(get_db), user: User = Depends(require_permission("master.read"))
+    db: Session = Depends(get_company_db), user: User = Depends(require_permission("master.read"))
 ):
     return (
         db.execute(select(Customer).where(Customer.company_id == user.company_id).order_by(Customer.code))
@@ -46,7 +47,7 @@ def list_customers(
 @router.post("/customers", response_model=PartyOut, status_code=status.HTTP_201_CREATED)
 def create_customer(
     payload: CustomerCreate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_company_db),
     user: User = Depends(require_permission("master.write")),
 ):
     exists = db.execute(
@@ -63,7 +64,7 @@ def create_customer(
 
 @router.get("/suppliers", response_model=list[PartyOut])
 def list_suppliers(
-    db: Session = Depends(get_db), user: User = Depends(require_permission("master.read"))
+    db: Session = Depends(get_company_db), user: User = Depends(require_permission("master.read"))
 ):
     return (
         db.execute(select(Supplier).where(Supplier.company_id == user.company_id).order_by(Supplier.code))
@@ -75,7 +76,7 @@ def list_suppliers(
 @router.post("/suppliers", response_model=PartyOut, status_code=status.HTTP_201_CREATED)
 def create_supplier(
     payload: SupplierCreate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_company_db),
     user: User = Depends(require_permission("master.write")),
 ):
     exists = db.execute(
@@ -92,7 +93,7 @@ def create_supplier(
 
 @router.get("/warehouses", response_model=list[WarehouseOut])
 def list_warehouses(
-    db: Session = Depends(get_db), user: User = Depends(require_permission("master.read"))
+    db: Session = Depends(get_company_db), user: User = Depends(require_permission("master.read"))
 ):
     return (
         db.execute(select(Warehouse).where(Warehouse.company_id == user.company_id).order_by(Warehouse.code))
@@ -104,7 +105,7 @@ def list_warehouses(
 @router.post("/warehouses", response_model=WarehouseOut, status_code=status.HTTP_201_CREATED)
 def create_warehouse(
     payload: WarehouseCreate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_company_db),
     user: User = Depends(require_permission("master.write")),
 ):
     exists = db.execute(
@@ -122,7 +123,7 @@ def create_warehouse(
 # --- read-only lookup lists (populate transaction-entry dropdowns) ----------
 
 @router.get("/chemicals")
-def list_chemicals(db: Session = Depends(get_db), user: User = Depends(require_permission("master.read"))):
+def list_chemicals(db: Session = Depends(get_company_db), user: User = Depends(require_permission("master.read"))):
     rows = db.execute(select(Chemical).where(
         Chemical.company_id == user.company_id, Chemical.is_active.is_(True)).order_by(Chemical.code)).scalars().all()
     return [{"id": str(c.id), "code": c.code, "name": c.name, "is_dye": c.is_dye,
@@ -130,14 +131,14 @@ def list_chemicals(db: Session = Depends(get_db), user: User = Depends(require_p
 
 
 @router.get("/tax-codes")
-def list_tax_codes(db: Session = Depends(get_db), user: User = Depends(require_permission("master.read"))):
+def list_tax_codes(db: Session = Depends(get_company_db), user: User = Depends(require_permission("master.read"))):
     rows = db.execute(select(TaxCode).where(
         TaxCode.company_id == user.company_id, TaxCode.is_active.is_(True)).order_by(TaxCode.code)).scalars().all()
     return [{"id": str(t.id), "code": t.code, "name": t.name} for t in rows]
 
 
 @router.get("/machines")
-def list_machines(machine_type: str | None = None, db: Session = Depends(get_db),
+def list_machines(machine_type: str | None = None, db: Session = Depends(get_company_db),
                   user: User = Depends(require_permission("master.read"))):
     stmt = select(Machine).where(Machine.company_id == user.company_id, Machine.is_active.is_(True))
     stmt = apply_factory_scope(stmt, Machine, user)
@@ -148,14 +149,14 @@ def list_machines(machine_type: str | None = None, db: Session = Depends(get_db)
 
 
 @router.get("/shades")
-def list_shades(db: Session = Depends(get_db), user: User = Depends(require_permission("master.read"))):
+def list_shades(db: Session = Depends(get_company_db), user: User = Depends(require_permission("master.read"))):
     rows = db.execute(select(ShadeCode).where(
         ShadeCode.company_id == user.company_id, ShadeCode.is_active.is_(True)).order_by(ShadeCode.code)).scalars().all()
     return [{"id": str(s.id), "code": s.code, "name": s.name} for s in rows]
 
 
 @router.get("/recipe-versions")
-def list_recipe_versions(db: Session = Depends(get_db), user: User = Depends(require_permission("master.read"))):
+def list_recipe_versions(db: Session = Depends(get_company_db), user: User = Depends(require_permission("master.read"))):
     rows = db.execute(
         select(RecipeVersion, Recipe).join(Recipe, RecipeVersion.recipe_id == Recipe.id).where(
             Recipe.company_id == user.company_id, RecipeVersion.status == "APPROVED")
@@ -166,7 +167,7 @@ def list_recipe_versions(db: Session = Depends(get_db), user: User = Depends(req
 
 
 @router.get("/yarns")
-def list_yarns(db: Session = Depends(get_db), user: User = Depends(require_permission("master.read"))):
+def list_yarns(db: Session = Depends(get_company_db), user: User = Depends(require_permission("master.read"))):
     rows = db.execute(select(YarnMaster).where(
         YarnMaster.company_id == user.company_id, YarnMaster.is_active.is_(True)).order_by(YarnMaster.code)).scalars().all()
     return [{"id": str(y.id), "code": y.code, "name": y.name,
@@ -174,14 +175,14 @@ def list_yarns(db: Session = Depends(get_db), user: User = Depends(require_permi
 
 
 @router.get("/fabric-types")
-def list_fabric_types(db: Session = Depends(get_db), user: User = Depends(require_permission("master.read"))):
+def list_fabric_types(db: Session = Depends(get_company_db), user: User = Depends(require_permission("master.read"))):
     rows = db.execute(select(FabricType).where(
         FabricType.company_id == user.company_id, FabricType.is_active.is_(True)).order_by(FabricType.code)).scalars().all()
     return [{"id": str(f.id), "code": f.code, "name": f.name, "label": f"{f.code} — {f.name}"} for f in rows]
 
 
 @router.get("/sales-orders")
-def list_sales_orders(db: Session = Depends(get_db), user: User = Depends(require_permission("master.read"))):
+def list_sales_orders(db: Session = Depends(get_company_db), user: User = Depends(require_permission("master.read"))):
     rows = db.execute(select(SalesOrder).where(
         SalesOrder.company_id == user.company_id).order_by(SalesOrder.order_date.desc())).scalars().all()
     out = []
@@ -213,7 +214,7 @@ class ChemicalIn(BaseModel):
 
 
 @router.post("/chemicals", status_code=status.HTTP_201_CREATED)
-def create_chemical(p: ChemicalIn, db: Session = Depends(get_db), user: User = Depends(require_permission("master.write"))):
+def create_chemical(p: ChemicalIn, db: Session = Depends(get_company_db), user: User = Depends(require_permission("master.write"))):
     _dup(db, Chemical, user.company_id, p.code)
     c = Chemical(company_id=user.company_id, created_by=user.id, **p.model_dump())
     db.add(c); db.commit()
@@ -230,7 +231,7 @@ class TaxCodeIn(BaseModel):
 
 
 @router.post("/tax-codes", status_code=status.HTTP_201_CREATED)
-def create_tax_code(p: TaxCodeIn, db: Session = Depends(get_db), user: User = Depends(require_permission("master.write"))):
+def create_tax_code(p: TaxCodeIn, db: Session = Depends(get_company_db), user: User = Depends(require_permission("master.write"))):
     _dup(db, TaxCode, user.company_id, p.code)
     t = TaxCode(company_id=user.company_id, created_by=user.id, **p.model_dump())
     db.add(t); db.commit()
@@ -245,7 +246,7 @@ class MachineIn(BaseModel):
 
 
 @router.post("/machines", status_code=status.HTTP_201_CREATED)
-def create_machine(p: MachineIn, db: Session = Depends(get_db), user: User = Depends(require_permission("master.write"))):
+def create_machine(p: MachineIn, db: Session = Depends(get_company_db), user: User = Depends(require_permission("master.write"))):
     _dup(db, Machine, user.company_id, p.code)
     try:
         mt = MachineType(p.machine_type).value
@@ -264,7 +265,7 @@ class ShadeIn(BaseModel):
 
 
 @router.post("/shades", status_code=status.HTTP_201_CREATED)
-def create_shade(p: ShadeIn, db: Session = Depends(get_db), user: User = Depends(require_permission("master.write"))):
+def create_shade(p: ShadeIn, db: Session = Depends(get_company_db), user: User = Depends(require_permission("master.write"))):
     _dup(db, ShadeCode, user.company_id, p.code)
     s = ShadeCode(company_id=user.company_id, created_by=user.id, **p.model_dump())
     db.add(s); db.commit()
@@ -281,7 +282,7 @@ class FabricIn(BaseModel):
 
 
 @router.post("/fabric-types", status_code=status.HTTP_201_CREATED)
-def create_fabric_type(p: FabricIn, db: Session = Depends(get_db), user: User = Depends(require_permission("master.write"))):
+def create_fabric_type(p: FabricIn, db: Session = Depends(get_company_db), user: User = Depends(require_permission("master.write"))):
     _dup(db, FabricType, user.company_id, p.code)
     f = FabricType(company_id=user.company_id, created_by=user.id, **p.model_dump())
     db.add(f); db.commit()
@@ -296,7 +297,7 @@ class YarnIn(BaseModel):
 
 
 @router.post("/yarns", status_code=status.HTTP_201_CREATED)
-def create_yarn(p: YarnIn, db: Session = Depends(get_db), user: User = Depends(require_permission("master.write"))):
+def create_yarn(p: YarnIn, db: Session = Depends(get_company_db), user: User = Depends(require_permission("master.write"))):
     _dup(db, YarnMaster, user.company_id, p.code)
     y = YarnMaster(company_id=user.company_id, created_by=user.id, **p.model_dump())
     db.add(y); db.commit()
@@ -314,7 +315,7 @@ from decimal import Decimal as _Dec  # noqa: E402
 
 
 @router.get("/yarn-lots")
-def list_yarn_lots(yarn_id: _uuid.UUID | None = None, db: Session = Depends(get_db),
+def list_yarn_lots(yarn_id: _uuid.UUID | None = None, db: Session = Depends(get_company_db),
                    user: User = Depends(require_permission("master.read"))):
     stmt = select(YarnLot).where(YarnLot.company_id == user.company_id)
     if yarn_id:
@@ -341,7 +342,7 @@ class YarnLotIn(BaseModel):
 
 
 @router.post("/yarn-lots", status_code=status.HTTP_201_CREATED)
-def receive_yarn_lot(p: YarnLotIn, db: Session = Depends(get_db),
+def receive_yarn_lot(p: YarnLotIn, db: Session = Depends(get_company_db),
                      user: User = Depends(require_permission("master.write"))):
     try:
         lot, voucher = _yarn_svc.receive_yarn_lot(

@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.deps import get_company_db
 from app.core.deps import require_permission
 from app.models.core import User
 from app.models.inventory import ItemType, StockTransfer
@@ -28,7 +29,7 @@ router = APIRouter(prefix="/api/inventory", tags=["inventory-ops"])
 @router.get("/stock-on-hand")
 def stock_on_hand(warehouse_id: uuid.UUID | None = None, item_type: str | None = None,
                   factory_id: uuid.UUID | None = None,
-                  db: Session = Depends(get_db),
+                  db: Session = Depends(get_company_db),
                   user: User = Depends(require_permission("report.read"))):
     """Live stock position (qty + value) by item and warehouse, from open FIFO
     layers. Optionally filter to one warehouse, item type and/or factory. When a
@@ -60,7 +61,7 @@ class TransferIn(BaseModel):
 
 
 @router.post("/transfers", status_code=status.HTTP_201_CREATED)
-def create_transfer(payload: TransferIn, db: Session = Depends(get_db),
+def create_transfer(payload: TransferIn, db: Session = Depends(get_company_db),
                     user: User = Depends(require_permission("inventory.adjust"))):
     try:
         it = ItemType(payload.item_type)
@@ -85,7 +86,7 @@ def create_transfer(payload: TransferIn, db: Session = Depends(get_db),
 
 
 @router.get("/transfers")
-def list_transfers(db: Session = Depends(get_db),
+def list_transfers(db: Session = Depends(get_company_db),
                    user: User = Depends(require_permission("report.read"))):
     rows = db.execute(select(StockTransfer).where(StockTransfer.company_id == user.company_id)
                       .order_by(StockTransfer.transfer_date.desc())).scalars().all()
@@ -104,7 +105,7 @@ class StockCountIn(BaseModel):
 
 
 @router.post("/stock-count", status_code=status.HTTP_201_CREATED)
-def stock_count(payload: StockCountIn, db: Session = Depends(get_db),
+def stock_count(payload: StockCountIn, db: Session = Depends(get_company_db),
                 user: User = Depends(require_permission("inventory.adjust"))):
     from app.services import stock_count as sc
     try:
@@ -123,7 +124,7 @@ def stock_count(payload: StockCountIn, db: Session = Depends(get_db),
 
 
 @router.get("/valuation")
-def valuation(item_type: str, item_id: uuid.UUID, db: Session = Depends(get_db),
+def valuation(item_type: str, item_id: uuid.UUID, db: Session = Depends(get_company_db),
               user: User = Depends(require_permission("report.read"))):
     it = ItemType(item_type)
     wavg = inventory.weighted_average_cost(db, company_id=user.company_id, item_type=it, item_id=item_id)
@@ -143,7 +144,7 @@ class SplitIn(BaseModel):
 
 
 @router.post("/rolls/{roll_id}/split", status_code=status.HTTP_201_CREATED)
-def split_roll(roll_id: uuid.UUID, payload: SplitIn, db: Session = Depends(get_db),
+def split_roll(roll_id: uuid.UUID, payload: SplitIn, db: Session = Depends(get_company_db),
                user: User = Depends(require_permission("greige.manage"))):
     try:
         res = roll_ops.split_roll(db, company_id=user.company_id, roll_id=roll_id,
@@ -165,7 +166,7 @@ class MergeIn(BaseModel):
 
 
 @router.post("/rolls/merge", status_code=status.HTTP_201_CREATED)
-def merge_rolls(payload: MergeIn, db: Session = Depends(get_db),
+def merge_rolls(payload: MergeIn, db: Session = Depends(get_company_db),
                 user: User = Depends(require_permission("greige.manage"))):
     try:
         res = roll_ops.merge_rolls(db, company_id=user.company_id, roll_ids=payload.roll_ids,

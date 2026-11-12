@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.deps import get_company_db
 from app.core.deps import require_permission
 from app.models.core import User
 from app.services import costing
@@ -30,7 +31,7 @@ def _fin(user):
 
 
 @router.get("/batch/{batch_id}")
-def batch(batch_id: uuid.UUID, db: Session = Depends(get_db),
+def batch(batch_id: uuid.UUID, db: Session = Depends(get_company_db),
           user: User = Depends(require_permission("report.financial"))):
     try:
         return _s(costing.batch_cost(db, user.company_id, batch_id))
@@ -39,7 +40,7 @@ def batch(batch_id: uuid.UUID, db: Session = Depends(get_db),
 
 
 @router.get("/bath/{bath_id}/standard-vs-actual")
-def standard_vs_actual(bath_id: uuid.UUID, db: Session = Depends(get_db),
+def standard_vs_actual(bath_id: uuid.UUID, db: Session = Depends(get_company_db),
                        user: User = Depends(require_permission("report.financial"))):
     try:
         return _s(costing.bath_standard_vs_actual(db, user.company_id, bath_id))
@@ -48,12 +49,12 @@ def standard_vs_actual(bath_id: uuid.UUID, db: Session = Depends(get_db),
 
 
 @router.get("/orders")
-def orders(db: Session = Depends(get_db), user: User = Depends(require_permission("report.financial"))):
+def orders(db: Session = Depends(get_company_db), user: User = Depends(require_permission("report.financial"))):
     return _s(costing.order_profitability_list(db, user.company_id))
 
 
 @router.get("/orders/{order_id}")
-def order(order_id: uuid.UUID, db: Session = Depends(get_db),
+def order(order_id: uuid.UUID, db: Session = Depends(get_company_db),
           user: User = Depends(require_permission("report.financial"))):
     try:
         return _s(costing.order_profitability(db, user.company_id, order_id))
@@ -62,26 +63,26 @@ def order(order_id: uuid.UUID, db: Session = Depends(get_db),
 
 
 @router.get("/customers")
-def customers(db: Session = Depends(get_db), user: User = Depends(require_permission("report.financial"))):
+def customers(db: Session = Depends(get_company_db), user: User = Depends(require_permission("report.financial"))):
     return _s(costing.customer_profitability(db, user.company_id))
 
 
 @router.get("/machines")
-def machines(db: Session = Depends(get_db), user: User = Depends(require_permission("report.financial"))):
+def machines(db: Session = Depends(get_company_db), user: User = Depends(require_permission("report.financial"))):
     return _s(costing.machine_cost(db, user.company_id))
 
 
 @router.get("/shades")
-def shades(db: Session = Depends(get_db), user: User = Depends(require_permission("report.financial"))):
+def shades(db: Session = Depends(get_company_db), user: User = Depends(require_permission("report.financial"))):
     return _s(costing.shade_cost(db, user.company_id))
 
 
 @router.get("/cost-per-kg")
-def cost_per_kg(db: Session = Depends(get_db), user: User = Depends(require_permission("report.financial"))):
+def cost_per_kg(db: Session = Depends(get_company_db), user: User = Depends(require_permission("report.financial"))):
     return _s(costing.cost_per_kg_summary(db, user.company_id))
 
 
 @router.get("/by-factory")
-def by_factory(db: Session = Depends(get_db), user: User = Depends(require_permission("report.financial"))):
+def by_factory(db: Session = Depends(get_company_db), user: User = Depends(require_permission("report.financial"))):
     """Factory-wise manufacturing throughput & efficiency for the acting company."""
     return _s(costing.production_by_factory(db, user.company_id))

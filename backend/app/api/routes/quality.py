@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.core.context import apply_factory_scope
 from app.core.database import get_db
+from app.core.deps import get_company_db
 from app.core.deps import require_permission
 from app.models.core import User
 from app.models.quality import CustomerComplaint, FinishingTransaction, QualityInspection
@@ -51,7 +52,7 @@ class FinishingIn(BaseModel):
 
 
 @router.post("/finishing", status_code=status.HTTP_201_CREATED)
-def post_finishing(payload: FinishingIn, db: Session = Depends(get_db),
+def post_finishing(payload: FinishingIn, db: Session = Depends(get_company_db),
                    user: User = Depends(require_permission("finishing.manage"))):
     try:
         ft = quality.record_finishing(db, user.company_id, created_by=user.id, **payload.model_dump())
@@ -63,7 +64,7 @@ def post_finishing(payload: FinishingIn, db: Session = Depends(get_db),
 
 
 @router.get("/finishing")
-def list_finishing(db: Session = Depends(get_db), user: User = Depends(require_permission("report.read"))):
+def list_finishing(db: Session = Depends(get_company_db), user: User = Depends(require_permission("report.read"))):
     stmt = apply_factory_scope(select(FinishingTransaction).where(
         FinishingTransaction.company_id == user.company_id), FinishingTransaction, user)
     rows = db.execute(stmt.order_by(FinishingTransaction.process_date.desc())).scalars().all()
@@ -90,7 +91,7 @@ class InspectionIn(BaseModel):
 
 
 @router.post("/inspections", status_code=status.HTTP_201_CREATED)
-def post_inspection(payload: InspectionIn, db: Session = Depends(get_db),
+def post_inspection(payload: InspectionIn, db: Session = Depends(get_company_db),
                     user: User = Depends(require_permission("quality.manage"))):
     try:
         qi = quality.record_inspection(db, user.company_id, created_by=user.id, **payload.model_dump())
@@ -102,7 +103,7 @@ def post_inspection(payload: InspectionIn, db: Session = Depends(get_db),
 
 
 @router.get("/inspections")
-def list_inspections(db: Session = Depends(get_db), user: User = Depends(require_permission("report.read"))):
+def list_inspections(db: Session = Depends(get_company_db), user: User = Depends(require_permission("report.read"))):
     stmt = apply_factory_scope(select(QualityInspection).where(
         QualityInspection.company_id == user.company_id), QualityInspection, user)
     rows = db.execute(stmt.order_by(QualityInspection.inspection_date.desc())).scalars().all()
@@ -126,7 +127,7 @@ class ResolveIn(BaseModel):
 
 
 @router.post("/complaints", status_code=status.HTTP_201_CREATED)
-def post_complaint(payload: ComplaintIn, db: Session = Depends(get_db),
+def post_complaint(payload: ComplaintIn, db: Session = Depends(get_company_db),
                    user: User = Depends(require_permission("quality.manage"))):
     c = quality.raise_complaint(db, user.company_id, created_by=user.id, **payload.model_dump())
     db.commit()
@@ -134,7 +135,7 @@ def post_complaint(payload: ComplaintIn, db: Session = Depends(get_db),
 
 
 @router.post("/complaints/{complaint_id}/resolve")
-def resolve_complaint(complaint_id: uuid.UUID, payload: ResolveIn, db: Session = Depends(get_db),
+def resolve_complaint(complaint_id: uuid.UUID, payload: ResolveIn, db: Session = Depends(get_company_db),
                       user: User = Depends(require_permission("quality.manage"))):
     c = db.get(CustomerComplaint, complaint_id)
     if c is None or c.company_id != user.company_id:
@@ -145,7 +146,7 @@ def resolve_complaint(complaint_id: uuid.UUID, payload: ResolveIn, db: Session =
 
 
 @router.get("/complaints")
-def list_complaints(db: Session = Depends(get_db), user: User = Depends(require_permission("report.read"))):
+def list_complaints(db: Session = Depends(get_company_db), user: User = Depends(require_permission("report.read"))):
     rows = db.execute(select(CustomerComplaint).where(
         CustomerComplaint.company_id == user.company_id).order_by(
         CustomerComplaint.complaint_date.desc())).scalars().all()
@@ -154,7 +155,7 @@ def list_complaints(db: Session = Depends(get_db), user: User = Depends(require_
 
 
 @router.get("/summary")
-def summary(date_from: date | None = None, date_to: date | None = None, db: Session = Depends(get_db),
+def summary(date_from: date | None = None, date_to: date | None = None, db: Session = Depends(get_company_db),
             user: User = Depends(require_permission("report.read"))):
     to = date_to or date.today()
     frm = date_from or _fy_start(to)

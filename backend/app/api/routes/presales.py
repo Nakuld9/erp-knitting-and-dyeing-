@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.deps import get_company_db
 from app.core.deps import require_permission
 from app.models.commercial import DocStatus, Enquiry, Quotation
 from app.models.core import User
@@ -30,7 +31,7 @@ class EnquiryIn(BaseModel):
 
 
 @router.post("/enquiries", status_code=status.HTTP_201_CREATED)
-def create_enquiry(payload: EnquiryIn, db: Session = Depends(get_db),
+def create_enquiry(payload: EnquiryIn, db: Session = Depends(get_company_db),
                    user: User = Depends(require_permission("sales.manage"))):
     e = presales.create_enquiry(db, company_id=user.company_id, created_by=user.id, **payload.model_dump())
     db.commit()
@@ -38,7 +39,7 @@ def create_enquiry(payload: EnquiryIn, db: Session = Depends(get_db),
 
 
 @router.get("/enquiries")
-def list_enquiries(db: Session = Depends(get_db),
+def list_enquiries(db: Session = Depends(get_company_db),
                    user: User = Depends(require_permission("sales.manage"))):
     rows = db.execute(select(Enquiry).where(Enquiry.company_id == user.company_id)
                       .order_by(Enquiry.enquiry_date.desc())).scalars().all()
@@ -74,7 +75,7 @@ def _quote_out(q: Quotation) -> dict:
 
 
 @router.post("/quotations", status_code=status.HTTP_201_CREATED)
-def create_quotation(payload: QuoteIn, db: Session = Depends(get_db),
+def create_quotation(payload: QuoteIn, db: Session = Depends(get_company_db),
                      user: User = Depends(require_permission("sales.manage"))):
     q = presales.create_quotation(
         db, company_id=user.company_id, customer_id=payload.customer_id, number=payload.number,
@@ -85,7 +86,7 @@ def create_quotation(payload: QuoteIn, db: Session = Depends(get_db),
 
 
 @router.get("/quotations")
-def list_quotations(db: Session = Depends(get_db),
+def list_quotations(db: Session = Depends(get_company_db),
                     user: User = Depends(require_permission("sales.manage"))):
     rows = db.execute(select(Quotation).where(Quotation.company_id == user.company_id)
                       .order_by(Quotation.quote_date.desc())).scalars().all()
@@ -98,7 +99,7 @@ class ConvertIn(BaseModel):
 
 
 @router.post("/quotations/{quote_id}/convert", status_code=status.HTTP_201_CREATED)
-def convert_quotation(quote_id: uuid.UUID, payload: ConvertIn, db: Session = Depends(get_db),
+def convert_quotation(quote_id: uuid.UUID, payload: ConvertIn, db: Session = Depends(get_company_db),
                       user: User = Depends(require_permission("sales.manage"))):
     q = db.get(Quotation, quote_id)
     if q is None or q.company_id != user.company_id:

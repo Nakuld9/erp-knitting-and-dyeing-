@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.core.context import apply_factory_scope
 from app.core.database import get_db
+from app.core.deps import get_company_db
 from app.core.deps import require_permission
 from app.models.core import User
 from app.models.manufacturing import KnittingProduction
@@ -44,7 +45,7 @@ class ProductionIn(BaseModel):
 
 
 @router.post("/production", status_code=status.HTTP_201_CREATED)
-def post_production(payload: ProductionIn, db: Session = Depends(get_db),
+def post_production(payload: ProductionIn, db: Session = Depends(get_company_db),
                    user: User = Depends(require_permission("knitting.manage"))):
     kp = KnittingProduction(
         company_id=user.company_id, number=payload.number, machine_id=payload.machine_id,
@@ -71,7 +72,7 @@ def post_production(payload: ProductionIn, db: Session = Depends(get_db),
 
 
 @router.get("/production")
-def list_production(db: Session = Depends(get_db), user: User = Depends(require_permission("report.read"))):
+def list_production(db: Session = Depends(get_company_db), user: User = Depends(require_permission("report.read"))):
     stmt = apply_factory_scope(select(KnittingProduction).where(
         KnittingProduction.company_id == user.company_id), KnittingProduction, user)
     rows = db.execute(stmt.order_by(KnittingProduction.production_date.desc())).scalars().all()

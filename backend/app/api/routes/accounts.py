@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.deps import get_company_db
 from app.core.deps import require_permission
 from app.models.accounting import AccountType, ChartOfAccount
 from app.models.core import User
@@ -17,7 +18,7 @@ router = APIRouter(prefix="/api/accounts", tags=["accounting"])
 
 @router.get("", response_model=list[AccountOut])
 def list_accounts(
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_company_db),
     user: User = Depends(require_permission("master.read")),
 ) -> list[ChartOfAccount]:
     return (
@@ -48,7 +49,7 @@ def _find(db: Session, company_id, code: str) -> ChartOfAccount | None:
 @router.post("", response_model=AccountOut, status_code=status.HTTP_201_CREATED)
 def create_account(
     payload: AccountCreate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_company_db),
     user: User = Depends(require_permission("master.write")),
 ) -> ChartOfAccount:
     try:

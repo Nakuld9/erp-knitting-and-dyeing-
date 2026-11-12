@@ -15,6 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.deps import get_company_db
 from app.core.deps import require_permission
 from app.models.commercial import DeliveryNote, DocStatus, PurchaseOrder, SalesOrder
 from app.models.core import User
@@ -55,7 +56,7 @@ def _po_out(db: Session, po: PurchaseOrder) -> dict:
 
 
 @router.post("/procurement/purchase-orders", status_code=status.HTTP_201_CREATED)
-def create_po(payload: POIn, db: Session = Depends(get_db),
+def create_po(payload: POIn, db: Session = Depends(get_company_db),
               user: User = Depends(require_permission("purchase.manage"))):
     po = ol.create_purchase_order(
         db, company_id=user.company_id, supplier_id=payload.supplier_id,
@@ -67,7 +68,7 @@ def create_po(payload: POIn, db: Session = Depends(get_db),
 
 
 @router.post("/procurement/purchase-orders/{po_id}/confirm")
-def confirm_po(po_id: uuid.UUID, db: Session = Depends(get_db),
+def confirm_po(po_id: uuid.UUID, db: Session = Depends(get_company_db),
                user: User = Depends(require_permission("purchase.manage"))):
     po = db.get(PurchaseOrder, po_id)
     if po is None or po.company_id != user.company_id:
@@ -81,7 +82,7 @@ def confirm_po(po_id: uuid.UUID, db: Session = Depends(get_db),
 
 
 @router.post("/procurement/purchase-orders/{po_id}/submit-approval")
-def submit_po_approval(po_id: uuid.UUID, db: Session = Depends(get_db),
+def submit_po_approval(po_id: uuid.UUID, db: Session = Depends(get_company_db),
                        user: User = Depends(require_permission("purchase.manage"))):
     """Route a PO through maker-checker: at/above the configured threshold it is
     held for approval (confirmed on approval); otherwise it confirms at once."""
@@ -107,7 +108,7 @@ def submit_po_approval(po_id: uuid.UUID, db: Session = Depends(get_db),
 
 
 @router.get("/procurement/purchase-orders")
-def list_pos(db: Session = Depends(get_db),
+def list_pos(db: Session = Depends(get_company_db),
              user: User = Depends(require_permission("purchase.manage"))):
     rows = db.execute(select(PurchaseOrder).where(PurchaseOrder.company_id == user.company_id)
                       .order_by(PurchaseOrder.order_date.desc())).scalars().all()
@@ -116,7 +117,7 @@ def list_pos(db: Session = Depends(get_db),
 
 
 @router.get("/procurement/purchase-orders/{po_id}")
-def get_po(po_id: uuid.UUID, db: Session = Depends(get_db),
+def get_po(po_id: uuid.UUID, db: Session = Depends(get_company_db),
            user: User = Depends(require_permission("purchase.manage"))):
     po = db.get(PurchaseOrder, po_id)
     if po is None or po.company_id != user.company_id:
@@ -161,7 +162,7 @@ def _so_out(db: Session, so: SalesOrder) -> dict:
 
 
 @router.post("/sales/orders", status_code=status.HTTP_201_CREATED)
-def create_so(payload: SOIn, db: Session = Depends(get_db),
+def create_so(payload: SOIn, db: Session = Depends(get_company_db),
               user: User = Depends(require_permission("sales.manage"))):
     so = ol.create_sales_order(
         db, company_id=user.company_id, customer_id=payload.customer_id,
@@ -173,7 +174,7 @@ def create_so(payload: SOIn, db: Session = Depends(get_db),
 
 
 @router.post("/sales/orders/{so_id}/confirm")
-def confirm_so(so_id: uuid.UUID, db: Session = Depends(get_db),
+def confirm_so(so_id: uuid.UUID, db: Session = Depends(get_company_db),
                user: User = Depends(require_permission("sales.manage"))):
     so = db.get(SalesOrder, so_id)
     if so is None or so.company_id != user.company_id:
@@ -187,7 +188,7 @@ def confirm_so(so_id: uuid.UUID, db: Session = Depends(get_db),
 
 
 @router.get("/sales/orders")
-def list_sos(db: Session = Depends(get_db),
+def list_sos(db: Session = Depends(get_company_db),
              user: User = Depends(require_permission("sales.manage"))):
     rows = db.execute(select(SalesOrder).where(SalesOrder.company_id == user.company_id)
                       .order_by(SalesOrder.order_date.desc())).scalars().all()
@@ -196,7 +197,7 @@ def list_sos(db: Session = Depends(get_db),
 
 
 @router.get("/sales/orders/{so_id}")
-def get_so(so_id: uuid.UUID, db: Session = Depends(get_db),
+def get_so(so_id: uuid.UUID, db: Session = Depends(get_company_db),
            user: User = Depends(require_permission("sales.manage"))):
     so = db.get(SalesOrder, so_id)
     if so is None or so.company_id != user.company_id:
@@ -215,7 +216,7 @@ class DeliveryIn(BaseModel):
 
 
 @router.post("/sales/deliveries", status_code=status.HTTP_201_CREATED)
-def create_delivery(payload: DeliveryIn, db: Session = Depends(get_db),
+def create_delivery(payload: DeliveryIn, db: Session = Depends(get_company_db),
                     user: User = Depends(require_permission("sales.manage"))):
     number = (payload.number or "").strip() or ol.auto_delivery_number(
         db, user.company_id, payload.delivery_date)
@@ -238,7 +239,7 @@ def create_delivery(payload: DeliveryIn, db: Session = Depends(get_db),
 
 
 @router.get("/sales/deliveries")
-def list_deliveries(db: Session = Depends(get_db),
+def list_deliveries(db: Session = Depends(get_company_db),
                     user: User = Depends(require_permission("sales.manage"))):
     rows = db.execute(select(DeliveryNote).where(DeliveryNote.company_id == user.company_id)
                       .order_by(DeliveryNote.delivery_date.desc())).scalars().all()

@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.deps import get_company_db
 from app.core.deps import require_permission
 from app.models.core import User
 from app.models.einvoice import EInvoice
@@ -34,7 +35,7 @@ def einvoice_config(user: User = Depends(require_permission("sales.manage"))):
 
 
 @router.post("/{invoice_id}/generate", status_code=status.HTTP_201_CREATED)
-def generate(invoice_id: uuid.UUID, db: Session = Depends(get_db),
+def generate(invoice_id: uuid.UUID, db: Session = Depends(get_company_db),
              user: User = Depends(require_permission("sales.manage"))):
     try:
         rec = svc.generate_einvoice(db, invoice_id)
@@ -51,7 +52,7 @@ class CancelIn(BaseModel):
 
 
 @router.post("/{invoice_id}/cancel")
-def cancel(invoice_id: uuid.UUID, payload: CancelIn, db: Session = Depends(get_db),
+def cancel(invoice_id: uuid.UUID, payload: CancelIn, db: Session = Depends(get_company_db),
            user: User = Depends(require_permission("sales.manage"))):
     try:
         rec = svc.cancel_einvoice(db, invoice_id, reason_code=payload.reason_code,
@@ -64,7 +65,7 @@ def cancel(invoice_id: uuid.UUID, payload: CancelIn, db: Session = Depends(get_d
 
 
 @router.get("/{invoice_id}")
-def get_status(invoice_id: uuid.UUID, db: Session = Depends(get_db),
+def get_status(invoice_id: uuid.UUID, db: Session = Depends(get_company_db),
                user: User = Depends(require_permission("report.read"))):
     rec = svc.get_einvoice(db, invoice_id)
     if rec is None:

@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.deps import get_company_db
 from app.core.deps import require_permission
 from app.models.assets import AssetStatus, FixedAsset
 from app.models.core import User
@@ -49,7 +50,7 @@ def _asset_out(a: FixedAsset) -> dict:
 
 
 @router.post("", status_code=status.HTTP_201_CREATED)
-def create_asset(payload: AssetIn, db: Session = Depends(get_db),
+def create_asset(payload: AssetIn, db: Session = Depends(get_company_db),
                  user: User = Depends(require_permission("asset.manage"))):
     try:
         asset = svc.capitalize_asset(
@@ -68,7 +69,7 @@ def create_asset(payload: AssetIn, db: Session = Depends(get_db),
 
 
 @router.get("")
-def list_assets(db: Session = Depends(get_db),
+def list_assets(db: Session = Depends(get_company_db),
                 user: User = Depends(require_permission("asset.manage"))):
     rows = db.execute(select(FixedAsset).where(FixedAsset.company_id == user.company_id)
                       .order_by(FixedAsset.code)).scalars().all()
@@ -80,7 +81,7 @@ class DepRunIn(BaseModel):
 
 
 @router.post("/depreciation-runs", status_code=status.HTTP_201_CREATED)
-def run_depreciation(payload: DepRunIn, db: Session = Depends(get_db),
+def run_depreciation(payload: DepRunIn, db: Session = Depends(get_company_db),
                      user: User = Depends(require_permission("asset.manage"))):
     res = svc.run_depreciation(db, company_id=user.company_id,
                                period_month=payload.period_month, created_by=user.id)
@@ -99,7 +100,7 @@ class DisposeIn(BaseModel):
 
 
 @router.post("/{asset_id}/dispose")
-def dispose_asset(asset_id: uuid.UUID, payload: DisposeIn, db: Session = Depends(get_db),
+def dispose_asset(asset_id: uuid.UUID, payload: DisposeIn, db: Session = Depends(get_company_db),
                   user: User = Depends(require_permission("asset.manage"))):
     asset = db.get(FixedAsset, asset_id)
     if asset is None or asset.company_id != user.company_id:

@@ -11,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.deps import get_company_db
 from app.core.deps import require_permission
 from app.models.core import User
 from app.models.notifications import Attachment
@@ -24,7 +25,7 @@ MAX_ATTACHMENT = 8 * 1024 * 1024   # 8 MB
 # ------------------------------ notifications -------------------------------
 
 @router.get("/notifications")
-def list_notifications(db: Session = Depends(get_db),
+def list_notifications(db: Session = Depends(get_company_db),
                        user: User = Depends(require_permission("report.read"))):
     rows = nsvc.list_notifications(db, user.company_id, user.id)
     return [{"id": str(n.id), "kind": n.kind, "title": n.title, "message": n.message,
@@ -34,7 +35,7 @@ def list_notifications(db: Session = Depends(get_db),
 
 
 @router.get("/notifications/unread-count")
-def unread_count(db: Session = Depends(get_db),
+def unread_count(db: Session = Depends(get_company_db),
                  user: User = Depends(require_permission("report.read"))):
     return {"count": nsvc.unread_count(db, user.company_id, user.id)}
 
@@ -44,7 +45,7 @@ class MarkReadIn(BaseModel):
 
 
 @router.post("/notifications/mark-read")
-def mark_read(payload: MarkReadIn, db: Session = Depends(get_db),
+def mark_read(payload: MarkReadIn, db: Session = Depends(get_company_db),
               user: User = Depends(require_permission("report.read"))):
     n = nsvc.mark_read(db, user.company_id, user.id, payload.notification_id)
     db.commit()
@@ -62,7 +63,7 @@ class AttachmentIn(BaseModel):
 
 
 @router.post("/attachments", status_code=status.HTTP_201_CREATED)
-def upload_attachment(payload: AttachmentIn, db: Session = Depends(get_db),
+def upload_attachment(payload: AttachmentIn, db: Session = Depends(get_company_db),
                       user: User = Depends(require_permission("master.write"))):
     try:
         raw = base64.b64decode(payload.data_base64, validate=True)
@@ -81,7 +82,7 @@ def upload_attachment(payload: AttachmentIn, db: Session = Depends(get_db),
 
 
 @router.get("/attachments")
-def list_attachments(doc_type: str, doc_id: uuid.UUID, db: Session = Depends(get_db),
+def list_attachments(doc_type: str, doc_id: uuid.UUID, db: Session = Depends(get_company_db),
                      user: User = Depends(require_permission("report.read"))):
     rows = db.execute(select(Attachment).where(
         Attachment.company_id == user.company_id, Attachment.doc_type == doc_type,
@@ -91,7 +92,7 @@ def list_attachments(doc_type: str, doc_id: uuid.UUID, db: Session = Depends(get
 
 
 @router.get("/attachments/{attachment_id}/download")
-def download_attachment(attachment_id: uuid.UUID, db: Session = Depends(get_db),
+def download_attachment(attachment_id: uuid.UUID, db: Session = Depends(get_company_db),
                         user: User = Depends(require_permission("report.read"))) -> Response:
     a = db.get(Attachment, attachment_id)
     if a is None or a.company_id != user.company_id:

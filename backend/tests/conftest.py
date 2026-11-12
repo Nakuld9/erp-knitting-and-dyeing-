@@ -68,7 +68,12 @@ def client(db):
         finally:
             pass  # keep the shared session open across the request
 
+    from app.core.deps import get_company_db
     app.dependency_overrides[get_db] = _override
+    # In tests there are no registered per-company databases, so the company
+    # router falls back to the default engine anyway; overriding it to the shared
+    # session keeps a single session on the single in-memory connection.
+    app.dependency_overrides[get_company_db] = _override
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
