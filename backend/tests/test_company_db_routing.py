@@ -103,3 +103,21 @@ def test_deactivated_registry_falls_back(db, temp_dsns):
     db.commit()
     assert db_router.resolve_company_dsn(c.id) is None
     assert db_router.engine_for_company(c.id) is default_engine
+
+
+def test_dsn_expand_from_env(monkeypatch):
+    """Registry DSNs carry ${VAR} placeholders; the secret comes from the env."""
+    from app.core.db_router import expand_dsn
+    monkeypatch.setenv("ERP_TEST_PW", "s3cr3t")
+    out = expand_dsn("postgresql+psycopg2://erp_app:${ERP_TEST_PW}@host:5432/db")
+    assert out == "postgresql+psycopg2://erp_app:s3cr3t@host:5432/db"
+    # missing var fails closed (empty, not a default password)
+    assert expand_dsn("postgresql://u:${NOPE_UNSET}@h/d") == "postgresql://u:@h/d"
+
+
+def test_dsn_masking_hides_password():
+    from app.core.db_router import mask_dsn
+    assert mask_dsn("postgresql+psycopg2://erp_app:s3cr3t@host:5432/db") == \
+        "postgresql+psycopg2://erp_app:***@host:5432/db"
+    # placeholders are not secrets -> left visible
+    assert "${ERP_PW}" in mask_dsn("postgresql://u:${ERP_PW}@h/d")

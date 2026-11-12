@@ -83,45 +83,68 @@ companies in one SQL query:
   companies' trial balances in one query. With companies in separate databases it
   must read each company's database separately and aggregate in the application.
   Still possible, but slower and no longer a single transaction.
-- **Inter-company posting** currently writes both legs in **one atomic
-  transaction**. Across two databases that atomicity is lost; it needs a
-  two-phase / saga pattern (post leg A, post leg B, compensate on failure) with a
-  reconciliation guarantee. Until that is built, inter-company posting must be
-  restricted to companies that share a database.
-- **Elimination suggestions** read both companies' control-account balances —
-  becomes cross-database reads.
+- **Inter-company posting** is now a cross-database **saga** (see §5), not a single
+  transaction. Two legs, each idempotent, with compensation; live cross-database
+  posting is gated by `settings.intercompany_live_posting` (default off).
+- **Consolidation / elimination suggestions** read each company's control-account
+  balances from that company's own database (cross-database reads; see §6).
 - **Cross-company memberships** still work (they live in the control DB), but the
   data they reach is now in different databases.
 
 These are inherent to database-per-company; they are **not** limitations of the
-code. This is exactly the trade-off that was flagged before implementing.
+code. This is exactly the trade-off that was flagged before implementing — now
+built out.
 
-## 5. Staged live cutover (not yet switched on)
+## 5. Live routing (done) & the cross-database saga
 
-The foundation does **not** rip `get_db` out of the existing routes, because a
-safe cutover is staged and needs real multi-PostgreSQL validation:
+The live cutover is implemented and validated on real PostgreSQL:
 
-1. **Separate global vs company-scoped tables.** Confirm the global set (users,
-   roles, memberships, organizations, companies, registry) and keep them only in
-   the control DB; everything else is company-scoped.
-2. **Route reads/writes.** Switch company-scoped routes from `get_db` to
-   `get_company_db` (already available). Auth stays on the control DB.
-3. **Rework cross-company features** (consolidation, inter-company) to the
-   cross-database patterns in §4, or gate them.
-4. **Per-database migrations.** Every schema change must now
-   `alembic upgrade head` against **every** company database (a fan-out step in
-   the deploy; see `docs/DATABASE_MIGRATION_RUNBOOK.md`).
-5. **Validate on real PostgreSQL** with ≥2 company databases: isolation,
-   per-DB migration, backup/restore per database, connection-pool sizing
-   (one pool per database).
+1. **Global vs company-scoped tables** are separated — see
+   `docs/ROUTE_DB_ROUTING.md` for the route-by-route classification.
+2. **Routing is live.** Company-scoped routes use `get_company_db` (routes to the
+   acting company's database, falls back to the central DB when a company is
+   unregistered); auth/identity/catalog stay on the central DB.
+3. **Inter-company posting = saga** (`services/accounting/intercompany_saga.py`):
+   an `intercompany_txns` outbox keyed by an idempotency key; seller leg in A's
+   DB, buyer leg in B's DB (each idempotent on a derived posting reference); a
+   buyer-leg failure **compensates** by reversing the seller leg; `reconcile()`
+   drives non-terminal sagas. Mappings are **code-based** (account ids differ per
+   DB). **Gated off by default** until proven in prod.
+4. **Per-database migrations.** Every schema change must `alembic upgrade head`
+   against **every** company database (deploy fan-out; see
+   `docs/DATABASE_MIGRATION_RUNBOOK.md`).
+5. **Validated on real PostgreSQL** with two databases — see
+   `docs/POSTGRES_VALIDATION.md` and `tests/test_uat_two_databases.py`.
 
-Until step 2 is executed and validated, companies run on the default database and
-behaviour is unchanged. No existing data is moved or deleted by this change.
+## 6. Cross-database consolidation
 
-## 6. Honest status
+`services/accounting/consolidation.py` reads **each** member company's trial
+balance from that company's own database via `db_router.company_session`, and
+aggregates in the reporting service. Eliminations are code-based and apply to the
+consolidated figures only — nothing is posted to any company's statutory ledger.
+Each company's books stay independent.
 
-Foundation: **built and unit-tested** (with simulated separate databases). Full
-database-per-company operation: **not production-complete** — it requires the
-staged cutover in §5 on real PostgreSQL plus the cross-database rework in §4. The
-data-safety rules (no destructive migration, back up first, test on a copy) apply
-to every provisioning and cutover step.
+## 7. Security — database credentials
+
+- **No plaintext passwords in the registry.** A `company_databases.dsn` should
+  carry a `${ENV_VAR}` placeholder for the password, e.g.
+  `postgresql+psycopg2://erp_app:${ERP_COMPANY_DB_PW}@host:5432/erp_company_acme`.
+  `db_router.expand_dsn` substitutes the secret **only** when the engine is built;
+  the secret never lives in the database or the engine cache key. A missing
+  variable fails closed (empty, not a default).
+- **Masking.** `db_router.mask_dsn` redacts the password for any logging/display;
+  the provisioning CLI prints a masked DSN. Credentials must never appear in logs.
+- **Restricted roles.** The application connects with a **least-privilege,
+  non-superuser** role per database (CRUD on its own schema only). Reserve
+  superuser for provisioning/DDL run out of band. Each company database may use a
+  distinct role so a leaked credential cannot reach another company's data.
+
+## 8. Honest status
+
+Live routing, cross-database consolidation and the inter-company saga are
+**implemented and validated on real PostgreSQL** (migrations up/down, two-database
+isolation, saga reconcile, cross-database consolidation + elimination, concurrency
+— `docs/POSTGRES_VALIDATION.md`). Still required before production: enabling the
+saga flag after a prod pilot, per-database backup/restore drills on your
+infrastructure, connection-pool sizing, and the Phase 15/16 sign-offs. The
+data-safety rules apply to every provisioning and cutover step.

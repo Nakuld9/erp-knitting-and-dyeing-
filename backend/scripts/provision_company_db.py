@@ -40,6 +40,9 @@ def main(argv=None) -> int:
     except ProvisioningError as e:
         print(f"Provisioning failed: {e}", file=sys.stderr)
         return 1
+    # never print credentials — mask the DSN
+    from app.core.db_router import mask_dsn
+    result["dsn"] = mask_dsn(result.get("dsn", ""))
     print(json.dumps(result, indent=2))
     return 0
 

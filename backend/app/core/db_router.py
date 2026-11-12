@@ -17,6 +17,8 @@ engine, so single-database operation is unchanged until a company is provisioned
 """
 from __future__ import annotations
 
+import os
+import re
 import threading
 import uuid
 from collections.abc import Generator
@@ -31,13 +33,44 @@ from app.core.database import _make_engine, engine as default_engine
 _engine_cache: dict[str, Engine] = {}
 _cache_lock = threading.Lock()
 
+_DSN_VAR = re.compile(r"\$\{([A-Z0-9_]+)\}")
+
+
+def expand_dsn(dsn: str) -> str:
+    """Expand ``${ENV_VAR}`` placeholders in a stored DSN from the environment.
+
+    Registry DSNs should carry a placeholder for the password, e.g.
+    ``postgresql+psycopg2://erp_app:${ERP_COMPANY_DB_PW}@host:5432/db``, so the
+    secret is never stored in the ``company_databases`` table. A missing variable
+    expands to empty (fails closed: the connection is refused rather than using a
+    default password)."""
+    return _DSN_VAR.sub(lambda m: os.environ.get(m.group(1), ""), dsn)
+
+
+def mask_dsn(dsn: str) -> str:
+    """Redact the password in a DSN for safe logging/display.
+
+    ``${VAR}`` placeholders are left visible (they are not secrets); a literal
+    password between ``:`` and ``@`` is replaced with ``***``."""
+    if dsn is None:
+        return ""
+    def _redact(m):
+        user = m.group(1)
+        return f"{user}:***@"
+    # user:password@  ->  user:***@   (skip when the password is a ${VAR})
+    return re.sub(r"([^/:@]+):(?!\$\{)[^@/]+@", _redact, dsn)
+
 
 def get_engine_for_dsn(dsn: str) -> Engine:
-    """Return a cached engine for ``dsn`` (one engine per distinct DSN)."""
+    """Return a cached engine for ``dsn`` (one engine per distinct stored DSN).
+
+    The stored DSN may contain ``${ENV_VAR}`` placeholders; they are expanded from
+    the environment only when the engine is built, so secrets never live in the
+    registry or the cache key."""
     with _cache_lock:
         eng = _engine_cache.get(dsn)
         if eng is None:
-            eng = _make_engine(dsn)
+            eng = _make_engine(expand_dsn(dsn))
             _engine_cache[dsn] = eng
         return eng
 

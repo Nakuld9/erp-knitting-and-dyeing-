@@ -74,6 +74,35 @@ export PG_TEST_URL="postgresql+psycopg2://postgres@/erp_conc?host=$SOCK&port=543
 - Database-per-company isolation on two PostgreSQL databases: **ISOLATION OK**.
 - Representative suite subset on PostgreSQL: **66 passed, 0 failed**.
 
+## 6b. True two-database cutover validation (database-per-company live routing)
+
+Ran the complete cross-database scenario against **two physically separate
+PostgreSQL databases** (control + company A DB + company B DB on one server),
+exercising the live routing, the inter-company saga and cross-database
+consolidation. Result: **16/16 checks passed** (standalone run) and the gated
+pytest `tests/test_uat_two_databases.py` **passed**:
+
+- company A reads only database A; company B only database B;
+- switching company changes the actual database connection (distinct engines);
+- factory transfer works within a company database;
+- the inter-company **saga** posts the seller leg in A's DB and the buyer leg in
+  B's DB, COMPLETED and **idempotent** (no duplicate on re-run);
+- **consolidation reads both databases** and approved eliminations **remove** the
+  inter-company income/expense (income 500000→0, expense 500000→0);
+- concurrent per-company sessions **do not leak** database/company context.
+
+Reproduce:
+```bash
+# three empty databases on the same server, then:
+PG_CTL_URL=... PG_A_URL=... PG_B_URL=... \
+  .venv/bin/pytest tests/test_uat_two_databases.py
+```
+
+Two real cross-database defects were found and fixed during this validation:
+provisioning copied `organization_id` into the company DB (central-only FK), and
+the inter-company mapping held an FK to `chart_of_accounts` (which lives in the
+company DB) — now code-based with the FK dropped on PostgreSQL (migration 0010).
+
 ## 7. Still gated (not done here)
 
 - The **full** 336-test suite on PostgreSQL in CI (this run validated a
