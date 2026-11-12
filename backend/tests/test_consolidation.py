@@ -164,3 +164,34 @@ def test_consolidated_pnl_api(client, auth_headers, db):
     assert r.status_code == 200, r.text
     body = r.json()
     assert "net_profit" in body and "No entries are posted" in body["note"]
+
+
+def test_eliminations_actually_remove_intercompany(db, monkeypatch):
+    """Approved eliminations REMOVE inter-company income/expense from the
+    consolidated P&L, leaving only external amounts — not merely netting equal
+    values to zero profit."""
+    from app.models.tenancy import ConsolidationElimination
+    org, a, b = _org_with_two_companies(db)
+
+    def fake_tb(_db, company_id, *, date_from=None, date_to=None):
+        if company_id == a.id:  # 500k inter-company + 100k external income
+            return {"rows": [_row("4010", "Sales", "INCOME", "0", "600000")]}
+        if company_id == b.id:  # 500k inter-company + 50k external expense
+            return {"rows": [_row("5150", "COGS", "EXPENSE", "550000", "0")]}
+        return {"rows": []}
+    monkeypatch.setattr(consol.tb, "trial_balance", fake_tb)
+
+    # approved eliminations removing the 500k inter-company portion from each side
+    db.add_all([
+        ConsolidationElimination(organization_id=org.id, account_code="4010",
+                                 debit=Decimal("500000"), credit=Decimal("0"), is_approved=True),
+        ConsolidationElimination(organization_id=org.id, account_code="5150",
+                                 debit=Decimal("0"), credit=Decimal("500000"), is_approved=True),
+    ])
+    db.commit()
+
+    pnl = consol.consolidated_profit_and_loss(db, org.id)
+    # inter-company 500k is ELIMINATED; only external 100k income / 50k expense remain
+    assert pnl["total_income"] == Decimal("100000")
+    assert pnl["total_expense"] == Decimal("50000")
+    assert pnl["net_profit"] == Decimal("50000")

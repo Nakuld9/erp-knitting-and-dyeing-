@@ -61,10 +61,14 @@ def consolidated_trial_balance(
         ).order_by(Company.code)
     ).scalars().all()
 
-    # aggregate each member company's trial balance by account code
+    # Aggregate each member company's trial balance read from ITS OWN database
+    # (cross-database consolidation). The router falls back to the central engine
+    # for a company that has no dedicated database (single-DB installs / tests).
+    from app.core.db_router import company_session
     agg: dict[str, dict] = {}
     for c in companies:
-        result = tb.trial_balance(db, c.id, date_from=date_from, date_to=date_to)
+        with company_session(c.id) as cdb:
+            result = tb.trial_balance(cdb, c.id, date_from=date_from, date_to=date_to)
         for r in result["rows"]:
             code = r["account_code"]
             slot = agg.setdefault(code, {
