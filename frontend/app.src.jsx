@@ -4,12 +4,19 @@ const R = window.Recharts || null;
 
 // ---- api helper ----------------------------------------------------------
 const TOKEN_KEY = "erp_token";
+const COMPANY_KEY = "erp_company_id", FACTORY_KEY = "erp_factory_id";
 function getToken(){ try{ return localStorage.getItem(TOKEN_KEY) }catch(e){ return null } }
 function setToken(t){ try{ t?localStorage.setItem(TOKEN_KEY,t):localStorage.removeItem(TOKEN_KEY) }catch(e){} }
+// Active company/factory scope — sent as request headers so switching actually
+// changes the data the backend returns (authorization is validated server-side).
+function getScope(k){ try{ return localStorage.getItem(k)||"" }catch(e){ return "" } }
+function setScope(k,v){ try{ v?localStorage.setItem(k,v):localStorage.removeItem(k) }catch(e){} }
 
 async function api(path, {method, body, form, blob}={}){
   if(!method) method = (form || body!==undefined) ? "POST" : "GET";
   const headers={}; const tok=getToken(); if(tok) headers["Authorization"]="Bearer "+tok;
+  const cid=getScope(COMPANY_KEY); if(cid) headers["X-Company-Id"]=cid;
+  const fid=getScope(FACTORY_KEY); if(fid) headers["X-Factory-Id"]=fid;
   let payload;
   if(form){ payload=new URLSearchParams(form); headers["Content-Type"]="application/x-www-form-urlencoded"; }
   else if(body!==undefined){ payload=JSON.stringify(body); headers["Content-Type"]="application/json"; }
@@ -2448,12 +2455,29 @@ function App(){
   // selection drives the as-of date applied to dashboard/report queries.
   const [fys,setFys]=useState([]); const [fy,setFy]=useState(()=>{ try{return localStorage.getItem("erp_fy")||currentFY();}catch(e){return currentFY();} });
   const [refreshKey,setRefreshKey]=useState(0);
+  // Company/factory scope: options come from the user's authorized memberships.
+  const [ctx,setCtx]=useState(null);
+  const [companyId,setCompanyId]=useState(()=>getScope(COMPANY_KEY));
+  const [factoryId,setFactoryId]=useState(()=>getScope(FACTORY_KEY));
+  const loadCtx=useCallback((recover)=>{ api("/api/me/context").then(c=>{ setCtx(c);
+    if(c && c.active){ if(c.active.company_id) setCompanyId(c.active.company_id); }
+  }).catch(()=>{ // stale scope (e.g. membership changed) -> clear once and retry
+    if(recover!==false){ setScope(COMPANY_KEY,""); setScope(FACTORY_KEY,""); setCompanyId(""); setFactoryId("");
+      api("/api/me/context").then(setCtx).catch(()=>{}); }
+  }); },[]);
+  useEffect(()=>{ loadCtx(); },[loadCtx]);
   useEffect(()=>{ api("/api/admin/periods").then(ps=>{
     const years=[...new Set((ps||[]).map(p=>p.fiscal_year).filter(Boolean))].sort().reverse();
     if(!years.includes(currentFY())) years.unshift(currentFY());
     setFys(years);
-  }).catch(()=>setFys([currentFY()])); },[]);
+  }).catch(()=>setFys([currentFY()])); },[refreshKey]);
   const pickFy=v=>{ setFy(v); try{localStorage.setItem("erp_fy",v);}catch(e){} setRefreshKey(k=>k+1); };
+  const pickCompany=v=>{ setScope(COMPANY_KEY,v); setCompanyId(v);
+    setScope(FACTORY_KEY,""); setFactoryId("");   // factory belongs to a company
+    setRefreshKey(k=>k+1); loadCtx(false); };
+  const pickFactory=v=>{ setScope(FACTORY_KEY,v); setFactoryId(v); setRefreshKey(k=>k+1); };
+  const activeCompany = (ctx && ctx.companies||[]).find(c=>c.id===(companyId||(ctx&&ctx.active&&ctx.active.company_id)));
+  const factories = (activeCompany && activeCompany.factories) || [];
   const asOf=fyAsOf(fy);
   const loadNotif=useCallback(()=>api("/api/notifications/unread-count").then(r=>setNotif(r.count||0)).catch(()=>{}),[]);
   useEffect(()=>{ api("/api/auth/me").then(setMe).catch(()=>{}); loadNotif();
@@ -2485,7 +2509,7 @@ function App(){
         <div className="group">Reports</div>{navBtn("reports","Reports")}
         <div className="group">Admin</div>{navBtn("approvals","Approvals")}{navBtn("acctops","GST Adj / Year-End")}{navBtn("admin","Administration")}
         <div className="group">Session</div>
-        <button onClick={()=>{setToken(null); location.reload();}}>Log out</button>
+        <button onClick={()=>{setToken(null); setScope(COMPANY_KEY,""); setScope(FACTORY_KEY,""); location.reload();}}>Log out</button>
       </nav>
     </aside>
     <div className="main">
@@ -2496,6 +2520,16 @@ function App(){
           <button className="bell" title="Notifications" onClick={()=>{go("notifications"); loadNotif();}}>
             🔔{notif>0 && <span className="bell-dot">{notif>99?"99+":notif}</span>}</button>
           <button className="refresh-btn" title="Refresh data" onClick={()=>setRefreshKey(k=>k+1)}>⟳</button>
+          {ctx && (ctx.companies||[]).length>1 &&
+            <select className="fy-select" title="Company" value={companyId||(ctx.active&&ctx.active.company_id)||""}
+                    onChange={e=>pickCompany(e.target.value)}>
+              {ctx.companies.map(c=><option key={c.id} value={c.id}>{c.code}</option>)}
+            </select>}
+          {factories.length>0 &&
+            <select className="fy-select" title="Factory" value={factoryId} onChange={e=>pickFactory(e.target.value)}>
+              <option value="">All factories</option>
+              {factories.map(f=><option key={f.id} value={f.id}>{f.name}</option>)}
+            </select>}
           <select className="fy-select" title="Financial year" value={fy} onChange={e=>pickFy(e.target.value)}>
             {fys.map(y=>{ const [a,b]=y.split("-"); return <option key={y} value={y}>FY {a}–{(b||"").slice(2)}</option>; })}
           </select>
