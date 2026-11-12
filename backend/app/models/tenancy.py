@@ -16,6 +16,7 @@ Access control:
 """
 from __future__ import annotations
 
+import enum
 import uuid
 from datetime import datetime
 
@@ -152,6 +153,10 @@ class IntercompanyAccountMapping(AuditMixin, Base):
         ForeignKey("companies.id", ondelete="CASCADE"), index=True)
     due_from_account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("chart_of_accounts.id"))
     due_to_account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("chart_of_accounts.id"))
+    # Stable account CODES (identical across the central catalog and the company's
+    # own database) used for cross-database posting, where account ids differ per DB.
+    due_from_account_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    due_to_account_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
     is_approved: Mapped[bool] = mapped_column(Boolean, default=False)
     approved_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -177,3 +182,36 @@ class CompanyDatabase(AuditMixin, Base):
     dsn: Mapped[str] = mapped_column(String(500))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     provisioned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class IntercompanyTxnStatus(str, enum.Enum):
+    PENDING = "PENDING"            # created, nothing posted yet
+    SELLER_POSTED = "SELLER_POSTED"   # seller leg committed in A's DB
+    COMPLETED = "COMPLETED"        # both legs committed
+    FAILED = "FAILED"             # could not complete; awaiting reconciliation
+    COMPENSATED = "COMPENSATED"    # seller leg reversed after a buyer-leg failure
+
+
+class IntercompanyTxn(AuditMixin, Base):
+    """Saga / outbox record for a cross-database inter-company transaction.
+
+    Lives in the CENTRAL database. Two company databases cannot be committed in a
+    single transaction, so an inter-company charge is posted as a saga: seller leg
+    in company A's database, then buyer leg in company B's database, each
+    idempotent on a derived posting_reference. ``idempotency_key`` prevents
+    duplicate sagas; status drives recovery/compensation by the reconciler.
+    """
+
+    __tablename__ = "intercompany_txns"
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    idempotency_key: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    seller_company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"), index=True)
+    buyer_company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"), index=True)
+    taxable: Mapped[object] = mapped_column(Money, default=0)
+    tax_code_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    voucher_date: Mapped[object | None] = mapped_column(String(10), nullable=True)  # ISO date
+    status: Mapped[IntercompanyTxnStatus] = mapped_column(String(16), default=IntercompanyTxnStatus.PENDING, index=True)
+    seller_voucher_number: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    buyer_voucher_number: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    attempts: Mapped[int] = mapped_column(default=0)
+    last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)

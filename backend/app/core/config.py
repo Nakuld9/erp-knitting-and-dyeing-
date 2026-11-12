@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     rate_limit_per_minute: int = 240          # general API ceiling
     rate_limit_login_per_minute: int = 20     # tighter: brute-force protection
 
+    # Cross-database inter-company live posting. DISABLED by default: the saga
+    # must pass real-PostgreSQL two-database tests before it is turned on in prod.
+    intercompany_live_posting: bool = False
+
     # --- Database ---
     # Production: postgresql+psycopg2://user:pass@host:5432/erp
     # Tests default to in-memory SQLite (see tests/conftest.py).

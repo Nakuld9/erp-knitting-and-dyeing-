@@ -143,6 +143,8 @@ from app.models.tenancy import (  # noqa: F401
     ConsolidationElimination,
     GSTRegistration,
     IntercompanyAccountMapping,
+    IntercompanyTxn,
+    IntercompanyTxnStatus,
     Organization,
     UserCompanyMembership,
     UserFactoryMembership,

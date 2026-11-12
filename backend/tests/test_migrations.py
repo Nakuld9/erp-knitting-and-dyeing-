@@ -188,3 +188,15 @@ def test_factory_columns_added_and_reversible(temp_db):
     for t in FACTORY_TABLES:
         assert not _has_column(path, t, "factory_id"), f"{t}.factory_id should be gone after downgrade"
         assert _has_table(path, t), f"{t} itself must survive the downgrade"
+
+
+def test_intercompany_saga_table_added_and_reversible(temp_db):
+    """0009 adds intercompany_txns + mapping account-code columns; reversible."""
+    url, path = temp_db
+    cfg = _alembic_cfg(url)
+    command.upgrade(cfg, "head")
+    assert _has_table(path, "intercompany_txns")
+    assert _has_column(path, "intercompany_account_mappings", "due_from_account_code")
+    command.downgrade(cfg, "0008_company_databases")
+    assert not _has_table(path, "intercompany_txns")
+    assert not _has_column(path, "intercompany_account_mappings", "due_from_account_code")

@@ -68,6 +68,7 @@ def create_mapping(db: Session, *, company_id: uuid.UUID, counterparty_company_i
     m = IntercompanyAccountMapping(
         company_id=company_id, counterparty_company_id=counterparty_company_id,
         due_from_account_id=due_from_account_id, due_to_account_id=due_to_account_id,
+        due_from_account_code=due_from.code, due_to_account_code=due_to.code,
         is_approved=False, is_active=True, created_by=created_by)
     db.add(m)
     db.commit()
