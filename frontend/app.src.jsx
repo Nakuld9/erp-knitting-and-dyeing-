@@ -2408,6 +2408,88 @@ function ChartOfAccounts(){
   </div>);
 }
 
+// Group & Tenancy admin — set up organizations (groups), assign companies to a
+// group, grant company memberships, and configure inter-company account mappings.
+function Tenancy(){
+  const [orgs,setOrgs]=useState([]); const [companies,setCompanies]=useState([]);
+  const [users,setUsers]=useState([]); const [maps,setMaps]=useState([]);
+  const [msg,setMsg]=useState(""); const [err,setErr]=useState("");
+  const [org,setOrg]=useState({code:"",name:""});
+  const [assign,setAssign]=useState({company_id:"",organization_id:""});
+  const [mem,setMem]=useState({user_id:"",company_id:"",is_default:true});
+  const [icm,setIcm]=useState({company_id:"",counterparty_company_id:"",due_from_account_code:"",due_to_account_code:""});
+  const reload=useCallback(()=>{ setErr("");
+    api("/api/admin/organizations").then(setOrgs).catch(e=>setErr(e.message));
+    api("/api/admin/companies").then(setCompanies).catch(e=>setErr(e.message));
+    api("/api/admin/users").then(setUsers).catch(()=>{});
+    api("/api/admin/intercompany-mappings").then(setMaps).catch(()=>{});
+  },[]);
+  useEffect(()=>{ reload(); },[reload]);
+  const run=async(fn)=>{ setErr(""); setMsg(""); try{ await fn(); reload(); }catch(e){ setErr(e.message); } };
+  const coName=id=>{ const c=companies.find(x=>x.id===id); return c?c.code:(id||"").slice(0,8); };
+  return (<div>
+    {err && <div className="alert-list"><div className="muted" style={{color:"var(--rose,#c0392b)"}}>⚠ {err}</div></div>}
+    {msg && <div className="alert-list"><div className="muted">✓ {msg}</div></div>}
+
+    <Panel title="Organizations (company groups)">
+      <table><thead><tr><th>Code</th><th>Name</th></tr></thead>
+        <tbody>{orgs.map(o=><tr key={o.id}><td>{o.code}</td><td>{o.name}</td></tr>)}
+          {orgs.length===0 && <tr><td colSpan={2} className="muted">No groups yet.</td></tr>}</tbody></table>
+      <div className="form-row" style={{marginTop:10,display:"flex",gap:8,flexWrap:"wrap",alignItems:"end"}}>
+        <div className="field"><label>Code</label><input value={org.code} onChange={e=>setOrg({...org,code:e.target.value})} placeholder="GRP"/></div>
+        <div className="field"><label>Name</label><input value={org.name} onChange={e=>setOrg({...org,name:e.target.value})} placeholder="Textile Group"/></div>
+        <button onClick={()=>run(async()=>{ await api("/api/admin/organizations",{body:org}); setOrg({code:"",name:""}); setMsg("Group created"); })}>Create group</button>
+      </div>
+    </Panel>
+
+    <Panel title="Assign a company to a group">
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"end"}}>
+        <div className="field"><label>Company</label>
+          <select value={assign.company_id} onChange={e=>setAssign({...assign,company_id:e.target.value})}>
+            <option value="">— select —</option>{companies.map(c=><option key={c.id} value={c.id}>{c.code} · {c.name}{c.organization_id?" (grouped)":""}</option>)}</select></div>
+        <div className="field"><label>Group</label>
+          <select value={assign.organization_id} onChange={e=>setAssign({...assign,organization_id:e.target.value})}>
+            <option value="">— none —</option>{orgs.map(o=><option key={o.id} value={o.id}>{o.code}</option>)}</select></div>
+        <button disabled={!assign.company_id} onClick={()=>run(async()=>{ await api(`/api/admin/companies/${assign.company_id}/organization`,{body:{organization_id:assign.organization_id||null}}); setMsg("Company assignment updated"); })}>Assign</button>
+      </div>
+    </Panel>
+
+    <Panel title="Grant company membership">
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"end"}}>
+        <div className="field"><label>User</label>
+          <select value={mem.user_id} onChange={e=>setMem({...mem,user_id:e.target.value})}>
+            <option value="">— select —</option>{users.map(u=><option key={u.id} value={u.id}>{u.username}</option>)}</select></div>
+        <div className="field"><label>Company</label>
+          <select value={mem.company_id} onChange={e=>setMem({...mem,company_id:e.target.value})}>
+            <option value="">— select —</option>{companies.map(c=><option key={c.id} value={c.id}>{c.code}</option>)}</select></div>
+        <label style={{display:"flex",gap:4,alignItems:"center"}}><input type="checkbox" checked={mem.is_default} onChange={e=>setMem({...mem,is_default:e.target.checked})}/> default</label>
+        <button disabled={!mem.user_id||!mem.company_id} onClick={()=>run(async()=>{ await api("/api/admin/memberships/company",{body:mem}); setMsg("Membership granted"); })}>Grant</button>
+      </div>
+    </Panel>
+
+    <Panel title="Inter-company account mappings">
+      <table><thead><tr><th>From → To</th><th>Approved</th><th></th></tr></thead>
+        <tbody>{maps.map(m=><tr key={m.id}>
+          <td>{coName(m.company_id)} → {coName(m.counterparty_company_id)}</td>
+          <td>{m.is_approved?"✓":"pending"}</td>
+          <td>{!m.is_approved && <button onClick={()=>run(async()=>{ await api(`/api/admin/intercompany-mappings/${m.id}/approve`,{method:"POST"}); setMsg("Mapping approved"); })}>Approve</button>}</td></tr>)}
+          {maps.length===0 && <tr><td colSpan={3} className="muted">No mappings configured.</td></tr>}</tbody></table>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"end",marginTop:10}}>
+        <div className="field"><label>Company</label>
+          <select value={icm.company_id} onChange={e=>setIcm({...icm,company_id:e.target.value})}>
+            <option value="">—</option>{companies.map(c=><option key={c.id} value={c.id}>{c.code}</option>)}</select></div>
+        <div className="field"><label>Counterparty</label>
+          <select value={icm.counterparty_company_id} onChange={e=>setIcm({...icm,counterparty_company_id:e.target.value})}>
+            <option value="">—</option>{companies.map(c=><option key={c.id} value={c.id}>{c.code}</option>)}</select></div>
+        <div className="field"><label>Due-from a/c</label><input value={icm.due_from_account_code} onChange={e=>setIcm({...icm,due_from_account_code:e.target.value})} placeholder="1050"/></div>
+        <div className="field"><label>Due-to a/c</label><input value={icm.due_to_account_code} onChange={e=>setIcm({...icm,due_to_account_code:e.target.value})} placeholder="2070"/></div>
+        <button disabled={!icm.company_id||!icm.counterparty_company_id} onClick={()=>run(async()=>{ await api("/api/admin/intercompany-mappings",{body:icm}); setIcm({company_id:"",counterparty_company_id:"",due_from_account_code:"",due_to_account_code:""}); setMsg("Mapping created (pending approval)"); })}>Add mapping</button>
+      </div>
+      <div className="muted" style={{marginTop:6}}>Due-from must be an ASSET account, due-to a LIABILITY account, in the company's own chart of accounts. An accountant approves before posting.</div>
+    </Panel>
+  </div>);
+}
+
 // Group (consolidated) dashboard — company-wise + consolidated figures for the
 // user's company group, from the read-only consolidation APIs.
 function GroupDash({refreshKey}){
@@ -2499,12 +2581,13 @@ const PAGES={
   costing:{t:"Costing & Profitability",c:Costing}, devices:{t:"Devices & Labels",c:Devices},
   masters:{t:"Master Data",c:MastersManager}, coa:{t:"Chart of Accounts",c:ChartOfAccounts},
   vouchers:{t:"Vouchers",c:Vouchers}, admin:{t:"Administration",c:Admin},
+  tenancy:{t:"Group & Tenancy",c:Tenancy},
   reports:{t:"Reports",c:Reports},
 };
 const NAV_ICON={group:"🏛️",owner:"📊",factory:"🏭",accounts:"💼",chemical:"🧪",purchaseorders:"📝",purchase:"📥",
   knitting:"🧶",batching:"🧺",pipeline:"🎯",salesorders:"🛒",sales:"🧾",dyeing:"🎨",vouchers:"📒",
   inventoryops:"🔁",stock:"📦",stores:"🪡",jobwork:"🔄",masters:"🗃️",coa:"📚",customers:"👤",suppliers:"🏢",warehouses:"🏬",quality:"🔍",assets:"🏗️",
-  payroll:"💰",costing:"📐",devices:"🖨️",reports:"📈",approvals:"✔️",notifications:"🔔",acctops:"🧮",admin:"⚙️"};
+  payroll:"💰",costing:"📐",devices:"🖨️",reports:"📈",approvals:"✔️",notifications:"🔔",acctops:"🧮",admin:"⚙️",tenancy:"🏛️"};
 function fyLabel(){ const d=new Date(); const y=d.getMonth()>=3?d.getFullYear():d.getFullYear()-1; return `FY ${y}–${(y+1)%100}`; }
 
 // Financial year helpers: FY string "2026-2027" -> the as-of date to query.
@@ -2574,7 +2657,7 @@ function App(){
         <div className="group">Costing</div>{navBtn("costing","Costing")}
         <div className="group">Devices</div>{navBtn("devices","Devices & Labels")}
         <div className="group">Reports</div>{navBtn("reports","Reports")}
-        <div className="group">Admin</div>{navBtn("approvals","Approvals")}{navBtn("acctops","GST Adj / Year-End")}{navBtn("admin","Administration")}
+        <div className="group">Admin</div>{navBtn("approvals","Approvals")}{navBtn("acctops","GST Adj / Year-End")}{navBtn("admin","Administration")}{navBtn("tenancy","Group & Tenancy")}
         <div className="group">Session</div>
         <button onClick={()=>{setToken(null); setScope(COMPANY_KEY,""); setScope(FACTORY_KEY,""); location.reload();}}>Log out</button>
       </nav>

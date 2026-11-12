@@ -7852,6 +7852,303 @@ function ChartOfAccounts() {
   })));
 }
 
+// Group & Tenancy admin — set up organizations (groups), assign companies to a
+// group, grant company memberships, and configure inter-company account mappings.
+function Tenancy() {
+  const [orgs, setOrgs] = useState([]);
+  const [companies, setCompanies] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [maps, setMaps] = useState([]);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+  const [org, setOrg] = useState({
+    code: "",
+    name: ""
+  });
+  const [assign, setAssign] = useState({
+    company_id: "",
+    organization_id: ""
+  });
+  const [mem, setMem] = useState({
+    user_id: "",
+    company_id: "",
+    is_default: true
+  });
+  const [icm, setIcm] = useState({
+    company_id: "",
+    counterparty_company_id: "",
+    due_from_account_code: "",
+    due_to_account_code: ""
+  });
+  const reload = useCallback(() => {
+    setErr("");
+    api("/api/admin/organizations").then(setOrgs).catch(e => setErr(e.message));
+    api("/api/admin/companies").then(setCompanies).catch(e => setErr(e.message));
+    api("/api/admin/users").then(setUsers).catch(() => {});
+    api("/api/admin/intercompany-mappings").then(setMaps).catch(() => {});
+  }, []);
+  useEffect(() => {
+    reload();
+  }, [reload]);
+  const run = async fn => {
+    setErr("");
+    setMsg("");
+    try {
+      await fn();
+      reload();
+    } catch (e) {
+      setErr(e.message);
+    }
+  };
+  const coName = id => {
+    const c = companies.find(x => x.id === id);
+    return c ? c.code : (id || "").slice(0, 8);
+  };
+  return /*#__PURE__*/React.createElement("div", null, err && /*#__PURE__*/React.createElement("div", {
+    className: "alert-list"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "muted",
+    style: {
+      color: "var(--rose,#c0392b)"
+    }
+  }, "\u26A0 ", err)), msg && /*#__PURE__*/React.createElement("div", {
+    className: "alert-list"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "\u2713 ", msg)), /*#__PURE__*/React.createElement(Panel, {
+    title: "Organizations (company groups)"
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Code"), /*#__PURE__*/React.createElement("th", null, "Name"))), /*#__PURE__*/React.createElement("tbody", null, orgs.map(o => /*#__PURE__*/React.createElement("tr", {
+    key: o.id
+  }, /*#__PURE__*/React.createElement("td", null, o.code), /*#__PURE__*/React.createElement("td", null, o.name))), orgs.length === 0 && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+    colSpan: 2,
+    className: "muted"
+  }, "No groups yet.")))), /*#__PURE__*/React.createElement("div", {
+    className: "form-row",
+    style: {
+      marginTop: 10,
+      display: "flex",
+      gap: 8,
+      flexWrap: "wrap",
+      alignItems: "end"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Code"), /*#__PURE__*/React.createElement("input", {
+    value: org.code,
+    onChange: e => setOrg({
+      ...org,
+      code: e.target.value
+    }),
+    placeholder: "GRP"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Name"), /*#__PURE__*/React.createElement("input", {
+    value: org.name,
+    onChange: e => setOrg({
+      ...org,
+      name: e.target.value
+    }),
+    placeholder: "Textile Group"
+  })), /*#__PURE__*/React.createElement("button", {
+    onClick: () => run(async () => {
+      await api("/api/admin/organizations", {
+        body: org
+      });
+      setOrg({
+        code: "",
+        name: ""
+      });
+      setMsg("Group created");
+    })
+  }, "Create group"))), /*#__PURE__*/React.createElement(Panel, {
+    title: "Assign a company to a group"
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      flexWrap: "wrap",
+      alignItems: "end"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Company"), /*#__PURE__*/React.createElement("select", {
+    value: assign.company_id,
+    onChange: e => setAssign({
+      ...assign,
+      company_id: e.target.value
+    })
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "\u2014 select \u2014"), companies.map(c => /*#__PURE__*/React.createElement("option", {
+    key: c.id,
+    value: c.id
+  }, c.code, " \xB7 ", c.name, c.organization_id ? " (grouped)" : "")))), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Group"), /*#__PURE__*/React.createElement("select", {
+    value: assign.organization_id,
+    onChange: e => setAssign({
+      ...assign,
+      organization_id: e.target.value
+    })
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "\u2014 none \u2014"), orgs.map(o => /*#__PURE__*/React.createElement("option", {
+    key: o.id,
+    value: o.id
+  }, o.code)))), /*#__PURE__*/React.createElement("button", {
+    disabled: !assign.company_id,
+    onClick: () => run(async () => {
+      await api(`/api/admin/companies/${assign.company_id}/organization`, {
+        body: {
+          organization_id: assign.organization_id || null
+        }
+      });
+      setMsg("Company assignment updated");
+    })
+  }, "Assign"))), /*#__PURE__*/React.createElement(Panel, {
+    title: "Grant company membership"
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      flexWrap: "wrap",
+      alignItems: "end"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "User"), /*#__PURE__*/React.createElement("select", {
+    value: mem.user_id,
+    onChange: e => setMem({
+      ...mem,
+      user_id: e.target.value
+    })
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "\u2014 select \u2014"), users.map(u => /*#__PURE__*/React.createElement("option", {
+    key: u.id,
+    value: u.id
+  }, u.username)))), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Company"), /*#__PURE__*/React.createElement("select", {
+    value: mem.company_id,
+    onChange: e => setMem({
+      ...mem,
+      company_id: e.target.value
+    })
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "\u2014 select \u2014"), companies.map(c => /*#__PURE__*/React.createElement("option", {
+    key: c.id,
+    value: c.id
+  }, c.code)))), /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: "flex",
+      gap: 4,
+      alignItems: "center"
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: mem.is_default,
+    onChange: e => setMem({
+      ...mem,
+      is_default: e.target.checked
+    })
+  }), " default"), /*#__PURE__*/React.createElement("button", {
+    disabled: !mem.user_id || !mem.company_id,
+    onClick: () => run(async () => {
+      await api("/api/admin/memberships/company", {
+        body: mem
+      });
+      setMsg("Membership granted");
+    })
+  }, "Grant"))), /*#__PURE__*/React.createElement(Panel, {
+    title: "Inter-company account mappings"
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "From \u2192 To"), /*#__PURE__*/React.createElement("th", null, "Approved"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, maps.map(m => /*#__PURE__*/React.createElement("tr", {
+    key: m.id
+  }, /*#__PURE__*/React.createElement("td", null, coName(m.company_id), " \u2192 ", coName(m.counterparty_company_id)), /*#__PURE__*/React.createElement("td", null, m.is_approved ? "✓" : "pending"), /*#__PURE__*/React.createElement("td", null, !m.is_approved && /*#__PURE__*/React.createElement("button", {
+    onClick: () => run(async () => {
+      await api(`/api/admin/intercompany-mappings/${m.id}/approve`, {
+        method: "POST"
+      });
+      setMsg("Mapping approved");
+    })
+  }, "Approve")))), maps.length === 0 && /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", {
+    colSpan: 3,
+    className: "muted"
+  }, "No mappings configured.")))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      flexWrap: "wrap",
+      alignItems: "end",
+      marginTop: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Company"), /*#__PURE__*/React.createElement("select", {
+    value: icm.company_id,
+    onChange: e => setIcm({
+      ...icm,
+      company_id: e.target.value
+    })
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "\u2014"), companies.map(c => /*#__PURE__*/React.createElement("option", {
+    key: c.id,
+    value: c.id
+  }, c.code)))), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Counterparty"), /*#__PURE__*/React.createElement("select", {
+    value: icm.counterparty_company_id,
+    onChange: e => setIcm({
+      ...icm,
+      counterparty_company_id: e.target.value
+    })
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "\u2014"), companies.map(c => /*#__PURE__*/React.createElement("option", {
+    key: c.id,
+    value: c.id
+  }, c.code)))), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Due-from a/c"), /*#__PURE__*/React.createElement("input", {
+    value: icm.due_from_account_code,
+    onChange: e => setIcm({
+      ...icm,
+      due_from_account_code: e.target.value
+    }),
+    placeholder: "1050"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Due-to a/c"), /*#__PURE__*/React.createElement("input", {
+    value: icm.due_to_account_code,
+    onChange: e => setIcm({
+      ...icm,
+      due_to_account_code: e.target.value
+    }),
+    placeholder: "2070"
+  })), /*#__PURE__*/React.createElement("button", {
+    disabled: !icm.company_id || !icm.counterparty_company_id,
+    onClick: () => run(async () => {
+      await api("/api/admin/intercompany-mappings", {
+        body: icm
+      });
+      setIcm({
+        company_id: "",
+        counterparty_company_id: "",
+        due_from_account_code: "",
+        due_to_account_code: ""
+      });
+      setMsg("Mapping created (pending approval)");
+    })
+  }, "Add mapping")), /*#__PURE__*/React.createElement("div", {
+    className: "muted",
+    style: {
+      marginTop: 6
+    }
+  }, "Due-from must be an ASSET account, due-to a LIABILITY account, in the company's own chart of accounts. An accountant approves before posting.")));
+}
+
 // Group (consolidated) dashboard — company-wise + consolidated figures for the
 // user's company group, from the read-only consolidation APIs.
 function GroupDash({
@@ -8144,6 +8441,10 @@ const PAGES = {
     t: "Administration",
     c: Admin
   },
+  tenancy: {
+    t: "Group & Tenancy",
+    c: Tenancy
+  },
   reports: {
     t: "Reports",
     c: Reports
@@ -8182,7 +8483,8 @@ const NAV_ICON = {
   approvals: "✔️",
   notifications: "🔔",
   acctops: "🧮",
-  admin: "⚙️"
+  admin: "⚙️",
+  tenancy: "🏛️"
 };
 function fyLabel() {
   const d = new Date();
@@ -8323,7 +8625,7 @@ function App() {
     className: "group"
   }, "Reports"), navBtn("reports", "Reports"), /*#__PURE__*/React.createElement("div", {
     className: "group"
-  }, "Admin"), navBtn("approvals", "Approvals"), navBtn("acctops", "GST Adj / Year-End"), navBtn("admin", "Administration"), /*#__PURE__*/React.createElement("div", {
+  }, "Admin"), navBtn("approvals", "Approvals"), navBtn("acctops", "GST Adj / Year-End"), navBtn("admin", "Administration"), navBtn("tenancy", "Group & Tenancy"), /*#__PURE__*/React.createElement("div", {
     className: "group"
   }, "Session"), /*#__PURE__*/React.createElement("button", {
     onClick: () => {

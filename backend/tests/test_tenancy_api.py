@@ -137,3 +137,10 @@ def test_gst_registration_company_isolation(client, auth_headers, db):
     b_gstins = {g["gstin"] for g in b_list}
     assert "27AAAAA0000A1Z5" in a_gstins and "29BBBBB1111B2Z4" not in a_gstins
     assert "29BBBBB1111B2Z4" in b_gstins and "27AAAAA0000A1Z5" not in b_gstins
+
+
+def test_list_all_companies(client, auth_headers, db):
+    company = db.execute(select(Company).where(Company.code == "DEMO")).scalar_one()
+    r = client.get("/api/admin/companies", headers=auth_headers)
+    assert r.status_code == 200, r.text
+    assert any(c["code"] == "DEMO" and c["id"] == str(company.id) for c in r.json())

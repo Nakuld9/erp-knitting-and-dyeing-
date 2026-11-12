@@ -126,6 +126,16 @@ class OrganizationIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
 
 
+@router.get("/api/admin/companies")
+def list_all_companies(db: Session = Depends(get_db),
+                       user: User = Depends(require_permission("admin.manage"))):
+    """All companies with their group assignment — for tenancy administration."""
+    rows = db.execute(select(Company).order_by(Company.code)).scalars().all()
+    return [{"id": str(c.id), "code": c.code, "name": c.name, "state_code": c.state_code,
+             "organization_id": str(c.organization_id) if c.organization_id else None,
+             "is_active": c.is_active} for c in rows]
+
+
 @router.get("/api/admin/organizations")
 def list_organizations(db: Session = Depends(get_db),
                        user: User = Depends(require_permission("master.read"))):
