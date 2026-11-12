@@ -7851,7 +7851,171 @@ function ChartOfAccounts() {
     }]
   })));
 }
+
+// Group (consolidated) dashboard — company-wise + consolidated figures for the
+// user's company group, from the read-only consolidation APIs.
+function GroupDash({
+  refreshKey
+}) {
+  const [ctx, setCtx] = useState(null);
+  const [pnl, setPnl] = useState(null);
+  const [recon, setRecon] = useState([]);
+  const [byFactory, setByFactory] = useState([]);
+  const [err, setErr] = useState("");
+  const [note, setNote] = useState("");
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setErr("");
+    setNote("");
+    api("/api/me/context").then(c => {
+      if (!alive) return;
+      setCtx(c);
+      const org = (c.companies || []).map(x => x.organization_id).find(Boolean);
+      if (!org) {
+        setNote("No company group is configured. Assign companies to an Organization (Administration) to see consolidated figures.");
+        setLoading(false);
+        return;
+      }
+      Promise.all([api("/api/reports/consolidated/pnl?organization_id=" + org).catch(e => {
+        setErr(e.message);
+        return null;
+      }), api("/api/admin/intercompany-reconciliation").catch(() => []), api("/api/costing/by-factory").catch(() => [])]).then(([p, r, f]) => {
+        if (!alive) return;
+        setPnl(p);
+        setRecon(r || []);
+        setByFactory(f || []);
+        setLoading(false);
+      });
+    }).catch(e => {
+      if (alive) {
+        setErr(e.message);
+        setLoading(false);
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, [refreshKey]);
+  if (loading) return /*#__PURE__*/React.createElement(Panel, null, /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "Loading group figures\u2026"));
+  if (note) return /*#__PURE__*/React.createElement(Panel, {
+    title: "Group Dashboard"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, note));
+  if (err && !pnl) return /*#__PURE__*/React.createElement(Panel, {
+    title: "Group Dashboard"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "Consolidated view unavailable: ", err, ". You must be authorized for every company in the group."));
+  const companies = pnl && pnl.companies || [];
+  const readyPairs = recon.filter(r => r.ready_for_elimination);
+  const net = pnl ? Number(pnl.net_profit) : 0;
+  const mono = {
+    fontFamily: "monospace",
+    fontSize: ".85em"
+  };
+  const cols = {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit,minmax(320px,1fr))",
+    gap: "12px"
+  };
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "kpi-grid"
+  }, /*#__PURE__*/React.createElement(Stat, {
+    icon: "\uD83C\uDFE2",
+    label: "Companies in group",
+    value: companies.length,
+    tone: "info"
+  }), /*#__PURE__*/React.createElement(Stat, {
+    icon: "\uD83D\uDCB9",
+    label: "Consolidated income",
+    value: pnl ? inr(pnl.total_income) : "—",
+    tone: "green"
+  }), /*#__PURE__*/React.createElement(Stat, {
+    icon: "\uD83D\uDCB8",
+    label: "Consolidated expense",
+    value: pnl ? inr(pnl.total_expense) : "—",
+    tone: "amber"
+  }), /*#__PURE__*/React.createElement(Stat, {
+    icon: "\uD83D\uDCCA",
+    label: "Consolidated net profit",
+    value: pnl ? inr(pnl.net_profit) : "—",
+    tone: net >= 0 ? "green" : "rose"
+  })), pnl && !pnl.approved && /*#__PURE__*/React.createElement("div", {
+    className: "alert-list"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "\u26A0 ", pnl.eliminations_pending.length, " elimination(s) pending finance approval \u2014 figures exclude unapproved eliminations.")), /*#__PURE__*/React.createElement("div", {
+    style: cols
+  }, /*#__PURE__*/React.createElement(Panel, {
+    title: "Companies in the group"
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Code"), /*#__PURE__*/React.createElement("th", null, "Name"))), /*#__PURE__*/React.createElement("tbody", null, companies.map(c => /*#__PURE__*/React.createElement("tr", {
+    key: c.id
+  }, /*#__PURE__*/React.createElement("td", null, c.code), /*#__PURE__*/React.createElement("td", null, c.name)))))), /*#__PURE__*/React.createElement(Panel, {
+    title: "Inter-company reconciliation"
+  }, recon.length === 0 ? /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "No inter-company mappings configured.") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Direction"), /*#__PURE__*/React.createElement("th", null, "Approved"), /*#__PURE__*/React.createElement("th", null, "Reciprocal"), /*#__PURE__*/React.createElement("th", null, "Ready"))), /*#__PURE__*/React.createElement("tbody", null, recon.map((r, i) => /*#__PURE__*/React.createElement("tr", {
+    key: i
+  }, /*#__PURE__*/React.createElement("td", {
+    style: mono
+  }, (r.company_id || "").slice(0, 8), " \u2192 ", (r.counterparty_company_id || "").slice(0, 8)), /*#__PURE__*/React.createElement("td", null, r.approved ? "✓" : "—"), /*#__PURE__*/React.createElement("td", null, r.reciprocal_approved ? "✓" : r.reciprocal_configured ? "unapproved" : "missing"), /*#__PURE__*/React.createElement("td", null, r.ready_for_elimination ? "✓" : "—"))))), /*#__PURE__*/React.createElement("div", {
+    className: "muted",
+    style: {
+      marginTop: 6
+    }
+  }, readyPairs.length, " pair(s) ready for elimination."))), /*#__PURE__*/React.createElement(Panel, {
+    title: "Consolidated Profit & Loss"
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Account"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Income"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Expense"))), /*#__PURE__*/React.createElement("tbody", null, (pnl.income || []).map(r => /*#__PURE__*/React.createElement("tr", {
+    key: "i" + r.account_code
+  }, /*#__PURE__*/React.createElement("td", null, r.account_code, " \xB7 ", r.account_name), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(r.amount)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }))), (pnl.expense || []).map(r => /*#__PURE__*/React.createElement("tr", {
+    key: "e" + r.account_code
+  }, /*#__PURE__*/React.createElement("td", null, r.account_code, " \xB7 ", r.account_name), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(r.amount)))), /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("b", null, "Totals")), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, /*#__PURE__*/React.createElement("b", null, inr2(pnl.total_income))), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, /*#__PURE__*/React.createElement("b", null, inr2(pnl.total_expense)))), /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("b", null, "Net profit")), /*#__PURE__*/React.createElement("td", {
+    className: "num",
+    colSpan: 2
+  }, /*#__PURE__*/React.createElement("b", null, inr(pnl.net_profit))))))), byFactory.length > 0 && /*#__PURE__*/React.createElement(Panel, {
+    title: "Factory production (acting company)"
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Factory"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Knit kg"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Dye kg"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Efficiency %"))), /*#__PURE__*/React.createElement("tbody", null, byFactory.map((r, i) => /*#__PURE__*/React.createElement("tr", {
+    key: i
+  }, /*#__PURE__*/React.createElement("td", null, r.factory), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(r.knitting_produced_kg)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(r.dyeing_fabric_kg)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, r.knitting_efficiency_pct)))))));
+}
 const PAGES = {
+  group: {
+    t: "Group Dashboard",
+    c: GroupDash
+  },
   owner: {
     t: "Owner Dashboard",
     c: OwnerDash
@@ -7986,6 +8150,7 @@ const PAGES = {
   }
 };
 const NAV_ICON = {
+  group: "🏛️",
   owner: "📊",
   factory: "🏭",
   accounts: "💼",
@@ -8140,7 +8305,7 @@ function App() {
     className: "nav"
   }, /*#__PURE__*/React.createElement("div", {
     className: "group"
-  }, "Dashboards"), navBtn("owner", "Owner"), navBtn("factory", "Factory"), navBtn("accounts", "Accounts"), navBtn("chemical", "Chemical"), /*#__PURE__*/React.createElement("div", {
+  }, "Dashboards"), navBtn("group", "Group"), navBtn("owner", "Owner"), navBtn("factory", "Factory"), navBtn("accounts", "Accounts"), navBtn("chemical", "Chemical"), /*#__PURE__*/React.createElement("div", {
     className: "group"
   }, "Transactions"), navBtn("purchaseorders", "Purchase Orders"), navBtn("purchase", "Purchase (GRN)"), navBtn("knitting", "Knitting"), navBtn("batching", "Batching"), navBtn("pipeline", "Sales Pipeline"), navBtn("salesorders", "Sales Orders"), navBtn("sales", "Sales Invoice"), navBtn("dyeing", "Dyeing & Dispensing"), navBtn("jobwork", "Job Work"), navBtn("vouchers", "Vouchers"), navBtn("inventoryops", "Inventory Ops"), navBtn("stock", "Stock on Hand"), navBtn("stores", "Stores & Spares"), /*#__PURE__*/React.createElement("div", {
     className: "group"
@@ -8225,6 +8390,8 @@ function App() {
     className: "content"
   }, page === "notifications" ? /*#__PURE__*/React.createElement(Notifications, {
     onChange: loadNotif
+  }) : page === "group" ? /*#__PURE__*/React.createElement(GroupDash, {
+    refreshKey: refreshKey
   }) : page === "owner" ? /*#__PURE__*/React.createElement(OwnerDash, {
     onNav: go,
     asOf: asOf,

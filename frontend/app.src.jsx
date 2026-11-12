@@ -2408,7 +2408,74 @@ function ChartOfAccounts(){
   </div>);
 }
 
+// Group (consolidated) dashboard — company-wise + consolidated figures for the
+// user's company group, from the read-only consolidation APIs.
+function GroupDash({refreshKey}){
+  const [ctx,setCtx]=useState(null); const [pnl,setPnl]=useState(null);
+  const [recon,setRecon]=useState([]); const [byFactory,setByFactory]=useState([]);
+  const [err,setErr]=useState(""); const [note,setNote]=useState(""); const [loading,setLoading]=useState(true);
+  useEffect(()=>{ let alive=true; setLoading(true); setErr(""); setNote("");
+    api("/api/me/context").then(c=>{ if(!alive) return; setCtx(c);
+      const org=(c.companies||[]).map(x=>x.organization_id).find(Boolean);
+      if(!org){ setNote("No company group is configured. Assign companies to an Organization (Administration) to see consolidated figures."); setLoading(false); return; }
+      Promise.all([
+        api("/api/reports/consolidated/pnl?organization_id="+org).catch(e=>{setErr(e.message);return null;}),
+        api("/api/admin/intercompany-reconciliation").catch(()=>[]),
+        api("/api/costing/by-factory").catch(()=>[]),
+      ]).then(([p,r,f])=>{ if(!alive) return; setPnl(p); setRecon(r||[]); setByFactory(f||[]); setLoading(false); });
+    }).catch(e=>{ if(alive){ setErr(e.message); setLoading(false);} });
+    return ()=>{alive=false;};
+  },[refreshKey]);
+  if(loading) return <Panel><div className="muted">Loading group figures…</div></Panel>;
+  if(note) return <Panel title="Group Dashboard"><div className="muted">{note}</div></Panel>;
+  if(err && !pnl) return <Panel title="Group Dashboard"><div className="muted">Consolidated view unavailable: {err}. You must be authorized for every company in the group.</div></Panel>;
+  const companies=(pnl&&pnl.companies)||[]; const readyPairs=recon.filter(r=>r.ready_for_elimination);
+  const net=pnl?Number(pnl.net_profit):0;
+  const mono={fontFamily:"monospace",fontSize:".85em"};
+  const cols={display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(320px,1fr))",gap:"12px"};
+  return (<div>
+    <div className="kpi-grid">
+      <Stat icon="🏢" label="Companies in group" value={companies.length} tone="info"/>
+      <Stat icon="💹" label="Consolidated income" value={pnl?inr(pnl.total_income):"—"} tone="green"/>
+      <Stat icon="💸" label="Consolidated expense" value={pnl?inr(pnl.total_expense):"—"} tone="amber"/>
+      <Stat icon="📊" label="Consolidated net profit" value={pnl?inr(pnl.net_profit):"—"} tone={net>=0?"green":"rose"}/>
+    </div>
+    {pnl && !pnl.approved && <div className="alert-list"><div className="muted">
+      ⚠ {pnl.eliminations_pending.length} elimination(s) pending finance approval — figures exclude unapproved eliminations.</div></div>}
+    <div style={cols}>
+      <Panel title="Companies in the group">
+        <table><thead><tr><th>Code</th><th>Name</th></tr></thead>
+          <tbody>{companies.map(c=><tr key={c.id}><td>{c.code}</td><td>{c.name}</td></tr>)}</tbody></table>
+      </Panel>
+      <Panel title="Inter-company reconciliation">
+        {recon.length===0 ? <div className="muted">No inter-company mappings configured.</div> :
+        <table><thead><tr><th>Direction</th><th>Approved</th><th>Reciprocal</th><th>Ready</th></tr></thead>
+          <tbody>{recon.map((r,i)=><tr key={i}>
+            <td style={mono}>{(r.company_id||"").slice(0,8)} → {(r.counterparty_company_id||"").slice(0,8)}</td>
+            <td>{r.approved?"✓":"—"}</td><td>{r.reciprocal_approved?"✓":(r.reciprocal_configured?"unapproved":"missing")}</td>
+            <td>{r.ready_for_elimination?"✓":"—"}</td></tr>)}</tbody></table>}
+        <div className="muted" style={{marginTop:6}}>{readyPairs.length} pair(s) ready for elimination.</div>
+      </Panel>
+    </div>
+    <Panel title="Consolidated Profit & Loss">
+      <table><thead><tr><th>Account</th><th className="num">Income</th><th className="num">Expense</th></tr></thead>
+        <tbody>
+          {(pnl.income||[]).map(r=><tr key={"i"+r.account_code}><td>{r.account_code} · {r.account_name}</td><td className="num">{inr2(r.amount)}</td><td className="num"></td></tr>)}
+          {(pnl.expense||[]).map(r=><tr key={"e"+r.account_code}><td>{r.account_code} · {r.account_name}</td><td className="num"></td><td className="num">{inr2(r.amount)}</td></tr>)}
+          <tr><td><b>Totals</b></td><td className="num"><b>{inr2(pnl.total_income)}</b></td><td className="num"><b>{inr2(pnl.total_expense)}</b></td></tr>
+          <tr><td><b>Net profit</b></td><td className="num" colSpan={2}><b>{inr(pnl.net_profit)}</b></td></tr>
+        </tbody></table>
+    </Panel>
+    {byFactory.length>0 && <Panel title="Factory production (acting company)">
+      <table><thead><tr><th>Factory</th><th className="num">Knit kg</th><th className="num">Dye kg</th><th className="num">Efficiency %</th></tr></thead>
+        <tbody>{byFactory.map((r,i)=><tr key={i}><td>{r.factory}</td><td className="num">{inr2(r.knitting_produced_kg)}</td>
+          <td className="num">{inr2(r.dyeing_fabric_kg)}</td><td className="num">{r.knitting_efficiency_pct}</td></tr>)}</tbody></table>
+    </Panel>}
+  </div>);
+}
+
 const PAGES={
+  group:{t:"Group Dashboard",c:GroupDash},
   owner:{t:"Owner Dashboard",c:OwnerDash}, factory:{t:"Factory Dashboard",c:FactoryDash},
   accounts:{t:"Accounts Dashboard",c:AccountsDash}, chemical:{t:"Chemical Dashboard",c:ChemicalDash},
   purchaseorders:{t:"Purchase Orders",c:PurchaseOrders},
@@ -2434,7 +2501,7 @@ const PAGES={
   vouchers:{t:"Vouchers",c:Vouchers}, admin:{t:"Administration",c:Admin},
   reports:{t:"Reports",c:Reports},
 };
-const NAV_ICON={owner:"📊",factory:"🏭",accounts:"💼",chemical:"🧪",purchaseorders:"📝",purchase:"📥",
+const NAV_ICON={group:"🏛️",owner:"📊",factory:"🏭",accounts:"💼",chemical:"🧪",purchaseorders:"📝",purchase:"📥",
   knitting:"🧶",batching:"🧺",pipeline:"🎯",salesorders:"🛒",sales:"🧾",dyeing:"🎨",vouchers:"📒",
   inventoryops:"🔁",stock:"📦",stores:"🪡",jobwork:"🔄",masters:"🗃️",coa:"📚",customers:"👤",suppliers:"🏢",warehouses:"🏬",quality:"🔍",assets:"🏗️",
   payroll:"💰",costing:"📐",devices:"🖨️",reports:"📈",approvals:"✔️",notifications:"🔔",acctops:"🧮",admin:"⚙️"};
@@ -2493,7 +2560,7 @@ function App(){
       <div className="brand">◆ Textile ERP<small>Knit · Dye · Finish · Grow</small></div>
       <nav className="nav">
         <div className="group">Dashboards</div>
-        {navBtn("owner","Owner")}{navBtn("factory","Factory")}
+        {navBtn("group","Group")}{navBtn("owner","Owner")}{navBtn("factory","Factory")}
         {navBtn("accounts","Accounts")}{navBtn("chemical","Chemical")}
         <div className="group">Transactions</div>
         {navBtn("purchaseorders","Purchase Orders")}{navBtn("purchase","Purchase (GRN)")}{navBtn("knitting","Knitting")}
@@ -2537,6 +2604,7 @@ function App(){
         </div></div>
       <div className="content">{
         page==="notifications"? <Notifications onChange={loadNotif}/>
+        : page==="group"? <GroupDash refreshKey={refreshKey}/>
         : page==="owner"? <OwnerDash onNav={go} asOf={asOf} refreshKey={refreshKey}/>
         : page==="factory"? <FactoryDash onNav={go} asOf={asOf} refreshKey={refreshKey}/>
         : page==="accounts"? <AccountsDash onNav={go} asOf={asOf} refreshKey={refreshKey}/>
