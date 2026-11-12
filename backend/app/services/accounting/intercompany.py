@@ -31,18 +31,23 @@ class IntercompanyConfigError(ValueError):
     """Inter-company configuration is missing, unapproved, or invalid (fail-closed)."""
 
 
-def _account_in_company(db: Session, account_id: uuid.UUID, company_id: uuid.UUID) -> ChartOfAccount:
-    acct = db.get(ChartOfAccount, account_id)
-    if acct is None or acct.company_id != company_id:
-        raise IntercompanyConfigError("Account not found in this company's chart of accounts")
+def _account_by_code(cdb: Session, company_id: uuid.UUID, code: str) -> ChartOfAccount:
+    """Resolve + validate an account by code in a company's OWN database."""
+    acct = cdb.execute(select(ChartOfAccount).where(
+        ChartOfAccount.company_id == company_id, ChartOfAccount.code == code)).scalar_one_or_none()
+    if acct is None:
+        raise IntercompanyConfigError(f"Account {code} not found in this company's chart of accounts")
     if acct.is_group or not acct.allow_posting or not acct.is_active:
-        raise IntercompanyConfigError(f"Account {acct.code} is not an active posting account")
+        raise IntercompanyConfigError(f"Account {code} is not an active posting account")
     return acct
 
 
 def create_mapping(db: Session, *, company_id: uuid.UUID, counterparty_company_id: uuid.UUID,
-                   due_from_account_id: uuid.UUID, due_to_account_id: uuid.UUID,
+                   due_from_code: str, due_to_code: str,
                    created_by: uuid.UUID | None = None) -> IntercompanyAccountMapping:
+    """Create an inter-company mapping from account CODES, validated against the
+    company's own database (the COA lives there under database-per-company). The
+    central mapping stores the codes (authoritative) plus the resolved ids."""
     if company_id == counterparty_company_id:
         raise IntercompanyConfigError("A company cannot be its own counterparty")
     if db.get(Company, company_id) is None:
@@ -50,13 +55,15 @@ def create_mapping(db: Session, *, company_id: uuid.UUID, counterparty_company_i
     if db.get(Company, counterparty_company_id) is None:
         raise IntercompanyConfigError("Counterparty company not found")
 
-    due_from = _account_in_company(db, due_from_account_id, company_id)
-    due_to = _account_in_company(db, due_to_account_id, company_id)
-    # control-account nature is validated, but the specific codes are the user's
-    if due_from.account_type != AccountType.ASSET.value:
-        raise IntercompanyConfigError("due_from must be an ASSET (receivable) account")
-    if due_to.account_type != AccountType.LIABILITY.value:
-        raise IntercompanyConfigError("due_to must be a LIABILITY (payable) account")
+    from app.core.db_router import company_session
+    with company_session(company_id) as cdb:
+        due_from = _account_by_code(cdb, company_id, due_from_code)
+        due_to = _account_by_code(cdb, company_id, due_to_code)
+        if due_from.account_type != AccountType.ASSET.value:
+            raise IntercompanyConfigError("due_from must be an ASSET (receivable) account")
+        if due_to.account_type != AccountType.LIABILITY.value:
+            raise IntercompanyConfigError("due_to must be a LIABILITY (payable) account")
+        due_from_id, due_to_id = due_from.id, due_to.id
 
     existing = db.execute(select(IntercompanyAccountMapping).where(
         IntercompanyAccountMapping.company_id == company_id,
@@ -67,8 +74,8 @@ def create_mapping(db: Session, *, company_id: uuid.UUID, counterparty_company_i
 
     m = IntercompanyAccountMapping(
         company_id=company_id, counterparty_company_id=counterparty_company_id,
-        due_from_account_id=due_from_account_id, due_to_account_id=due_to_account_id,
-        due_from_account_code=due_from.code, due_to_account_code=due_to.code,
+        due_from_account_code=due_from_code, due_to_account_code=due_to_code,
+        due_from_account_id=due_from_id, due_to_account_id=due_to_id,
         is_approved=False, is_active=True, created_by=created_by)
     db.add(m)
     db.commit()

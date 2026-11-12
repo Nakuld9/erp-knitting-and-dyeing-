@@ -200,3 +200,14 @@ def test_intercompany_saga_table_added_and_reversible(temp_db):
     command.downgrade(cfg, "0008_company_databases")
     assert not _has_table(path, "intercompany_txns")
     assert not _has_column(path, "intercompany_account_mappings", "due_from_account_code")
+
+
+def test_intercompany_mapping_ids_nullable(temp_db):
+    """0010 keeps the mapping table and account-code columns; account ids optional."""
+    url, path = temp_db
+    cfg = _alembic_cfg(url)
+    command.upgrade(cfg, "head")
+    assert _has_column(path, "intercompany_account_mappings", "due_from_account_code")
+    assert _has_table(path, "intercompany_account_mappings")
+    command.downgrade(cfg, "0009_intercompany_saga")
+    assert _has_table(path, "intercompany_account_mappings")

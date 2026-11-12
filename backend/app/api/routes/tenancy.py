@@ -425,21 +425,20 @@ def list_intercompany_mappings(db: Session = Depends(get_db),
     rows = db.execute(select(IntercompanyAccountMapping)).scalars().all()
     return [{"id": str(m.id), "company_id": str(m.company_id),
              "counterparty_company_id": str(m.counterparty_company_id),
-             "due_from_account_id": str(m.due_from_account_id),
-             "due_to_account_id": str(m.due_to_account_id),
+             "due_from_account_code": m.due_from_account_code,
+             "due_to_account_code": m.due_to_account_code,
              "is_approved": m.is_approved, "is_active": m.is_active} for m in rows]
 
 
 @router.post("/api/admin/intercompany-mappings", status_code=status.HTTP_201_CREATED)
 def create_intercompany_mapping(p: IntercompanyMappingIn, db: Session = Depends(get_db),
                                 user: User = Depends(require_permission("admin.manage"))):
-    due_from_id = _account_id_by_code(db, p.company_id, p.due_from_account_code)
-    due_to_id = _account_id_by_code(db, p.company_id, p.due_to_account_code)
+    # Codes are validated against the company's OWN database inside create_mapping.
     try:
         m = ic.create_mapping(db, company_id=p.company_id,
                               counterparty_company_id=p.counterparty_company_id,
-                              due_from_account_id=due_from_id, due_to_account_id=due_to_id,
-                              created_by=user.id)
+                              due_from_code=p.due_from_account_code,
+                              due_to_code=p.due_to_account_code, created_by=user.id)
     except IntercompanyConfigError as e:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e))
     return {"id": str(m.id), "is_approved": m.is_approved}

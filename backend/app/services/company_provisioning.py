@@ -72,6 +72,9 @@ def _seed_company_scoped(dsn: str, company_id: uuid.UUID, fy_start_year: int) ->
         if src is None:
             raise ProvisioningError("Company not found in the control database")
         snapshot = {c.name: getattr(src, c.name) for c in Company.__table__.columns}
+        # organization_id is a CENTRAL-only concept (the company database has no
+        # organizations table rows); never carry that FK into the company DB.
+        snapshot["organization_id"] = None
     finally:
         control.close()
 

@@ -151,12 +151,16 @@ class IntercompanyAccountMapping(AuditMixin, Base):
         ForeignKey("companies.id", ondelete="CASCADE"), index=True)
     counterparty_company_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("companies.id", ondelete="CASCADE"), index=True)
-    due_from_account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("chart_of_accounts.id"))
-    due_to_account_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("chart_of_accounts.id"))
-    # Stable account CODES (identical across the central catalog and the company's
-    # own database) used for cross-database posting, where account ids differ per DB.
+    # Account CODES are the authoritative, cross-database reference (identical in
+    # the central catalog and the company's own database). The ids are an optional
+    # convenience for the single-database case; in database-per-company the COA
+    # lives in the company database, so the FK is dropped there (migration 0010).
     due_from_account_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
     due_to_account_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    due_from_account_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("chart_of_accounts.id"), nullable=True)
+    due_to_account_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("chart_of_accounts.id"), nullable=True)
     is_approved: Mapped[bool] = mapped_column(Boolean, default=False)
     approved_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

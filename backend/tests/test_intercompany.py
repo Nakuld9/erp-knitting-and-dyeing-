@@ -41,15 +41,15 @@ def test_create_requires_valid_control_accounts(db):
     # self-counterparty rejected
     with pytest.raises(IntercompanyConfigError):
         ic.create_mapping(db, company_id=a.id, counterparty_company_id=a.id,
-                          due_from_account_id=asset.id, due_to_account_id=liab.id)
+                          due_from_code="1050", due_to_code="2070")
     # due_from must be ASSET (passing the liability as due_from fails)
     with pytest.raises(IntercompanyConfigError):
         ic.create_mapping(db, company_id=a.id, counterparty_company_id=b.id,
-                          due_from_account_id=liab.id, due_to_account_id=liab.id)
+                          due_from_code="2070", due_to_code="2070")
     # unknown account id fails
     with pytest.raises(IntercompanyConfigError):
         ic.create_mapping(db, company_id=a.id, counterparty_company_id=b.id,
-                          due_from_account_id=uuid.uuid4(), due_to_account_id=liab.id)
+                          due_from_code="NOPE", due_to_code="2070")
 
 
 def test_fail_closed_until_approved(db):
@@ -57,7 +57,7 @@ def test_fail_closed_until_approved(db):
     asset = _acct(db, a.id, "1050")
     liab = _acct(db, a.id, "2070")
     m = ic.create_mapping(db, company_id=a.id, counterparty_company_id=b.id,
-                          due_from_account_id=asset.id, due_to_account_id=liab.id)
+                          due_from_code="1050", due_to_code="2070")
     assert m.is_approved is False
     # resolver refuses an unapproved mapping (fail-closed)
     with pytest.raises(IntercompanyConfigError):
@@ -76,10 +76,10 @@ def test_duplicate_mapping_rejected(db):
     asset = _acct(db, a.id, "1050")
     liab = _acct(db, a.id, "2070")
     ic.create_mapping(db, company_id=a.id, counterparty_company_id=b.id,
-                      due_from_account_id=asset.id, due_to_account_id=liab.id)
+                      due_from_code="1050", due_to_code="2070")
     with pytest.raises(IntercompanyConfigError):
         ic.create_mapping(db, company_id=a.id, counterparty_company_id=b.id,
-                          due_from_account_id=asset.id, due_to_account_id=liab.id)
+                          due_from_code="1050", due_to_code="2070")
 
 
 def test_reconciliation_ready_when_both_legs_approved(db):
@@ -125,13 +125,15 @@ def test_api_create_approve_reconcile(client, auth_headers, db):
     assert any(row["id"] == mid for row in rec.json())
 
 
-def test_api_bad_account_code_404(client, auth_headers, db):
+def test_api_bad_account_code_rejected(client, auth_headers, db):
     a, b = _setup(db)
     r = client.post("/api/admin/intercompany-mappings",
                     json={"company_id": str(a.id), "counterparty_company_id": str(b.id),
                           "due_from_account_code": "9999", "due_to_account_code": "2070"},
                     headers=auth_headers)
-    assert r.status_code == 404
+    # unknown account code is a validation error (422) — validated against the
+    # company's own chart of accounts inside create_mapping.
+    assert r.status_code == 422
 
 
 def test_api_approve_requires_permission(client, db):
@@ -139,7 +141,7 @@ def test_api_approve_requires_permission(client, db):
     asset = _acct(db, a.id, "1050")
     liab = _acct(db, a.id, "2070")
     m = ic.create_mapping(db, company_id=a.id, counterparty_company_id=b.id,
-                          due_from_account_id=asset.id, due_to_account_id=liab.id)
+                          due_from_code="1050", due_to_code="2070")
     # a user WITHOUT intercompany.approve (AUDITOR) cannot approve
     role = db.execute(select(Role).where(Role.code == "AUDITOR")).scalar_one()
     u = User(username="noapprove", email="na@demo.local", full_name="NA",
