@@ -143,8 +143,20 @@ Each company's books stay independent.
 
 Live routing, cross-database consolidation and the inter-company saga are
 **implemented and validated on real PostgreSQL** (migrations up/down, two-database
-isolation, saga reconcile, cross-database consolidation + elimination, concurrency
-— `docs/POSTGRES_VALIDATION.md`). Still required before production: enabling the
-saga flag after a prod pilot, per-database backup/restore drills on your
+isolation, saga reconcile, cross-database consolidation + elimination, concurrency,
+and an **independent per-company backup/restore drill** — `docs/POSTGRES_VALIDATION.md`
+§6c, `scripts/backup_restore_drill.sh`). Still required before production: enabling
+the saga flag after a prod pilot, rehearsing backup/restore on your own
 infrastructure, connection-pool sizing, and the Phase 15/16 sign-offs. The
 data-safety rules apply to every provisioning and cutover step.
+
+### Backup & restore (per database)
+
+Each company database and the control/platform database are backed up and
+restored **independently** — fan `scripts/backup.sh` / `scripts/restore.sh` out
+over every DSN, or use `scripts/backup_restore_drill.sh` to rehearse one
+company's restore in isolation. **Recovery order: platform DB first, then each
+company DB** — the platform DB holds identity, memberships and the company→DSN
+registry, so a restored company DB is inert until the platform record that routes
+users to it is present. Restoring one company never touches another (proven on
+real PostgreSQL — §6c).

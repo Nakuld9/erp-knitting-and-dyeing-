@@ -27,7 +27,7 @@ needs your infrastructure, a qualified reviewer, or sign-off.
 | 11 | Consolidated reports correct | ✅ | Consolidated trial balance + P&L + eliminations; `tests/test_consolidation.py`, `test_uat_multicompany.py`. |
 | 12 | PostgreSQL concurrency tests pass | ✅ | `tests/test_pg_concurrency.py` **passed on real PostgreSQL** (`docs/POSTGRES_VALIDATION.md`). |
 | 13 | Security review — no unresolved critical/high | ⛔ | Config guard, RBAC, isolation, rate limiting, strong-admin-password, immutable ledger in place; **independent security review / pen-test not performed**. |
-| 14 | Backup restoration proven | 🟡 | `scripts/backup.sh` / `restore.sh` committed; **a real restore drill + reconciliation must be performed** on your infrastructure (per DB under db-per-company). |
+| 14 | Backup restoration proven | ✅ | `scripts/backup.sh` / `restore.sh` + per-company `scripts/backup_restore_drill.sh`. **Independent per-company restore drilled on real PostgreSQL** (`docs/POSTGRES_VALIDATION.md` §6c): A restored to its backup point (ledger re-balanced, inventory qty/value exact); **B untouched**; platform-DB recovery dependency documented. Rehearse once on your own infrastructure. |
 | 15 | Load tests pass for agreed workload | ⛔ | **Not performed.** Define the workload and run a load test. |
 | 16 | Production deployment + rollback documented | ✅ | `docs/PRODUCTION_DEPLOYMENT_RUNBOOK.md` (deploy/upgrade/rollback/backup, per-DB migration fan-out). Rehearse on staging. |
 | 17 | Factory users complete acceptance testing | ⛔ | Plan + automated acceptance ready (`docs/USER_ACCEPTANCE_TEST_PLAN.md`); **real users must run UAT and accept.** |
@@ -37,13 +37,13 @@ needs your infrastructure, a qualified reviewer, or sign-off.
 
 ## Summary
 
-- **Verified now:** 2, 3, 5, 8, 9, 10, 11, 12, 16 (and the migration/concurrency/
-  isolation evidence on **real PostgreSQL**).
-- **Partial / to run on your data:** 1, 4, 7, 14.
+- **Verified now:** 2, 3, 5, 8, 9, 10, 11, 12, 14, 16 (and the migration/
+  concurrency/isolation/**backup-restore** evidence on **real PostgreSQL**).
+- **Partial / to run on your data:** 1, 4, 7.
 - **Gated on you / external parties:** 6 (GST professional), 13 (security review),
   15 (load test), 17 (user UAT), 18 (management sign-off).
 
-**Do not set PRODUCTION READY** until criteria 1, 4, 6, 7, 13, 14, 15, 17 and 18
+**Do not set PRODUCTION READY** until criteria 1, 4, 6, 7, 13, 15, 17 and 18
 are satisfied with evidence. Until then the honest status is **DEVELOPMENT
-READY**, progressing toward **PRODUCTION CANDIDATE** once 1/4/7/14 are completed
+READY**, progressing toward **PRODUCTION CANDIDATE** once 1/4/7 are completed
 on your infrastructure.

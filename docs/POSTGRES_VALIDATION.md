@@ -103,9 +103,52 @@ provisioning copied `organization_id` into the company DB (central-only FK), and
 the inter-company mapping held an FK to `chart_of_accounts` (which lives in the
 company DB) — now code-based with the FK dropped on PostgreSQL (migration 0010).
 
+## 6c. Independent backup/restore drill (database-per-company, criterion 14)
+
+Ran a per-company backup/restore drill against real PostgreSQL to prove a
+single company's database can be restored **independently** of every other
+company, and that restored **accounting balances and inventory quantities**
+match the backup point. Script: `scripts/backup_restore_drill.sh` (idempotent,
+exits non-zero on any mismatch). Result: **DRILL PASSED**.
+
+Scenario and evidence:
+
+1. Seeded company **A**'s database with a balanced voucher (`journal_lines`
+   debit 10000 = credit 10000) and an inventory layer
+   (`inventory_valuation_layers` qty 500, value 25000). Company **B**'s
+   database held its own unrelated rows.
+2. `pg_dump -Fc` of **A only**.
+3. **Diverged A** (added an unbalanced 9999 debit line; drained inventory to 0)
+   and **changed B** (inserted a sentinel row *after* A's backup).
+4. Restored **A** independently: `dropdb A` → `createdb A` → `pg_restore`.
+   B was never touched by this.
+5. Verified after restore:
+   - A ledger **balanced again** at debit 10000 = credit 10000; the 9999
+     corruption line is **gone** (2 lines, the backup state);
+   - A inventory **restored** to qty 500 / value 25000;
+   - B still has its own rows **and** the sentinel inserted after A's backup —
+     i.e. restoring A did **not** roll back or overwrite B.
+
+**Platform (control) database recovery dependency.** A restored company
+database is only *usable* once the control/platform database is itself
+recoverable: authentication, `user_company_memberships`, and the
+`company_databases` registry (company → DSN) live there. Recovery order is
+therefore **platform DB first, then each company DB**; a company restore
+without a matching platform record is inert (no user can be routed to it).
+Back up the platform DB on the same schedule as the company DBs.
+
+Reproduce:
+```bash
+PGHOST=/tmp/pgv2_sock PGPORT=54331 CTL_DB=erp_ctl A_DB=erp_A B_DB=erp_B \
+  PGADMIN='su postgres -c' ./scripts/backup_restore_drill.sh
+```
+
 ## 7. Still gated (not done here)
 
-- The **full** 336-test suite on PostgreSQL in CI (this run validated a
-  representative subset + the PG-only concurrency path).
-- Load/performance testing, backup-restore drills on PostgreSQL, and the
-  production database-per-company cutover — Phase 14/15/16 on your infrastructure.
+- The **full** suite on PostgreSQL in CI (these runs validated a representative
+  subset, the PG-only concurrency path, the two-database cutover and the
+  backup/restore drill; the full suite runs green on SQLite — 348 passed,
+  2 PG-gated skips).
+- Load/performance testing and the production database-per-company cutover —
+  Phase 15/16 on your infrastructure. (Backup/restore is now drilled on real
+  PostgreSQL — §6c — but should be rehearsed on your own infrastructure too.)

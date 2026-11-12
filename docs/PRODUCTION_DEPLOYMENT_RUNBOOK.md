@@ -105,9 +105,21 @@ taken in step 4, not by hand-editing the schema.
 ```
 
 - Back up **every** database when using database-per-company (control DB + each
-  company DB).
-- **Restore drills are mandatory and GATED**: prove a full restore into a clean
-  database and reconcile balances before declaring production-ready (Phase 16 #14).
+  company DB). Fan `backup.sh` out over every DSN.
+- **Independent per-company restore** is drilled and proven on real PostgreSQL —
+  `scripts/backup_restore_drill.sh` restores one company to its backup point
+  (ledger re-balances, inventory qty/value exact) **without touching any other
+  company** (`docs/POSTGRES_VALIDATION.md` §6c). Rehearse it once on your own
+  infrastructure before go-live.
+- **Recovery order is platform DB first, then each company DB.** The control/
+  platform DB holds identity, `user_company_memberships` and the
+  `company_databases` registry (company → DSN); a restored company DB is **inert
+  until** the platform record that routes users to it exists. So a company
+  restore depends on the platform DB being recoverable — back it up on the same
+  schedule.
+- Restore drills remain **mandatory** on your infrastructure: prove a full
+  restore into a clean database and reconcile balances before declaring
+  production-ready (Phase 16 #14).
 
 ## 7. Monitoring & operations
 
