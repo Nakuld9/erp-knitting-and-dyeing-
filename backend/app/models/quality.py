@@ -50,6 +50,8 @@ class FinishingTransaction(AuditMixin, Base):
     factory_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("branches.id"), nullable=True, index=True)
     number: Mapped[str] = mapped_column(String(40), index=True)
     process_type: Mapped[FinishingProcess] = mapped_column(String(16), index=True)
+    # BOM-driven production order this finishing step belongs to (additive; nullable).
+    production_order_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("production_orders.id"), nullable=True, index=True)
     fabric_roll_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("fabric_rolls.id"), nullable=True)
     dye_batch_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dye_batches.id"), nullable=True)
     machine_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("machines.id"), nullable=True)

@@ -16,6 +16,7 @@ from app.api.routes import (
     assets,
     auth,
     banking,
+    bom,
     costing,
     dashboard,
     einvoice,
@@ -64,6 +65,7 @@ app.include_router(orders.router)
 app.include_router(payroll.router)
 app.include_router(presales.router)
 app.include_router(banking.router)
+app.include_router(bom.router)
 app.include_router(dashboard.router)
 app.include_router(quality.router)
 app.include_router(costing.router)

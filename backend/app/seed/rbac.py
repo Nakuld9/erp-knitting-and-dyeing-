@@ -34,6 +34,10 @@ PERMISSIONS: list[tuple[str, str, str]] = [
     ("intercompany.approve", "accounting", "Approve inter-company account mappings (accountant)"),
     ("transfer.manage", "inventory", "Create/dispatch/receive factory stock transfers"),
     ("transfer.authorize", "inventory", "Authorize factory stock transfers (checker)"),
+    ("bom.read", "bom", "View fabric BOMs and standard costs"),
+    ("bom.write", "bom", "Create/edit fabric BOM versions (draft)"),
+    ("bom.approve", "bom", "Approve / obsolete fabric BOM versions"),
+    ("production.manage", "bom", "Create production orders and issue materials"),
 ]
 
 # role_code -> (name, [permission codes]); "*" means all permissions.
@@ -43,16 +47,22 @@ ROLES: dict[str, tuple[str, list[str]]] = {
     "GENERAL_MANAGER": (
         "General Manager",
         ["master.read", "report.read", "report.financial", "sales.manage", "purchase.manage",
-         "factory.access_all", "transfer.authorize"],
+         "factory.access_all", "transfer.authorize", "bom.read", "bom.approve"],
     ),
     "PRODUCTION_MANAGER": (
         "Production Manager",
         ["master.read", "knitting.manage", "greige.manage", "dyeing.manage", "recipe.read",
-         "finishing.manage", "quality.manage", "report.read", "transfer.manage"],
+         "finishing.manage", "quality.manage", "report.read", "transfer.manage",
+         "bom.read", "bom.write", "bom.approve", "production.manage"],
     ),
-    "KNITTING_SUPERVISOR": ("Knitting Supervisor", ["master.read", "knitting.manage", "greige.manage"]),
-    "DYEING_SUPERVISOR": ("Dyeing Supervisor", ["master.read", "dyeing.manage", "recipe.read", "dispensing.operate"]),
-    "LAB_TECHNICIAN": ("Lab Technician", ["master.read", "recipe.read", "recipe.approve", "quality.manage"]),
+    "KNITTING_SUPERVISOR": ("Knitting Supervisor",
+                            ["master.read", "knitting.manage", "greige.manage", "bom.read", "production.manage"]),
+    "DYEING_SUPERVISOR": ("Dyeing Supervisor",
+                          ["master.read", "dyeing.manage", "recipe.read", "dispensing.operate",
+                           "bom.read", "production.manage"]),
+    "LAB_TECHNICIAN": ("Lab Technician",
+                       ["master.read", "recipe.read", "recipe.approve", "quality.manage",
+                        "bom.read", "bom.write"]),
     "CHEMICAL_STORE_MANAGER": ("Chemical Store Manager", ["master.read", "chemical.store", "report.read"]),
     "DISPENSING_OPERATOR": ("Dispensing Operator", ["dispensing.operate"]),
     "PURCHASE_MANAGER": ("Purchase Manager", ["master.read", "master.write", "purchase.manage"]),

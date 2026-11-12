@@ -211,3 +211,20 @@ def test_intercompany_mapping_ids_nullable(temp_db):
     assert _has_table(path, "intercompany_account_mappings")
     command.downgrade(cfg, "0009_intercompany_saga")
     assert _has_table(path, "intercompany_account_mappings")
+
+
+def test_fabric_bom_tables_added_and_reversible(temp_db):
+    """0011 adds the fabric BOM + production-order tables and the traceability
+    links on the actuals; fully reversible."""
+    url, path = temp_db
+    cfg = _alembic_cfg(url)
+    command.upgrade(cfg, "head")
+    for t in ("fabric_boms", "fabric_bom_versions", "fabric_bom_yarns",
+              "fabric_bom_knitting", "fabric_bom_finishing", "production_orders",
+              "production_reservations", "production_consumptions"):
+        assert _has_table(path, t), t
+    assert _has_column(path, "fabric_bom_yarns", "std_unit_cost")
+    assert _has_column(path, "knitting_production", "production_order_id")
+    command.downgrade(cfg, "0010_intercompany_code_based")
+    assert not _has_table(path, "fabric_boms")
+    assert not _has_column(path, "knitting_production", "production_order_id")

@@ -76,6 +76,20 @@ from app.models.manufacturing import (  # noqa: F401
     RollKind,
     dye_batch_rolls,
 )
+from app.models.fabric_bom import (  # noqa: F401
+    BomStatus,
+    FabricBom,
+    FabricBomFinishing,
+    FabricBomKnitting,
+    FabricBomVersion,
+    FabricBomYarn,
+    ProductionConsumption,
+    ProductionOrder,
+    ProductionOrderStatus,
+    ProductionReservation,
+    ProductionStage,
+    ReservationStatus,
+)
 from app.models.dispensing import (  # noqa: F401
     DispensingCorrection,
     DispensingDevice,

@@ -43,6 +43,8 @@ class KnittingProduction(AuditMixin, Base):
     number: Mapped[str] = mapped_column(String(40), index=True)
     machine_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("machines.id"), index=True)
     sales_order_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sales_orders.id"), nullable=True)
+    # BOM-driven production order this run belongs to (additive; nullable).
+    production_order_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("production_orders.id"), nullable=True, index=True)
     yarn_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("yarn_masters.id"), index=True)
     yarn_lot: Mapped[str | None] = mapped_column(String(40), nullable=True)
     yarn_lot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("yarn_lots.id"), nullable=True, index=True)
@@ -104,6 +106,8 @@ class DyeBatch(AuditMixin, Base):
     factory_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("branches.id"), nullable=True, index=True)
     batch_code: Mapped[str] = mapped_column(String(40), index=True)   # e.g. DY-26001
     sales_order_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("sales_orders.id"), nullable=True)
+    # BOM-driven production order this batch belongs to (additive; nullable).
+    production_order_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("production_orders.id"), nullable=True, index=True)
     shade_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("shade_codes.id"), nullable=True)
     fabric_kg: Mapped[object] = mapped_column(Quantity, default=0)
     status: Mapped[BatchStatus] = mapped_column(String(12), default=BatchStatus.PLANNED)

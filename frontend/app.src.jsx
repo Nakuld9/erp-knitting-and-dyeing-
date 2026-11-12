@@ -2556,6 +2556,212 @@ function GroupDash({refreshKey}){
   </div>);
 }
 
+// ---- Fabric BOM (version-controlled) + production orders -------------------
+function FabricBOM(){
+  const [boms,setBoms]=useState(null); const [sel,setSel]=useState(null); // selected BOM detail
+  const [verId,setVerId]=useState(""); const [err,setErr]=useState(""); const [msg,setMsg]=useState("");
+  const yarns=useList("/api/masters/yarns"); const recipes=useList("/api/masters/recipe-versions");
+  const machines=useList("/api/masters/machines"); const shades=useList("/api/masters/shades");
+  const fabrics=useList("/api/masters/fabric-types");
+  const [nb,setNb]=useState({code:"",name:"",fabric_type_id:"",shade_id:"",finished_quality:""});
+  const [spec,setSpec]=useState({}); const [yrows,setYrows]=useState([]); const [knit,setKnit]=useState({});
+  const [frows,setFrows]=useState([]); const [cost,setCost]=useState(null);
+  const [orders,setOrders]=useState([]); const [ord,setOrd]=useState({number:"",planned_qty_kg:"100",order_date:today()});
+  const [odet,setOdet]=useState(null); const [reqs,setReqs]=useState([]); const [varr,setVarr]=useState(null);
+
+  const loadBoms=useCallback(()=>api("/api/bom").then(setBoms).catch(e=>setErr(e.message)),[]);
+  useEffect(()=>{loadBoms()},[loadBoms]);
+  const openBom=async id=>{ setErr("");setMsg("");setVarr(null);setOdet(null);
+    try{ const b=await api(`/api/bom/${id}`); setSel(b);
+      const v=b.versions[b.versions.length-1]; selectVer(b,v.id);
+      setOrders(await api("/api/bom/orders").then(os=>os.filter(o=>b.versions.some(x=>x.id===o.bom_version_id)))); }
+    catch(e){ setErr(e.message); } };
+  const selectVer=(b,id)=>{ setVerId(id); const v=(b||sel).versions.find(x=>x.id===id); setCost(null);
+    setSpec({construction:v.construction||"",composition:v.composition||"",yarn_count:v.yarn_count||"",gsm:v.gsm||"",
+      width_cm:v.width_cm||"",gauge:v.gauge||"",diameter_inch:v.diameter_inch||"",stitch_length_mm:v.stitch_length_mm||"",
+      dye_recipe_version_id:v.dye_recipe_version_id||"",std_knitting_cost:v.std_knitting_cost||"",
+      std_dyeing_cost:v.std_dyeing_cost||"",std_labour_cost:v.std_labour_cost||"",std_overhead_cost:v.std_overhead_cost||""});
+    setYrows(v.yarns.length?v.yarns.map(y=>({...y})):[{yarn_id:"",blend_percent:"100",std_consumption_per_kg:"1.0",wastage_percent:"2",process_loss_percent:"1",std_unit_cost:""}]);
+    setKnit(v.knitting||{machine_type:"KNITTING"}); setFrows(v.finishing_steps.length?v.finishing_steps.map(s=>({...s})):[]); };
+  const curVer=sel&&sel.versions.find(x=>x.id===verId);
+  const isDraft=curVer&&curVer.status==="DRAFT";
+
+  const createBom=async e=>{ e.preventDefault(); setErr("");
+    try{ const b=await api("/api/bom",{method:"POST",body:{...nb,fabric_type_id:nb.fabric_type_id||null,shade_id:nb.shade_id||null}});
+      setNb({code:"",name:"",fabric_type_id:"",shade_id:"",finished_quality:""}); await loadBoms(); openBom(b.id); }
+    catch(ex){ setErr(ex.message); } };
+  const clean=o=>{const r={};for(const k in o){if(o[k]!==""&&o[k]!=null)r[k]=o[k];}return r;};
+  const saveSpec=async()=>{ setErr("");setMsg("");
+    try{ await api(`/api/bom/versions/${verId}/spec`,{method:"PUT",body:clean(spec)}); setMsg("Spec saved"); refresh(); }
+    catch(e){ setErr(e.message);} };
+  const saveYarns=async()=>{ setErr("");setMsg("");
+    try{ await api(`/api/bom/versions/${verId}/yarns`,{method:"PUT",body:yrows.map((y,i)=>({...y,sequence:i+1}))}); setMsg("Yarn BOM saved"); refresh(); }
+    catch(e){ setErr(e.message);} };
+  const saveKnit=async()=>{ setErr("");setMsg("");
+    try{ await api(`/api/bom/versions/${verId}/knitting`,{method:"PUT",body:clean(knit)}); setMsg("Knitting saved"); refresh(); }
+    catch(e){ setErr(e.message);} };
+  const saveFin=async()=>{ setErr("");setMsg("");
+    try{ await api(`/api/bom/versions/${verId}/finishing`,{method:"PUT",body:frows.map((s,i)=>({...s,sequence:i+1}))}); setMsg("Finishing saved"); refresh(); }
+    catch(e){ setErr(e.message);} };
+  const refresh=async()=>{ const b=await api(`/api/bom/${sel.id}`); setSel(b); };
+  const previewCost=async()=>{ setErr(""); try{ setCost(await api(`/api/bom/versions/${verId}/cost`)); }catch(e){setErr(e.message);} };
+  const approve=async()=>{ setErr("");setMsg("");
+    try{ await api(`/api/bom/versions/${verId}/approve`,{method:"POST",body:{effective_from:today()}}); setMsg("Version approved"); await refresh(); }
+    catch(e){ setErr(e.message);} };
+  const newRev=async()=>{ setErr("");
+    try{ const v=await api(`/api/bom/${sel.id}/versions`,{method:"POST",body:{clone_from_version_id:verId,revision_notes:"revision"}});
+      const b=await api(`/api/bom/${sel.id}`); setSel(b); selectVer(b,v.id); setMsg("New draft version created"); }
+    catch(e){ setErr(e.message);} };
+
+  const createOrder=async e=>{ e.preventDefault(); setErr("");setMsg("");
+    try{ const o=await api("/api/bom/orders",{method:"POST",body:{number:ord.number,planned_qty_kg:ord.planned_qty_kg,
+      bom_id:sel.id,order_date:ord.order_date}});
+      setOrders([...orders,o]); setOrd({number:"",planned_qty_kg:"100",order_date:today()}); openOrder(o.id); setMsg("Order created; reservations exploded"); }
+    catch(ex){ setErr(ex.message);} };
+  const openOrder=async id=>{ setVarr(null); const o=await api(`/api/bom/orders/${id}`); setOdet(o);
+    setReqs(await api(`/api/bom/orders/${id}/requirements`)); };
+  const issue=async r=>{ setErr("");
+    try{ await api(`/api/bom/orders/${odet.id}/issue`,{method:"POST",body:{reservation_id:r.reservation_id,qty:r.planned_qty}});
+      openOrder(odet.id); }
+    catch(e){ setErr(e.message);} };
+  const complete=async()=>{ setErr("");
+    try{ await api(`/api/bom/orders/${odet.id}/complete`,{method:"POST",body:{produced_qty_kg:odet.planned_qty_kg}});
+      setVarr(await api(`/api/bom/orders/${odet.id}/variance`)); openOrder(odet.id); }
+    catch(e){ setErr(e.message);} };
+  const showVar=async()=>{ setErr(""); try{ setVarr(await api(`/api/bom/orders/${odet.id}/variance`)); }catch(e){setErr(e.message);} };
+
+  const setYr=(i,k,v)=>setYrows(yrows.map((r,j)=>j===i?{...r,[k]:v}:r));
+  const setFr=(i,k,v)=>setFrows(frows.map((r,j)=>j===i?{...r,[k]:v}:r));
+  return (<div>
+    {err && <div className="err">{err}</div>}{msg && <div className="badge ok" style={{marginBottom:8}}>{msg}</div>}
+    <div className="grid3">
+      <Panel title="New fabric BOM">
+        <form onSubmit={createBom}>
+          <div className="field"><label>Code</label><input required value={nb.code} onChange={e=>setNb({...nb,code:e.target.value})} placeholder="FB-NAVY-SJ"/></div>
+          <div className="field"><label>Name</label><input required value={nb.name} onChange={e=>setNb({...nb,name:e.target.value})} placeholder="Navy Single Jersey 160"/></div>
+          <div className="field"><label>Fabric type</label><select value={nb.fabric_type_id} onChange={e=>setNb({...nb,fabric_type_id:e.target.value})}>
+            <option value="">—</option>{fabrics.map(f=><option key={f.id} value={f.id}>{f.label||f.code}</option>)}</select></div>
+          <div className="field"><label>Shade</label><select value={nb.shade_id} onChange={e=>setNb({...nb,shade_id:e.target.value})}>
+            <option value="">—</option>{shades.map(s=><option key={s.id} value={s.id}>{s.label||s.code||s.name}</option>)}</select></div>
+          <div className="field"><label>Finished quality</label><input value={nb.finished_quality} onChange={e=>setNb({...nb,finished_quality:e.target.value})} placeholder="Export A"/></div>
+          <button className="btn">Create BOM</button>
+        </form>
+      </Panel>
+      <Panel title="Fabric BOMs">
+        {!boms?"Loading…":!boms.length?<div className="muted">No BOMs yet.</div>:
+        <table><thead><tr><th>Code</th><th>Name</th></tr></thead><tbody>
+          {boms.map(b=><tr key={b.id} className={sel&&sel.id===b.id?"sel":""} style={{cursor:"pointer"}} onClick={()=>openBom(b.id)}>
+            <td>{b.code}</td><td>{b.name}</td></tr>)}
+        </tbody></table>}
+      </Panel>
+      {sel && <Panel title={"Versions · "+sel.code}>
+        <table><thead><tr><th>#</th><th>Status</th><th>Effective</th><th className="num">Cost/kg</th></tr></thead><tbody>
+          {sel.versions.map(v=><tr key={v.id} className={v.id===verId?"sel":""} style={{cursor:"pointer"}} onClick={()=>selectVer(sel,v.id)}>
+            <td>v{v.version_no}</td><td><span className={"badge "+(v.status==="APPROVED"?"ok":v.status==="DRAFT"?"":"bad")}>{v.status}</span></td>
+            <td>{v.effective_from||"—"}{v.effective_to?" → "+v.effective_to:""}</td><td className="num">{inr2(v.std_total_cost_per_kg)}</td></tr>)}
+        </tbody></table>
+        {curVer && !isDraft && <button className="btn" style={{marginTop:8}} onClick={newRev}>New revision (clone v{curVer.version_no})</button>}
+      </Panel>}
+    </div>
+
+    {curVer && <Panel title={"Version v"+curVer.version_no+(isDraft?" (draft — editable)":" ("+curVer.status+")")}>
+      {!isDraft && <div className="muted" style={{marginBottom:8}}>Approved versions are frozen. Create a new revision to change the BOM. Historical production orders keep the version they were created against.</div>}
+      <div className="grid2">
+        <div>
+          <h4>Finished-fabric spec</h4>
+          <div className="row">
+            {["construction","composition","yarn_count","gsm","width_cm","gauge","diameter_inch","stitch_length_mm"].map(k=>
+              <div className="field" key={k}><label>{k.replace(/_/g," ")}</label>
+                <input disabled={!isDraft} value={spec[k]||""} onChange={e=>setSpec({...spec,[k]:e.target.value})}/></div>)}
+          </div>
+          <div className="field"><label>Dyeing recipe (approved)</label>
+            <select disabled={!isDraft} value={spec.dye_recipe_version_id||""} onChange={e=>setSpec({...spec,dye_recipe_version_id:e.target.value})}>
+              <option value="">— none —</option>{recipes.map(r=><option key={r.id} value={r.id}>{r.label}</option>)}</select></div>
+          <div className="row">
+            {["std_knitting_cost","std_dyeing_cost","std_labour_cost","std_overhead_cost"].map(k=>
+              <div className="field" key={k}><label>{k.replace("std_","").replace(/_/g," ")} /kg</label>
+                <input disabled={!isDraft} value={spec[k]||""} onChange={e=>setSpec({...spec,[k]:e.target.value})}/></div>)}
+          </div>
+          {isDraft && <button className="btn" onClick={saveSpec}>Save spec</button>}
+          <h4 style={{marginTop:14}}>Knitting process</h4>
+          <div className="row">
+            <div className="field"><label>machine type</label><input disabled={!isDraft} value={knit.machine_type||""} onChange={e=>setKnit({...knit,machine_type:e.target.value})}/></div>
+            <div className="field"><label>gauge</label><input disabled={!isDraft} value={knit.gauge||""} onChange={e=>setKnit({...knit,gauge:e.target.value})}/></div>
+            <div className="field"><label>feeders</label><input disabled={!isDraft} value={knit.feeders||""} onChange={e=>setKnit({...knit,feeders:e.target.value})}/></div>
+            <div className="field"><label>stitch len mm</label><input disabled={!isDraft} value={knit.stitch_length_mm||""} onChange={e=>setKnit({...knit,stitch_length_mm:e.target.value})}/></div>
+            <div className="field"><label>efficiency %</label><input disabled={!isDraft} value={knit.efficiency_percent||""} onChange={e=>setKnit({...knit,efficiency_percent:e.target.value})}/></div>
+          </div>
+          {isDraft && <button className="btn" onClick={saveKnit}>Save knitting</button>}
+        </div>
+        <div>
+          <h4>Yarn BOM (blend)</h4>
+          <table><thead><tr><th>Yarn</th><th>Blend %</th><th>Cons/kg</th><th>Wst%</th><th>Loss%</th><th>₹/kg</th><th></th></tr></thead>
+            <tbody>{yrows.map((y,i)=><tr key={i}>
+              <td><select disabled={!isDraft} value={y.yarn_id||""} onChange={e=>setYr(i,"yarn_id",e.target.value)}>
+                <option value="">—</option>{yarns.map(o=><option key={o.id} value={o.id}>{o.code}</option>)}</select></td>
+              <td><input disabled={!isDraft} style={{width:56}} value={y.blend_percent||""} onChange={e=>setYr(i,"blend_percent",e.target.value)}/></td>
+              <td><input disabled={!isDraft} style={{width:56}} value={y.std_consumption_per_kg||""} onChange={e=>setYr(i,"std_consumption_per_kg",e.target.value)}/></td>
+              <td><input disabled={!isDraft} style={{width:44}} value={y.wastage_percent||""} onChange={e=>setYr(i,"wastage_percent",e.target.value)}/></td>
+              <td><input disabled={!isDraft} style={{width:44}} value={y.process_loss_percent||""} onChange={e=>setYr(i,"process_loss_percent",e.target.value)}/></td>
+              <td><input disabled={!isDraft} style={{width:64}} value={y.std_unit_cost||""} onChange={e=>setYr(i,"std_unit_cost",e.target.value)}/></td>
+              <td>{isDraft&&<button className="btn-ghost" onClick={()=>setYrows(yrows.filter((_,j)=>j!==i))}>✕</button>}</td></tr>)}
+            </tbody></table>
+          {isDraft && <div><button className="btn-ghost" onClick={()=>setYrows([...yrows,{yarn_id:"",blend_percent:"",std_consumption_per_kg:"1.0",wastage_percent:"2",process_loss_percent:"1",std_unit_cost:""}])}>+ yarn</button>
+            <button className="btn" onClick={saveYarns}>Save yarn BOM</button></div>}
+          <h4 style={{marginTop:14}}>Finishing steps</h4>
+          <table><thead><tr><th>Process</th><th>Machine</th><th>₹/kg</th><th></th></tr></thead>
+            <tbody>{frows.map((s,i)=><tr key={i}>
+              <td><select disabled={!isDraft} value={s.process_type||""} onChange={e=>setFr(i,"process_type",e.target.value)}>
+                {["COMPACTING","STENTER","HEAT_SETTING","RAISING","SLITTING","DRYING","HYDRO"].map(p=><option key={p}>{p}</option>)}</select></td>
+              <td><input disabled={!isDraft} style={{width:80}} value={s.machine_type||""} onChange={e=>setFr(i,"machine_type",e.target.value)}/></td>
+              <td><input disabled={!isDraft} style={{width:64}} value={s.std_cost_per_kg||""} onChange={e=>setFr(i,"std_cost_per_kg",e.target.value)}/></td>
+              <td>{isDraft&&<button className="btn-ghost" onClick={()=>setFrows(frows.filter((_,j)=>j!==i))}>✕</button>}</td></tr>)}
+            </tbody></table>
+          {isDraft && <div><button className="btn-ghost" onClick={()=>setFrows([...frows,{process_type:"COMPACTING",std_cost_per_kg:""}])}>+ step</button>
+            <button className="btn" onClick={saveFin}>Save finishing</button></div>}
+        </div>
+      </div>
+      <div style={{marginTop:12,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+        <button className="btn-ghost" onClick={previewCost}>Preview standard cost</button>
+        {isDraft && <button className="btn" onClick={approve}>Approve version</button>}
+        {cost && <span>Yarn ₹{inr2(cost.std_yarn_cost)} · Dye/Chem ₹{inr2(cost.std_dye_chem_cost)} · Finishing ₹{inr2(cost.std_finishing_cost)} ·
+          <b> Total ₹{inr2(cost.std_total_cost_per_kg)}/kg</b></span>}
+      </div>
+    </Panel>}
+
+    {sel && <Panel title={"Production orders · "+sel.code}>
+      <form className="row" onSubmit={createOrder}>
+        <div className="field"><label>Order no.</label><input required value={ord.number} onChange={e=>setOrd({...ord,number:e.target.value})} placeholder="PO-26001"/></div>
+        <div className="field"><label>Planned kg</label><input required value={ord.planned_qty_kg} onChange={e=>setOrd({...ord,planned_qty_kg:e.target.value})}/></div>
+        <div className="field"><label>Order date</label><input type="date" value={ord.order_date} onChange={e=>setOrd({...ord,order_date:e.target.value})}/></div>
+        <button className="btn">Create order (explode BOM)</button>
+      </form>
+      <div className="muted" style={{fontSize:12,margin:"4px 0"}}>Uses the approved version effective on the order date and stamps it onto the order.</div>
+      {!!orders.length && <table><thead><tr><th>No.</th><th>Status</th><th className="num">Planned</th><th className="num">Produced</th><th></th></tr></thead>
+        <tbody>{orders.map(o=><tr key={o.id} className={odet&&odet.id===o.id?"sel":""}><td>{o.number}</td><td>{o.status}</td>
+          <td className="num">{inr2(o.planned_qty_kg)}</td><td className="num">{inr2(o.produced_qty_kg)}</td>
+          <td><button className="btn-ghost" onClick={()=>openOrder(o.id)}>open</button></td></tr>)}</tbody></table>}
+      {odet && <div style={{marginTop:10}}>
+        <h4>Order {odet.number} — material requirements</h4>
+        <table><thead><tr><th>Stage</th><th>Type</th><th className="num">Planned</th><th className="num">Issued</th><th className="num">On hand</th><th className="num">Short</th><th></th></tr></thead>
+          <tbody>{reqs.map((r,i)=><tr key={i}><td>{r.stage}</td><td>{r.item_type}</td><td className="num">{inr2(r.planned_qty)}</td>
+            <td className="num">{inr2(r.issued_qty)}</td><td className="num">{inr2(r.on_hand)}</td>
+            <td className="num">{Number(r.shortage)>0?<span className="badge bad">{inr2(r.shortage)}</span>:"0"}</td>
+            <td>{r.status!=="ISSUED"&&<button className="btn-ghost" onClick={()=>issue(r)}>issue</button>}</td></tr>)}</tbody></table>
+        <div style={{display:"flex",gap:8,marginTop:8}}>
+          <button className="btn" onClick={complete}>Complete & cost variance</button>
+          <button className="btn-ghost" onClick={showVar}>Variance report</button></div>
+        {varr && <table style={{marginTop:8}}><thead><tr><th>Stage</th><th className="num">Planned ₹</th><th className="num">Actual ₹</th><th className="num">Variance ₹</th><th className="num">%</th><th className="num">Wastage</th></tr></thead>
+          <tbody>{varr.stages.map((s,i)=><tr key={i}><td>{s.stage}</td><td className="num">{inr2(s.planned_cost)}</td><td className="num">{inr2(s.actual_cost)}</td>
+            <td className="num">{inr2(s.variance)}</td><td className="num">{s.variance_pct}</td><td className="num">{inr2(s.wastage_qty)}</td></tr>)}
+            <tr style={{fontWeight:700}}><td>Total</td><td className="num">{inr2(varr.total_planned_cost)}</td><td className="num">{inr2(varr.total_actual_cost)}</td>
+              <td className="num">{inr2(varr.total_variance)}</td><td className="num">{varr.total_variance_pct}</td><td></td></tr>
+          </tbody></table>}
+      </div>}
+    </Panel>}
+  </div>);
+}
+
 const PAGES={
   group:{t:"Group Dashboard",c:GroupDash},
   owner:{t:"Owner Dashboard",c:OwnerDash}, factory:{t:"Factory Dashboard",c:FactoryDash},
@@ -2563,6 +2769,7 @@ const PAGES={
   purchaseorders:{t:"Purchase Orders",c:PurchaseOrders},
   purchase:{t:"Purchase (GRN)",c:Purchase}, knitting:{t:"Knitting Production",c:Knitting},
   batching:{t:"Batching",c:Batching},
+  bom:{t:"Fabric BOM & Production Orders",c:FabricBOM},
   inventoryops:{t:"Inventory Ops (transfer / split / merge)",c:InventoryOps},
   stock:{t:"Stock on Hand",c:StockOnHand},
   stores:{t:"Stores & Spares",c:Stores},
@@ -2584,7 +2791,7 @@ const PAGES={
   tenancy:{t:"Group & Tenancy",c:Tenancy},
   reports:{t:"Reports",c:Reports},
 };
-const NAV_ICON={group:"🏛️",owner:"📊",factory:"🏭",accounts:"💼",chemical:"🧪",purchaseorders:"📝",purchase:"📥",
+const NAV_ICON={group:"🏛️",owner:"📊",factory:"🏭",accounts:"💼",chemical:"🧪",bom:"🧵",purchaseorders:"📝",purchase:"📥",
   knitting:"🧶",batching:"🧺",pipeline:"🎯",salesorders:"🛒",sales:"🧾",dyeing:"🎨",vouchers:"📒",
   inventoryops:"🔁",stock:"📦",stores:"🪡",jobwork:"🔄",masters:"🗃️",coa:"📚",customers:"👤",suppliers:"🏢",warehouses:"🏬",quality:"🔍",assets:"🏗️",
   payroll:"💰",costing:"📐",devices:"🖨️",reports:"📈",approvals:"✔️",notifications:"🔔",acctops:"🧮",admin:"⚙️",tenancy:"🏛️"};
@@ -2646,6 +2853,7 @@ function App(){
         {navBtn("group","Group")}{navBtn("owner","Owner")}{navBtn("factory","Factory")}
         {navBtn("accounts","Accounts")}{navBtn("chemical","Chemical")}
         <div className="group">Transactions</div>
+        {navBtn("bom","Fabric BOM")}
         {navBtn("purchaseorders","Purchase Orders")}{navBtn("purchase","Purchase (GRN)")}{navBtn("knitting","Knitting")}
         {navBtn("batching","Batching")}{navBtn("pipeline","Sales Pipeline")}{navBtn("salesorders","Sales Orders")}{navBtn("sales","Sales Invoice")}{navBtn("dyeing","Dyeing & Dispensing")}{navBtn("jobwork","Job Work")}{navBtn("vouchers","Vouchers")}
         {navBtn("inventoryops","Inventory Ops")}{navBtn("stock","Stock on Hand")}{navBtn("stores","Stores & Spares")}

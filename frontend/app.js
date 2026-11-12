@@ -8308,6 +8308,769 @@ function GroupDash({
     className: "num"
   }, r.knitting_efficiency_pct)))))));
 }
+
+// ---- Fabric BOM (version-controlled) + production orders -------------------
+function FabricBOM() {
+  const [boms, setBoms] = useState(null);
+  const [sel, setSel] = useState(null); // selected BOM detail
+  const [verId, setVerId] = useState("");
+  const [err, setErr] = useState("");
+  const [msg, setMsg] = useState("");
+  const yarns = useList("/api/masters/yarns");
+  const recipes = useList("/api/masters/recipe-versions");
+  const machines = useList("/api/masters/machines");
+  const shades = useList("/api/masters/shades");
+  const fabrics = useList("/api/masters/fabric-types");
+  const [nb, setNb] = useState({
+    code: "",
+    name: "",
+    fabric_type_id: "",
+    shade_id: "",
+    finished_quality: ""
+  });
+  const [spec, setSpec] = useState({});
+  const [yrows, setYrows] = useState([]);
+  const [knit, setKnit] = useState({});
+  const [frows, setFrows] = useState([]);
+  const [cost, setCost] = useState(null);
+  const [orders, setOrders] = useState([]);
+  const [ord, setOrd] = useState({
+    number: "",
+    planned_qty_kg: "100",
+    order_date: today()
+  });
+  const [odet, setOdet] = useState(null);
+  const [reqs, setReqs] = useState([]);
+  const [varr, setVarr] = useState(null);
+  const loadBoms = useCallback(() => api("/api/bom").then(setBoms).catch(e => setErr(e.message)), []);
+  useEffect(() => {
+    loadBoms();
+  }, [loadBoms]);
+  const openBom = async id => {
+    setErr("");
+    setMsg("");
+    setVarr(null);
+    setOdet(null);
+    try {
+      const b = await api(`/api/bom/${id}`);
+      setSel(b);
+      const v = b.versions[b.versions.length - 1];
+      selectVer(b, v.id);
+      setOrders(await api("/api/bom/orders").then(os => os.filter(o => b.versions.some(x => x.id === o.bom_version_id))));
+    } catch (e) {
+      setErr(e.message);
+    }
+  };
+  const selectVer = (b, id) => {
+    setVerId(id);
+    const v = (b || sel).versions.find(x => x.id === id);
+    setCost(null);
+    setSpec({
+      construction: v.construction || "",
+      composition: v.composition || "",
+      yarn_count: v.yarn_count || "",
+      gsm: v.gsm || "",
+      width_cm: v.width_cm || "",
+      gauge: v.gauge || "",
+      diameter_inch: v.diameter_inch || "",
+      stitch_length_mm: v.stitch_length_mm || "",
+      dye_recipe_version_id: v.dye_recipe_version_id || "",
+      std_knitting_cost: v.std_knitting_cost || "",
+      std_dyeing_cost: v.std_dyeing_cost || "",
+      std_labour_cost: v.std_labour_cost || "",
+      std_overhead_cost: v.std_overhead_cost || ""
+    });
+    setYrows(v.yarns.length ? v.yarns.map(y => ({
+      ...y
+    })) : [{
+      yarn_id: "",
+      blend_percent: "100",
+      std_consumption_per_kg: "1.0",
+      wastage_percent: "2",
+      process_loss_percent: "1",
+      std_unit_cost: ""
+    }]);
+    setKnit(v.knitting || {
+      machine_type: "KNITTING"
+    });
+    setFrows(v.finishing_steps.length ? v.finishing_steps.map(s => ({
+      ...s
+    })) : []);
+  };
+  const curVer = sel && sel.versions.find(x => x.id === verId);
+  const isDraft = curVer && curVer.status === "DRAFT";
+  const createBom = async e => {
+    e.preventDefault();
+    setErr("");
+    try {
+      const b = await api("/api/bom", {
+        method: "POST",
+        body: {
+          ...nb,
+          fabric_type_id: nb.fabric_type_id || null,
+          shade_id: nb.shade_id || null
+        }
+      });
+      setNb({
+        code: "",
+        name: "",
+        fabric_type_id: "",
+        shade_id: "",
+        finished_quality: ""
+      });
+      await loadBoms();
+      openBom(b.id);
+    } catch (ex) {
+      setErr(ex.message);
+    }
+  };
+  const clean = o => {
+    const r = {};
+    for (const k in o) {
+      if (o[k] !== "" && o[k] != null) r[k] = o[k];
+    }
+    return r;
+  };
+  const saveSpec = async () => {
+    setErr("");
+    setMsg("");
+    try {
+      await api(`/api/bom/versions/${verId}/spec`, {
+        method: "PUT",
+        body: clean(spec)
+      });
+      setMsg("Spec saved");
+      refresh();
+    } catch (e) {
+      setErr(e.message);
+    }
+  };
+  const saveYarns = async () => {
+    setErr("");
+    setMsg("");
+    try {
+      await api(`/api/bom/versions/${verId}/yarns`, {
+        method: "PUT",
+        body: yrows.map((y, i) => ({
+          ...y,
+          sequence: i + 1
+        }))
+      });
+      setMsg("Yarn BOM saved");
+      refresh();
+    } catch (e) {
+      setErr(e.message);
+    }
+  };
+  const saveKnit = async () => {
+    setErr("");
+    setMsg("");
+    try {
+      await api(`/api/bom/versions/${verId}/knitting`, {
+        method: "PUT",
+        body: clean(knit)
+      });
+      setMsg("Knitting saved");
+      refresh();
+    } catch (e) {
+      setErr(e.message);
+    }
+  };
+  const saveFin = async () => {
+    setErr("");
+    setMsg("");
+    try {
+      await api(`/api/bom/versions/${verId}/finishing`, {
+        method: "PUT",
+        body: frows.map((s, i) => ({
+          ...s,
+          sequence: i + 1
+        }))
+      });
+      setMsg("Finishing saved");
+      refresh();
+    } catch (e) {
+      setErr(e.message);
+    }
+  };
+  const refresh = async () => {
+    const b = await api(`/api/bom/${sel.id}`);
+    setSel(b);
+  };
+  const previewCost = async () => {
+    setErr("");
+    try {
+      setCost(await api(`/api/bom/versions/${verId}/cost`));
+    } catch (e) {
+      setErr(e.message);
+    }
+  };
+  const approve = async () => {
+    setErr("");
+    setMsg("");
+    try {
+      await api(`/api/bom/versions/${verId}/approve`, {
+        method: "POST",
+        body: {
+          effective_from: today()
+        }
+      });
+      setMsg("Version approved");
+      await refresh();
+    } catch (e) {
+      setErr(e.message);
+    }
+  };
+  const newRev = async () => {
+    setErr("");
+    try {
+      const v = await api(`/api/bom/${sel.id}/versions`, {
+        method: "POST",
+        body: {
+          clone_from_version_id: verId,
+          revision_notes: "revision"
+        }
+      });
+      const b = await api(`/api/bom/${sel.id}`);
+      setSel(b);
+      selectVer(b, v.id);
+      setMsg("New draft version created");
+    } catch (e) {
+      setErr(e.message);
+    }
+  };
+  const createOrder = async e => {
+    e.preventDefault();
+    setErr("");
+    setMsg("");
+    try {
+      const o = await api("/api/bom/orders", {
+        method: "POST",
+        body: {
+          number: ord.number,
+          planned_qty_kg: ord.planned_qty_kg,
+          bom_id: sel.id,
+          order_date: ord.order_date
+        }
+      });
+      setOrders([...orders, o]);
+      setOrd({
+        number: "",
+        planned_qty_kg: "100",
+        order_date: today()
+      });
+      openOrder(o.id);
+      setMsg("Order created; reservations exploded");
+    } catch (ex) {
+      setErr(ex.message);
+    }
+  };
+  const openOrder = async id => {
+    setVarr(null);
+    const o = await api(`/api/bom/orders/${id}`);
+    setOdet(o);
+    setReqs(await api(`/api/bom/orders/${id}/requirements`));
+  };
+  const issue = async r => {
+    setErr("");
+    try {
+      await api(`/api/bom/orders/${odet.id}/issue`, {
+        method: "POST",
+        body: {
+          reservation_id: r.reservation_id,
+          qty: r.planned_qty
+        }
+      });
+      openOrder(odet.id);
+    } catch (e) {
+      setErr(e.message);
+    }
+  };
+  const complete = async () => {
+    setErr("");
+    try {
+      await api(`/api/bom/orders/${odet.id}/complete`, {
+        method: "POST",
+        body: {
+          produced_qty_kg: odet.planned_qty_kg
+        }
+      });
+      setVarr(await api(`/api/bom/orders/${odet.id}/variance`));
+      openOrder(odet.id);
+    } catch (e) {
+      setErr(e.message);
+    }
+  };
+  const showVar = async () => {
+    setErr("");
+    try {
+      setVarr(await api(`/api/bom/orders/${odet.id}/variance`));
+    } catch (e) {
+      setErr(e.message);
+    }
+  };
+  const setYr = (i, k, v) => setYrows(yrows.map((r, j) => j === i ? {
+    ...r,
+    [k]: v
+  } : r));
+  const setFr = (i, k, v) => setFrows(frows.map((r, j) => j === i ? {
+    ...r,
+    [k]: v
+  } : r));
+  return /*#__PURE__*/React.createElement("div", null, err && /*#__PURE__*/React.createElement("div", {
+    className: "err"
+  }, err), msg && /*#__PURE__*/React.createElement("div", {
+    className: "badge ok",
+    style: {
+      marginBottom: 8
+    }
+  }, msg), /*#__PURE__*/React.createElement("div", {
+    className: "grid3"
+  }, /*#__PURE__*/React.createElement(Panel, {
+    title: "New fabric BOM"
+  }, /*#__PURE__*/React.createElement("form", {
+    onSubmit: createBom
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Code"), /*#__PURE__*/React.createElement("input", {
+    required: true,
+    value: nb.code,
+    onChange: e => setNb({
+      ...nb,
+      code: e.target.value
+    }),
+    placeholder: "FB-NAVY-SJ"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Name"), /*#__PURE__*/React.createElement("input", {
+    required: true,
+    value: nb.name,
+    onChange: e => setNb({
+      ...nb,
+      name: e.target.value
+    }),
+    placeholder: "Navy Single Jersey 160"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Fabric type"), /*#__PURE__*/React.createElement("select", {
+    value: nb.fabric_type_id,
+    onChange: e => setNb({
+      ...nb,
+      fabric_type_id: e.target.value
+    })
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "\u2014"), fabrics.map(f => /*#__PURE__*/React.createElement("option", {
+    key: f.id,
+    value: f.id
+  }, f.label || f.code)))), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Shade"), /*#__PURE__*/React.createElement("select", {
+    value: nb.shade_id,
+    onChange: e => setNb({
+      ...nb,
+      shade_id: e.target.value
+    })
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "\u2014"), shades.map(s => /*#__PURE__*/React.createElement("option", {
+    key: s.id,
+    value: s.id
+  }, s.label || s.code || s.name)))), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Finished quality"), /*#__PURE__*/React.createElement("input", {
+    value: nb.finished_quality,
+    onChange: e => setNb({
+      ...nb,
+      finished_quality: e.target.value
+    }),
+    placeholder: "Export A"
+  })), /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Create BOM"))), /*#__PURE__*/React.createElement(Panel, {
+    title: "Fabric BOMs"
+  }, !boms ? "Loading…" : !boms.length ? /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "No BOMs yet.") : /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Code"), /*#__PURE__*/React.createElement("th", null, "Name"))), /*#__PURE__*/React.createElement("tbody", null, boms.map(b => /*#__PURE__*/React.createElement("tr", {
+    key: b.id,
+    className: sel && sel.id === b.id ? "sel" : "",
+    style: {
+      cursor: "pointer"
+    },
+    onClick: () => openBom(b.id)
+  }, /*#__PURE__*/React.createElement("td", null, b.code), /*#__PURE__*/React.createElement("td", null, b.name)))))), sel && /*#__PURE__*/React.createElement(Panel, {
+    title: "Versions · " + sel.code
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "#"), /*#__PURE__*/React.createElement("th", null, "Status"), /*#__PURE__*/React.createElement("th", null, "Effective"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Cost/kg"))), /*#__PURE__*/React.createElement("tbody", null, sel.versions.map(v => /*#__PURE__*/React.createElement("tr", {
+    key: v.id,
+    className: v.id === verId ? "sel" : "",
+    style: {
+      cursor: "pointer"
+    },
+    onClick: () => selectVer(sel, v.id)
+  }, /*#__PURE__*/React.createElement("td", null, "v", v.version_no), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("span", {
+    className: "badge " + (v.status === "APPROVED" ? "ok" : v.status === "DRAFT" ? "" : "bad")
+  }, v.status)), /*#__PURE__*/React.createElement("td", null, v.effective_from || "—", v.effective_to ? " → " + v.effective_to : ""), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(v.std_total_cost_per_kg)))))), curVer && !isDraft && /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    style: {
+      marginTop: 8
+    },
+    onClick: newRev
+  }, "New revision (clone v", curVer.version_no, ")"))), curVer && /*#__PURE__*/React.createElement(Panel, {
+    title: "Version v" + curVer.version_no + (isDraft ? " (draft — editable)" : " (" + curVer.status + ")")
+  }, !isDraft && /*#__PURE__*/React.createElement("div", {
+    className: "muted",
+    style: {
+      marginBottom: 8
+    }
+  }, "Approved versions are frozen. Create a new revision to change the BOM. Historical production orders keep the version they were created against."), /*#__PURE__*/React.createElement("div", {
+    className: "grid2"
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h4", null, "Finished-fabric spec"), /*#__PURE__*/React.createElement("div", {
+    className: "row"
+  }, ["construction", "composition", "yarn_count", "gsm", "width_cm", "gauge", "diameter_inch", "stitch_length_mm"].map(k => /*#__PURE__*/React.createElement("div", {
+    className: "field",
+    key: k
+  }, /*#__PURE__*/React.createElement("label", null, k.replace(/_/g, " ")), /*#__PURE__*/React.createElement("input", {
+    disabled: !isDraft,
+    value: spec[k] || "",
+    onChange: e => setSpec({
+      ...spec,
+      [k]: e.target.value
+    })
+  })))), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Dyeing recipe (approved)"), /*#__PURE__*/React.createElement("select", {
+    disabled: !isDraft,
+    value: spec.dye_recipe_version_id || "",
+    onChange: e => setSpec({
+      ...spec,
+      dye_recipe_version_id: e.target.value
+    })
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "\u2014 none \u2014"), recipes.map(r => /*#__PURE__*/React.createElement("option", {
+    key: r.id,
+    value: r.id
+  }, r.label)))), /*#__PURE__*/React.createElement("div", {
+    className: "row"
+  }, ["std_knitting_cost", "std_dyeing_cost", "std_labour_cost", "std_overhead_cost"].map(k => /*#__PURE__*/React.createElement("div", {
+    className: "field",
+    key: k
+  }, /*#__PURE__*/React.createElement("label", null, k.replace("std_", "").replace(/_/g, " "), " /kg"), /*#__PURE__*/React.createElement("input", {
+    disabled: !isDraft,
+    value: spec[k] || "",
+    onChange: e => setSpec({
+      ...spec,
+      [k]: e.target.value
+    })
+  })))), isDraft && /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    onClick: saveSpec
+  }, "Save spec"), /*#__PURE__*/React.createElement("h4", {
+    style: {
+      marginTop: 14
+    }
+  }, "Knitting process"), /*#__PURE__*/React.createElement("div", {
+    className: "row"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "machine type"), /*#__PURE__*/React.createElement("input", {
+    disabled: !isDraft,
+    value: knit.machine_type || "",
+    onChange: e => setKnit({
+      ...knit,
+      machine_type: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "gauge"), /*#__PURE__*/React.createElement("input", {
+    disabled: !isDraft,
+    value: knit.gauge || "",
+    onChange: e => setKnit({
+      ...knit,
+      gauge: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "feeders"), /*#__PURE__*/React.createElement("input", {
+    disabled: !isDraft,
+    value: knit.feeders || "",
+    onChange: e => setKnit({
+      ...knit,
+      feeders: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "stitch len mm"), /*#__PURE__*/React.createElement("input", {
+    disabled: !isDraft,
+    value: knit.stitch_length_mm || "",
+    onChange: e => setKnit({
+      ...knit,
+      stitch_length_mm: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "efficiency %"), /*#__PURE__*/React.createElement("input", {
+    disabled: !isDraft,
+    value: knit.efficiency_percent || "",
+    onChange: e => setKnit({
+      ...knit,
+      efficiency_percent: e.target.value
+    })
+  }))), isDraft && /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    onClick: saveKnit
+  }, "Save knitting")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h4", null, "Yarn BOM (blend)"), /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Yarn"), /*#__PURE__*/React.createElement("th", null, "Blend %"), /*#__PURE__*/React.createElement("th", null, "Cons/kg"), /*#__PURE__*/React.createElement("th", null, "Wst%"), /*#__PURE__*/React.createElement("th", null, "Loss%"), /*#__PURE__*/React.createElement("th", null, "\u20B9/kg"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, yrows.map((y, i) => /*#__PURE__*/React.createElement("tr", {
+    key: i
+  }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("select", {
+    disabled: !isDraft,
+    value: y.yarn_id || "",
+    onChange: e => setYr(i, "yarn_id", e.target.value)
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "\u2014"), yarns.map(o => /*#__PURE__*/React.createElement("option", {
+    key: o.id,
+    value: o.id
+  }, o.code)))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("input", {
+    disabled: !isDraft,
+    style: {
+      width: 56
+    },
+    value: y.blend_percent || "",
+    onChange: e => setYr(i, "blend_percent", e.target.value)
+  })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("input", {
+    disabled: !isDraft,
+    style: {
+      width: 56
+    },
+    value: y.std_consumption_per_kg || "",
+    onChange: e => setYr(i, "std_consumption_per_kg", e.target.value)
+  })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("input", {
+    disabled: !isDraft,
+    style: {
+      width: 44
+    },
+    value: y.wastage_percent || "",
+    onChange: e => setYr(i, "wastage_percent", e.target.value)
+  })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("input", {
+    disabled: !isDraft,
+    style: {
+      width: 44
+    },
+    value: y.process_loss_percent || "",
+    onChange: e => setYr(i, "process_loss_percent", e.target.value)
+  })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("input", {
+    disabled: !isDraft,
+    style: {
+      width: 64
+    },
+    value: y.std_unit_cost || "",
+    onChange: e => setYr(i, "std_unit_cost", e.target.value)
+  })), /*#__PURE__*/React.createElement("td", null, isDraft && /*#__PURE__*/React.createElement("button", {
+    className: "btn-ghost",
+    onClick: () => setYrows(yrows.filter((_, j) => j !== i))
+  }, "\u2715")))))), isDraft && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("button", {
+    className: "btn-ghost",
+    onClick: () => setYrows([...yrows, {
+      yarn_id: "",
+      blend_percent: "",
+      std_consumption_per_kg: "1.0",
+      wastage_percent: "2",
+      process_loss_percent: "1",
+      std_unit_cost: ""
+    }])
+  }, "+ yarn"), /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    onClick: saveYarns
+  }, "Save yarn BOM")), /*#__PURE__*/React.createElement("h4", {
+    style: {
+      marginTop: 14
+    }
+  }, "Finishing steps"), /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Process"), /*#__PURE__*/React.createElement("th", null, "Machine"), /*#__PURE__*/React.createElement("th", null, "\u20B9/kg"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, frows.map((s, i) => /*#__PURE__*/React.createElement("tr", {
+    key: i
+  }, /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("select", {
+    disabled: !isDraft,
+    value: s.process_type || "",
+    onChange: e => setFr(i, "process_type", e.target.value)
+  }, ["COMPACTING", "STENTER", "HEAT_SETTING", "RAISING", "SLITTING", "DRYING", "HYDRO"].map(p => /*#__PURE__*/React.createElement("option", {
+    key: p
+  }, p)))), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("input", {
+    disabled: !isDraft,
+    style: {
+      width: 80
+    },
+    value: s.machine_type || "",
+    onChange: e => setFr(i, "machine_type", e.target.value)
+  })), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("input", {
+    disabled: !isDraft,
+    style: {
+      width: 64
+    },
+    value: s.std_cost_per_kg || "",
+    onChange: e => setFr(i, "std_cost_per_kg", e.target.value)
+  })), /*#__PURE__*/React.createElement("td", null, isDraft && /*#__PURE__*/React.createElement("button", {
+    className: "btn-ghost",
+    onClick: () => setFrows(frows.filter((_, j) => j !== i))
+  }, "\u2715")))))), isDraft && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("button", {
+    className: "btn-ghost",
+    onClick: () => setFrows([...frows, {
+      process_type: "COMPACTING",
+      std_cost_per_kg: ""
+    }])
+  }, "+ step"), /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    onClick: saveFin
+  }, "Save finishing")))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 12,
+      display: "flex",
+      gap: 8,
+      alignItems: "center",
+      flexWrap: "wrap"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn-ghost",
+    onClick: previewCost
+  }, "Preview standard cost"), isDraft && /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    onClick: approve
+  }, "Approve version"), cost && /*#__PURE__*/React.createElement("span", null, "Yarn \u20B9", inr2(cost.std_yarn_cost), " \xB7 Dye/Chem \u20B9", inr2(cost.std_dye_chem_cost), " \xB7 Finishing \u20B9", inr2(cost.std_finishing_cost), " \xB7", /*#__PURE__*/React.createElement("b", null, " Total \u20B9", inr2(cost.std_total_cost_per_kg), "/kg")))), sel && /*#__PURE__*/React.createElement(Panel, {
+    title: "Production orders · " + sel.code
+  }, /*#__PURE__*/React.createElement("form", {
+    className: "row",
+    onSubmit: createOrder
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Order no."), /*#__PURE__*/React.createElement("input", {
+    required: true,
+    value: ord.number,
+    onChange: e => setOrd({
+      ...ord,
+      number: e.target.value
+    }),
+    placeholder: "PO-26001"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Planned kg"), /*#__PURE__*/React.createElement("input", {
+    required: true,
+    value: ord.planned_qty_kg,
+    onChange: e => setOrd({
+      ...ord,
+      planned_qty_kg: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Order date"), /*#__PURE__*/React.createElement("input", {
+    type: "date",
+    value: ord.order_date,
+    onChange: e => setOrd({
+      ...ord,
+      order_date: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Create order (explode BOM)")), /*#__PURE__*/React.createElement("div", {
+    className: "muted",
+    style: {
+      fontSize: 12,
+      margin: "4px 0"
+    }
+  }, "Uses the approved version effective on the order date and stamps it onto the order."), !!orders.length && /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "No."), /*#__PURE__*/React.createElement("th", null, "Status"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Planned"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Produced"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, orders.map(o => /*#__PURE__*/React.createElement("tr", {
+    key: o.id,
+    className: odet && odet.id === o.id ? "sel" : ""
+  }, /*#__PURE__*/React.createElement("td", null, o.number), /*#__PURE__*/React.createElement("td", null, o.status), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(o.planned_qty_kg)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(o.produced_qty_kg)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("button", {
+    className: "btn-ghost",
+    onClick: () => openOrder(o.id)
+  }, "open")))))), odet && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 10
+    }
+  }, /*#__PURE__*/React.createElement("h4", null, "Order ", odet.number, " \u2014 material requirements"), /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Stage"), /*#__PURE__*/React.createElement("th", null, "Type"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Planned"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Issued"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "On hand"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Short"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, reqs.map((r, i) => /*#__PURE__*/React.createElement("tr", {
+    key: i
+  }, /*#__PURE__*/React.createElement("td", null, r.stage), /*#__PURE__*/React.createElement("td", null, r.item_type), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(r.planned_qty)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(r.issued_qty)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(r.on_hand)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, Number(r.shortage) > 0 ? /*#__PURE__*/React.createElement("span", {
+    className: "badge bad"
+  }, inr2(r.shortage)) : "0"), /*#__PURE__*/React.createElement("td", null, r.status !== "ISSUED" && /*#__PURE__*/React.createElement("button", {
+    className: "btn-ghost",
+    onClick: () => issue(r)
+  }, "issue")))))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      marginTop: 8
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    onClick: complete
+  }, "Complete & cost variance"), /*#__PURE__*/React.createElement("button", {
+    className: "btn-ghost",
+    onClick: showVar
+  }, "Variance report")), varr && /*#__PURE__*/React.createElement("table", {
+    style: {
+      marginTop: 8
+    }
+  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Stage"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Planned \u20B9"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Actual \u20B9"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Variance \u20B9"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "%"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Wastage"))), /*#__PURE__*/React.createElement("tbody", null, varr.stages.map((s, i) => /*#__PURE__*/React.createElement("tr", {
+    key: i
+  }, /*#__PURE__*/React.createElement("td", null, s.stage), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(s.planned_cost)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(s.actual_cost)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(s.variance)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, s.variance_pct), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(s.wastage_qty)))), /*#__PURE__*/React.createElement("tr", {
+    style: {
+      fontWeight: 700
+    }
+  }, /*#__PURE__*/React.createElement("td", null, "Total"), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(varr.total_planned_cost)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(varr.total_actual_cost)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(varr.total_variance)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, varr.total_variance_pct), /*#__PURE__*/React.createElement("td", null)))))));
+}
 const PAGES = {
   group: {
     t: "Group Dashboard",
@@ -8344,6 +9107,10 @@ const PAGES = {
   batching: {
     t: "Batching",
     c: Batching
+  },
+  bom: {
+    t: "Fabric BOM & Production Orders",
+    c: FabricBOM
   },
   inventoryops: {
     t: "Inventory Ops (transfer / split / merge)",
@@ -8456,6 +9223,7 @@ const NAV_ICON = {
   factory: "🏭",
   accounts: "💼",
   chemical: "🧪",
+  bom: "🧵",
   purchaseorders: "📝",
   purchase: "📥",
   knitting: "🧶",
@@ -8609,7 +9377,7 @@ function App() {
     className: "group"
   }, "Dashboards"), navBtn("group", "Group"), navBtn("owner", "Owner"), navBtn("factory", "Factory"), navBtn("accounts", "Accounts"), navBtn("chemical", "Chemical"), /*#__PURE__*/React.createElement("div", {
     className: "group"
-  }, "Transactions"), navBtn("purchaseorders", "Purchase Orders"), navBtn("purchase", "Purchase (GRN)"), navBtn("knitting", "Knitting"), navBtn("batching", "Batching"), navBtn("pipeline", "Sales Pipeline"), navBtn("salesorders", "Sales Orders"), navBtn("sales", "Sales Invoice"), navBtn("dyeing", "Dyeing & Dispensing"), navBtn("jobwork", "Job Work"), navBtn("vouchers", "Vouchers"), navBtn("inventoryops", "Inventory Ops"), navBtn("stock", "Stock on Hand"), navBtn("stores", "Stores & Spares"), /*#__PURE__*/React.createElement("div", {
+  }, "Transactions"), navBtn("bom", "Fabric BOM"), navBtn("purchaseorders", "Purchase Orders"), navBtn("purchase", "Purchase (GRN)"), navBtn("knitting", "Knitting"), navBtn("batching", "Batching"), navBtn("pipeline", "Sales Pipeline"), navBtn("salesorders", "Sales Orders"), navBtn("sales", "Sales Invoice"), navBtn("dyeing", "Dyeing & Dispensing"), navBtn("jobwork", "Job Work"), navBtn("vouchers", "Vouchers"), navBtn("inventoryops", "Inventory Ops"), navBtn("stock", "Stock on Hand"), navBtn("stores", "Stores & Spares"), /*#__PURE__*/React.createElement("div", {
     className: "group"
   }, "Masters"), navBtn("masters", "Master Data"), navBtn("coa", "Chart of Accounts"), navBtn("customers", "Customers"), navBtn("suppliers", "Suppliers"), navBtn("warehouses", "Warehouses"), /*#__PURE__*/React.createElement("div", {
     className: "group"
