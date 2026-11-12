@@ -25,11 +25,18 @@ brief). Updated **2026-11-11**. Test suite: **263 passing** (+1 Postgres-gated)
 > - Phase 13 production runbook — `PRODUCTION_DEPLOYMENT_RUNBOOK.md`.
 > - **Database-per-company** foundation (registry + router + provisioning) —
 >   `DATABASE_PER_COMPANY.md`.
+> - Phase 10 frontend: company/factory/FY selectors (real switching), Group
+>   dashboard, Group & Tenancy admin — all browser-verified.
+> - Phase 14 **real-PostgreSQL validation**: migrations up/down, PG concurrency
+>   test, representative suite (66), db-per-company isolation on two PG databases —
+>   `POSTGRES_VALIDATION.md`.
+> - Phase 15 automated multi-company UAT scenario (`tests/test_uat_multicompany.py`)
+>   + `USER_ACCEPTANCE_TEST_PLAN.md`; Phase 16 `PRODUCTION_ACCEPTANCE_CHECKLIST.md`.
 >
-> **Gated on you (Phases 15–16):** running the legacy backfill on real data +
-> reconciliation then `NOT NULL`; database-per-company live cutover on real
-> PostgreSQL; GST professional review; independent security review; load test;
-> UAT with two real companies; management sign-off. Status: **DEVELOPMENT READY.**
+> **Gated on you (Phases 15–16 completion):** legacy backfill on real data +
+> reconciliation then `NOT NULL`; database-per-company live cutover; GST
+> professional review; independent security review; load test; real-user UAT with
+> business-owner acceptance; management sign-off. Status: **DEVELOPMENT READY.**
 
 Legend: ✅ done & tested · 🟡 partial / simulated / readiness-only · ❌ not built.
 
