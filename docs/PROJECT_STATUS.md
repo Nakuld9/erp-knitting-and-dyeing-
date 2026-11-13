@@ -1,11 +1,11 @@
 # Project status & pending list
 
 Audit of the implementation against the master specification (the 24-section
-brief). Updated **2026-11-13**. Test suite: **376 passing, 2 Postgres-gated
+brief). Updated **2026-11-13**. Test suite: **392 passing, 2 Postgres-gated
 skips** (`cd backend && pytest`).
 
 > **Multi-company / multi-factory programme (branch `feat/multi-company-production-ready`).**
-> Migrations `0001`→`0012`, all additive and upgrade/downgrade-proven on SQLite
+> Migrations `0001`→`0013`, all additive and upgrade/downgrade-proven on SQLite
 > and PostgreSQL. Delivered:
 > - Phase 0 baseline audit + Phase 1 architecture/foundation (orgs, memberships,
 >   GSTRegistration, request-scoped resolver) — `PRODUCTION_READINESS_BASELINE.md`,
@@ -40,6 +40,15 @@ skips** (`cd backend && pytest`).
 >   BOM, standard cost roll-up, production orders with factory authorization,
 >   honest actual-vs-standard costing, lifecycle controls and validation —
 >   `FABRIC_BOM.md`. Browser-verified; 39 BOM/migration tests also pass on PostgreSQL.
+>   **Yarn-only at this stage** (dye/chemical usage not yet tracked; recipe column
+>   kept, unused).
+> - **Grey fabric actual cost + dyeing cost tracking** (migration `0013`): FIFO
+>   yarn actual cost, independently-recorded actual knitting conversion, grey
+>   fabric valued into inventory, grey std-vs-actual variance; chemical-free
+>   dyeing jobs (grey→dyed, loss/rejection/reprocess, internal/job-work charges)
+>   with a **genuine actual dyed cost/kg** that labels missing components
+>   INCOMPLETE; grey→yarn-lot traceability; "Production Cost" UI —
+>   `GREY_AND_DYEING_COST.md`. Browser-verified; 34 tests also pass on PostgreSQL.
 >
 > **Gated on you (Phases 15–16 completion):** legacy backfill on real data +
 > reconciliation then `NOT NULL`; database-per-company live cutover; GST

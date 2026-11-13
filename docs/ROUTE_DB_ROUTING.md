@@ -50,7 +50,8 @@ records the change made.
 | `dashboard.py` | COMPANY | `get_company_db` | company dashboards |
 | `approvals.py` / `inbox.py` | COMPANY | `get_company_db` | maker-checker, notifications |
 | `einvoice.py` / `ewaybill.py` | COMPANY | `get_company_db` | e-invoice / e-way (per company) |
-| `bom.py` | COMPANY | `get_company_db` | Fabric BOM + production orders (all 19 routes `get_company_db`; production orders additionally factory-authorized) |
+| `bom.py` | COMPANY | `get_company_db` | Fabric BOM + production orders + grey fabric actual cost (factory-authorized) |
+| `dyeing.py` | COMPANY | `get_company_db` | Chemical-free dyeing jobs + actual dyed cost + traceability (factory-authorized) |
 
 **Result:** 26 company-scoped route modules on `get_company_db` (25 at cutover +
 `bom.py`); `admin.py`

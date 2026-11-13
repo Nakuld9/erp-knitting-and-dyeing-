@@ -13,11 +13,12 @@ programme on your own infrastructure.
 
 ## 1. Incremental migrations on PostgreSQL
 
-`alembic upgrade head` on a fresh PostgreSQL database applies `0001`→`0012` and
-creates **113 base tables**; `alembic current` = `0012_fabric_bom_unique (head)`.
+`alembic upgrade head` on a fresh PostgreSQL database applies `0001`→`0013` and
+creates **116 base tables**; `alembic current` = `0013_grey_cost_and_dyeing (head)`.
 (The original database-per-company foundation run stopped at `0008` / 104 tables;
-the later additive migrations `0009`→`0012` added the inter-company saga, the
-code-based mappings, the Fabric BOM tables and the BOM uniqueness constraints.)
+the later additive migrations `0009`→`0013` added the inter-company saga, the
+code-based mappings, the Fabric BOM tables + uniqueness constraints, and the grey
+fabric actual-cost columns + chemical-free dyeing cost-tracking tables.)
 
 **Reversibility:** verified **up → down → up to head** on PostgreSQL for the full
 `0001`→`0012` range this session, including the Fabric BOM migrations. The
@@ -154,12 +155,24 @@ validation) was run against **real PostgreSQL**: **39 BOM + migration tests
 passed** (`tests/test_fabric_bom*.py` + `tests/test_migrations.py`), and
 migrations `0011`+`0012` round-tripped up/down/up on PostgreSQL.
 
+## 6e. Grey fabric actual cost + dyeing on PostgreSQL
+
+The grey fabric actual-cost chain (FIFO yarn, independent actual conversion, grey
+inventory valuation, std-vs-actual variance) and the chemical-free dyeing
+cost-tracking (grey→dyed, loss/rejection/reprocess, internal/job-work charges,
+genuine actual dyed cost/kg with incomplete-cost flagging, grey→yarn-lot
+traceability, factory + company isolation, accounting/inventory valuation
+consistency) were run against **real PostgreSQL**: **34 tests passed**
+(`tests/test_dyeing_cost.py`, `tests/test_dyeing_api.py`,
+`tests/test_fabric_bom.py`, `tests/test_migrations.py`). Migration `0013`
+round-tripped up/down/up on PostgreSQL.
+
 ## 7. Still gated (not done here)
 
 - The **full** suite on PostgreSQL in CI (these runs validated a representative
   subset, the PG-only concurrency path, the two-database cutover, the
   backup/restore drill and the Fabric BOM suite; the full suite runs green on
-  SQLite — **376 passed, 2 PG-gated skips**).
+  SQLite — **392 passed, 2 PG-gated skips**).
 - Load/performance testing and the production database-per-company cutover —
   Phase 15/16 on your infrastructure. (Backup/restore is now drilled on real
   PostgreSQL — §6c — but should be rehearsed on your own infrastructure too.)
