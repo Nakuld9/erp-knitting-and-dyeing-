@@ -1,7 +1,7 @@
 # Project status & pending list
 
 Audit of the implementation against the master specification (the 24-section
-brief). Updated **2026-11-13**. Test suite: **392 passing, 2 Postgres-gated
+brief). Updated **2026-11-13**. Test suite: **402 passing, 2 Postgres-gated
 skips** (`cd backend && pytest`).
 
 > **Multi-company / multi-factory programme (branch `feat/multi-company-production-ready`).**
@@ -49,6 +49,13 @@ skips** (`cd backend && pytest`).
 >   with a **genuine actual dyed cost/kg** that labels missing components
 >   INCOMPLETE; grey→yarn-lot traceability; "Production Cost" UI —
 >   `GREY_AND_DYEING_COST.md`. Browser-verified; 34 tests also pass on PostgreSQL.
+> - **GL accounting integration** for the BOM-driven grey→dyed workflow: balanced
+>   double-entry production journals via the existing posting engine + chart of
+>   accounts (yarn→WIP→greige; greige→dyeing WIP; charges→WIP; WIP→finished),
+>   WIP nets to zero, idempotent + DB-unique-constrained, period-locked,
+>   reversible; **inventory-to-GL reconciliation** service/API/UI. No new
+>   migration. 44 accounting/dyeing/migration tests also pass on PostgreSQL —
+>   `GREY_AND_DYEING_COST.md` §5–§6.
 >
 > **Gated on you (Phases 15–16 completion):** legacy backfill on real data +
 > reconciliation then `NOT NULL`; database-per-company live cutover; GST

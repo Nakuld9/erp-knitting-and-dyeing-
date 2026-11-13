@@ -162,17 +162,20 @@ inventory valuation, std-vs-actual variance) and the chemical-free dyeing
 cost-tracking (grey→dyed, loss/rejection/reprocess, internal/job-work charges,
 genuine actual dyed cost/kg with incomplete-cost flagging, grey→yarn-lot
 traceability, factory + company isolation, accounting/inventory valuation
-consistency) were run against **real PostgreSQL**: **34 tests passed**
-(`tests/test_dyeing_cost.py`, `tests/test_dyeing_api.py`,
-`tests/test_fabric_bom.py`, `tests/test_migrations.py`). Migration `0013`
-round-tripped up/down/up on PostgreSQL.
+consistency) and the **GL accounting integration** (balanced production
+journals, idempotency + DB-unique-constraint, period lock, reversal,
+inventory-to-GL reconciliation) were run against **real PostgreSQL**: **44 tests
+passed** (`tests/test_dyeing_cost.py`, `tests/test_dyeing_api.py`,
+`tests/test_production_accounting.py`, `tests/test_fabric_bom.py`,
+`tests/test_migrations.py`). Migration `0013` round-tripped up/down/up on
+PostgreSQL; the accounting work added no new migration.
 
 ## 7. Still gated (not done here)
 
 - The **full** suite on PostgreSQL in CI (these runs validated a representative
   subset, the PG-only concurrency path, the two-database cutover, the
   backup/restore drill and the Fabric BOM suite; the full suite runs green on
-  SQLite — **392 passed, 2 PG-gated skips**).
+  SQLite — **402 passed, 2 PG-gated skips**).
 - Load/performance testing and the production database-per-company cutover —
   Phase 15/16 on your infrastructure. (Backup/restore is now drilled on real
   PostgreSQL — §6c — but should be rehearsed on your own infrastructure too.)

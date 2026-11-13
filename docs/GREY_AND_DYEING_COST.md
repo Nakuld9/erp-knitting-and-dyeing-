@@ -5,9 +5,10 @@
 
 Builds the **grey (greige) fabric** actual-cost chain and an operational
 **dyeing** layer that tracks fabric through dyeing and computes a **genuine
-actual dyed-fabric cost** — while the **chemical BOM stays disabled** (no recipe
-explosion, no chemical reservation). The dye recipe / chemical masters, columns
-and history are untouched and remain available for later.
+actual dyed-fabric cost**, now with **full double-entry GL postings** and
+**inventory-to-GL reconciliation** (§5–§6) — while the **chemical BOM stays
+disabled** (no recipe explosion, no chemical reservation). The dye recipe /
+chemical masters, columns and history are untouched and remain available for later.
 
 ---
 
@@ -69,18 +70,96 @@ actual dyed cost/kg = total_actual / saleable_output_kg
   attaches a `note` labelling the per-kg figure a **lower bound**, never an
   artificially precise actual.
 
-## 5. Inventory valuation & accounting consistency
+## 5. GL journal postings (double-entry, through the posting engine)
 
-The perpetual **inventory sub-ledger** is the backbone and is internally
-consistent: grey fabric received value = grey actual cost; its FIFO draw into
-dyeing = that value; dyed fabric received value = the accumulated actual cost
-(within per-kg rounding dust, which `dyed_inventory_value` records exactly from
-the layers). The authoritative actual cost is the accumulated total; per-unit
-inventory valuation carries the usual 2-dp rounding. GL journal posting for the
-BOM-driven grey/dyed production path is a documented follow-up — the legacy
-`record_production` path still posts GL for non-BOM knitting.
+Every grey order and dyeing job now posts **balanced** production journals
+(`voucher_type = PJ`) through the sanctioned `posting_engine.post_voucher`, using
+only the **existing** chart of accounts — no invented codes, no engine bypass.
+Dyed-fabric and grey-fabric are received into inventory at **exactly** the
+accumulated cost (an exact-value override on `inventory.receive`, so the
+sub-ledger equals the GL with no rounding dust).
 
-## 6. API, UI, permissions, isolation
+**A. Knitting → grey** (`value_grey_output`, one voucher `PO:{n}:grey`):
+
+| Dr | Cr | Amount |
+|----|----|--------|
+| 1080 Work in Progress | 1060 Yarn Inventory | actual yarn (FIFO) |
+| 1080 Work in Progress | 2020 Expenses Payable | actual knitting conversion *(only if recorded)* |
+| 1070 Greige Fabric Inventory | 1080 Work in Progress | grey total (yarn + conversion) |
+
+WIP nets to **zero**; the greige debit equals the grey inventory receipt.
+
+**B. Grey → dyeing WIP** (`issue_grey`, per issue `DYE:{n}:grey:{input}`):
+
+| Dr | Cr | Amount |
+|----|----|--------|
+| 1080 Work in Progress | 1070 Greige Fabric Inventory | grey cost consumed (FIFO) |
+
+**C. Dyed fabric** (`complete_job`, one voucher `DYE:{n}:dyed`):
+
+| Dr | Cr | Amount |
+|----|----|--------|
+| 1080 Work in Progress | 2020 Expenses Payable | dyeing + chemical + finishing + testing + other + reprocess *(each only if recorded)* |
+| 1080 Work in Progress | 2010 Accounts Payable *(party = sub-contractor)* | outside job-work charge *(if recorded)* |
+| 1085 Finished Fabric Inventory | 1080 Work in Progress | accumulated total (grey + all charges) |
+
+Dyeing WIP (grey already debited at issue) nets to **zero**; the finished-fabric
+debit equals the dyed inventory receipt and the accumulated actual cost.
+
+**Account mapping** is through two new posting *rules* (existing codes only):
+`GREY_PRODUCTION` {wip 1080, yarn 1060, greige 1070, conversion_payable 2020} and
+`DYEING_PRODUCTION` {wip 1080, greige 1070, fg 1085, expense_payable 2020,
+jobwork_payable 2010}. `resolve_account` falls back to these defaults, so existing
+company databases need no re-seeding; they are configurable per company like any
+rule.
+
+**WIP accounting:** WIP holds the grey cost from issue until the dyed fabric is
+received, when it moves to finished inventory; a COMPLETED order/job leaves **no**
+WIP balance.
+
+**Cost allocation:** the accumulated job cost is allocated across saleable output
+lots **by weight** (last lot absorbs allocation rounding); each lot is received
+into inventory at exactly its allocated cost. `actual dyed cost/kg =
+total / saleable output`.
+
+**Loss & rejection:** normal process loss / weight change is **absorbed into the
+good-output unit cost** (total ÷ saleable output) — standard job-costing. Rejected
+quantity is recorded and excluded from saleable output (so it is likewise absorbed
+into the cost of good output); an explicit abnormal-loss write-off to a P&L loss
+account is a noted future extension, not a silent balancing entry.
+
+**Corrections / reversals:** posted vouchers are immutable; corrections flow
+through `posting_engine.reverse_voucher`, which posts a swapped REVERSAL voucher
+(`REVERSAL:{ref}`) and marks the original REVERSED. Nothing is edited or deleted
+in place.
+
+**Controls:** every voucher is balanced or nothing commits; posting is idempotent
+on `posting_reference`, which carries a **DB-level `UniqueConstraint(company_id,
+posting_reference)`** (concurrency-safe, not only an application check); postings
+land only in OPEN periods (`ClosedPeriodError` otherwise); the full audit trail
+and source-document references (`source_module`/`source_id`) are preserved; and
+every voucher posts in the acting legal company (company-scoped session + company
+id on the voucher).
+
+## 6. Inventory-to-GL reconciliation (`accounting/production_reconciliation.py`)
+
+Proven directly from the immutable ledger, never via a balancing adjustment
+(`/api/bom/orders/{id}/reconciliation`, `/api/dyeing/jobs/{id}/reconciliation`,
+`/api/dyeing/reconciliation`; a **RECONCILED / DISCREPANCY** badge on the
+Production Cost screen):
+
+* yarn inventory reduction == yarn consumption GL (greige voucher yarn credit);
+* grey fabric inventory receipt == grey production cost (greige debit);
+* grey fabric issue == dyeing WIP (greige credit into WIP);
+* dyeing WIP debits == accumulated job cost; credits move it all out;
+* dyed fabric inventory receipt == accumulated actual dyed cost (finished debit);
+* a COMPLETED order/job leaves **no** WIP balance;
+* the FABRIC sub-ledger (grey + dyed layers) ties to the greige + finished GL
+  contribution of this workflow.
+
+Discrepancies are reported, never hidden.
+
+## 7. API, UI, permissions, isolation
 
 * **API**: grey-cost endpoints on `/api/bom/orders/{id}` (`conversion-cost`,
   `value-grey`, `grey-cost`); dyeing at `/api/dyeing/jobs` (create, issue-grey,
@@ -94,20 +173,30 @@ BOM-driven grey/dyed production path is a documented follow-up — the legacy
   allocation, and **drill-down** from the dyed job → grey PO → yarn lots →
   inventory issues. Browser-verified.
 
-## 7. Restrictions honoured
+## 8. Restrictions honoured
 
 Chemical BOM explosion / reservation stays **disabled**; dye recipe & chemical
 masters, columns and history are **untouched**; no historical transactions are
 rewritten; the database-per-company architecture and factory/company isolation
 are preserved; migration `0013` is additive; no live data is migrated.
 
-## 8. Tests
+## 9. Tests
 
-`tests/test_dyeing_cost.py` (10) + `tests/test_dyeing_api.py` (5): FIFO yarn
+`tests/test_dyeing_cost.py` (10) + `tests/test_dyeing_api.py` (6): FIFO yarn
 actual costing, independent actual conversion, grey valuation + idempotency,
 grey std-vs-actual, dyeing full flow, different saleable outputs + allocation,
 job-work mode, reprocess/additional costs, incomplete-cost warnings,
 grey→yarn-lot traceability, **factory** & **company** isolation, and
-**accounting/inventory valuation consistency**. Grey BOM costing + version
-preservation: `tests/test_fabric_bom.py`. Migration `0013` round-trip:
-`tests/test_migrations.py`. All green on SQLite and real PostgreSQL.
+**accounting/inventory valuation consistency**.
+
+`tests/test_production_accounting.py` (10) — GL integration: knitting→grey
+journal (balanced, WIP zero), grey-without-conversion still balances, dyeing
+internal/job-work journals, dyed receipt == inventory == GL across multiple
+lots, idempotent + DB-unique-constraint duplicate guard, **period lock**,
+**reversal**, and **inventory-to-GL reconciliation** (per order, per job,
+company-wide), plus company isolation.
+
+Grey BOM costing + version preservation: `tests/test_fabric_bom.py`. Migration
+`0013` round-trip: `tests/test_migrations.py`. **Full suite 402 passed, 2
+PG-gated skips** on SQLite; the grey/dyeing + accounting + migration suite
+(44 tests) also passes on **real PostgreSQL**.
