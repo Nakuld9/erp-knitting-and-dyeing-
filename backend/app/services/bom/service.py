@@ -31,6 +31,8 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from sqlalchemy.exc import IntegrityError
+
 from app.core.types import MONEY_SCALE, QTY_SCALE, quantize
 from app.models.fabric_bom import (
     BomStatus,
@@ -41,6 +43,7 @@ from app.models.fabric_bom import (
     FabricBomYarn,
 )
 from app.models.masters import Chemical, RecipeMaterial, RecipeVersion
+from app.models.quality import FinishingProcess
 
 MZERO = Decimal("0")
 
@@ -83,7 +86,13 @@ def create_bom(
         uom_id=uom_id, created_by=created_by,
     )
     db.add(bom)
-    db.flush()
+    # The (company_id, code) unique index is the real guard: if two requests race
+    # past the check above, the second flush fails here instead of duplicating.
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        raise BomError(f"A fabric BOM with code '{code}' already exists for this company")
     # first draft version
     v = FabricBomVersion(bom_id=bom.id, version_no=1, status=BomStatus.DRAFT, created_by=created_by)
     db.add(v)
@@ -125,7 +134,13 @@ def add_version(
             setattr(v, f, getattr(src, f))
         v.supersedes_id = src.id
     db.add(v)
-    db.flush()
+    # The (bom_id, version_no) unique index serializes concurrent revisions: if
+    # two callers derive the same next version_no, the second flush fails.
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        raise BomError("a concurrent revision created this version number; retry")
     if clone_from_version_id is not None:
         for y in src.yarns:
             db.add(FabricBomYarn(
@@ -173,11 +188,50 @@ def set_spec(db: Session, version_id: uuid.UUID, **fields) -> FabricBomVersion:
     return v
 
 
+def _validate_yarn_rows(rows: list[dict]) -> None:
+    """Blend/consistency validation for a yarn BOM.
+
+    * each component: 0 < blend% ≤ 100, consumption > 0, 0 ≤ wastage% < 100,
+      0 ≤ process-loss% < 100, unit cost ≥ 0;
+    * the blend percentages must sum to 100 (composition consistency);
+    * no duplicate yarn in the blend.
+    """
+    if not rows:
+        return
+    total = Decimal("0")
+    seen = set()
+    for r in rows:
+        if r.get("yarn_id") is None:
+            raise BomError("each yarn row needs a yarn_id")
+        if r["yarn_id"] in seen:
+            raise BomError("the same yarn appears twice in the blend")
+        seen.add(r["yarn_id"])
+        blend = _d(r.get("blend_percent", 0))
+        cons = _d(r.get("std_consumption_per_kg", 0))
+        wst = _d(r.get("wastage_percent", 0))
+        loss = _d(r.get("process_loss_percent", 0))
+        cost = _d(r.get("std_unit_cost", 0))
+        if blend <= 0 or blend > 100:
+            raise BomError("each yarn blend % must be between 0 (exclusive) and 100")
+        if cons <= 0:
+            raise BomError("std_consumption_per_kg must be positive for each yarn")
+        if not (0 <= wst < 100):
+            raise BomError("wastage % must be in [0, 100)")
+        if not (0 <= loss < 100):
+            raise BomError("process-loss % must be in [0, 100)")
+        if cost < 0:
+            raise BomError("std_unit_cost cannot be negative")
+        total += blend
+    if abs(total - Decimal("100")) > Decimal("0.01"):
+        raise BomError(f"blend percentages must sum to 100 (got {total})")
+
+
 def set_yarns(db: Session, version_id: uuid.UUID, rows: list[dict]) -> list[FabricBomYarn]:
     v = db.get(FabricBomVersion, version_id)
     if v is None:
         raise BomError("version not found")
     _editable(v)
+    _validate_yarn_rows(rows)
     for y in list(v.yarns):
         db.delete(y)
     db.flush()
@@ -223,6 +277,16 @@ def set_finishing(db: Session, version_id: uuid.UUID, rows: list[dict]) -> list[
     if v is None:
         raise BomError("version not found")
     _editable(v)
+    valid_processes = {p.value for p in FinishingProcess}
+    for r in rows:
+        pt = r.get("process_type")
+        if not pt:
+            raise BomError("each finishing row needs a process_type")
+        if pt not in valid_processes:
+            raise BomError(f"invalid finishing process_type '{pt}' "
+                           f"(valid: {', '.join(sorted(valid_processes))})")
+        if _d(r.get("std_cost_per_kg", 0)) < 0:
+            raise BomError("finishing std_cost_per_kg cannot be negative")
     for s in list(v.finishing_steps):
         db.delete(s)
     db.flush()
@@ -323,6 +387,12 @@ def approve_version(
         raise BomError(f"version {v.version_no} is {v.status.value}; only DRAFT can be approved")
     if not v.yarns:
         raise BomError("cannot approve a BOM version with no yarn components")
+    # re-validate blend consistency at the approval gate (defence in depth)
+    _validate_yarn_rows([{
+        "yarn_id": y.yarn_id, "blend_percent": y.blend_percent,
+        "std_consumption_per_kg": y.std_consumption_per_kg, "wastage_percent": y.wastage_percent,
+        "process_loss_percent": y.process_loss_percent, "std_unit_cost": y.std_unit_cost,
+    } for y in v.yarns])
     # a linked dyeing recipe, if any, must itself be approved
     if v.dye_recipe_version_id is not None:
         rv = db.get(RecipeVersion, v.dye_recipe_version_id)
@@ -332,11 +402,23 @@ def approve_version(
             raise BomError("linked dyeing recipe version must be APPROVED first")
 
     eff = effective_from or _today()
-    # supersede the currently-effective approved version of this BOM
-    current = effective_version(db, v.bom_id, eff)
-    if current is not None and current.id != v.id:
-        current.status = BomStatus.SUPERSEDED
-        current.effective_to = eff - timedelta(days=1)
+    # A BOM revision supersedes forward in time only: the new version must take
+    # effect strictly AFTER every existing APPROVED version's start, so windows
+    # never overlap. We supersede the latest approved version (the current one).
+    approved = [a for a in db.execute(
+        select(FabricBomVersion).where(
+            FabricBomVersion.bom_id == v.bom_id,
+            FabricBomVersion.status == BomStatus.APPROVED,
+        )
+    ).scalars().all() if a.id != v.id and a.effective_from is not None]
+    latest = max(approved, key=lambda a: a.effective_from) if approved else None
+    if latest is not None and eff <= latest.effective_from:
+        raise BomError(
+            f"effective_from {eff} must be after the latest approved version's "
+            f"start {latest.effective_from} (no overlapping effective windows)")
+    if latest is not None:
+        latest.status = BomStatus.SUPERSEDED
+        latest.effective_to = eff - timedelta(days=1)
 
     _snapshot_cost(db, v)
     v.status = BomStatus.APPROVED

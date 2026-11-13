@@ -16,6 +16,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.context import (
+    FactoryAuthError,
+    accessible_factory_ids,
+    authorize_factory,
+    authorize_warehouse,
+    user_can_access_factory,
+)
 from app.core.deps import get_company_db, require_permission
 from app.models.core import User
 from app.models.fabric_bom import (
@@ -28,6 +35,17 @@ from app.models.fabric_bom import (
 from app.services.bom import production as prod
 from app.services.bom import service as bom
 from app.services.inventory import InsufficientStockError
+
+
+def _authz(db, user, *, factory_id=None, warehouse_id=None) -> None:
+    """Validate factory/warehouse ownership + access for the acting company,
+    mapping the failure to 404 (not in company / forged) or 403 (no access)."""
+    try:
+        authorize_factory(db, user, factory_id, user.company_id)
+        authorize_warehouse(db, user, warehouse_id, user.company_id, factory_id)
+    except FactoryAuthError as e:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND if e.not_found else status.HTTP_403_FORBIDDEN, str(e))
 
 router = APIRouter(prefix="/api/bom", tags=["bom"])
 
@@ -129,10 +147,12 @@ class IssueIn(BaseModel):
     wastage_qty: Decimal = Decimal("0")
     rejection_qty: Decimal = Decimal("0")
     is_reprocess: bool = False
+    allow_over_issue: bool = False
 
 
 class CompleteIn(BaseModel):
     produced_qty_kg: Decimal
+    allow_outstanding: bool = False
 
 
 # --- serialization ----------------------------------------------------------
@@ -364,7 +384,23 @@ def _get_order(db: Session, user: User, order_id: uuid.UUID) -> ProductionOrder:
     o = db.get(ProductionOrder, order_id)
     if o is None or o.company_id != user.company_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "order not found")
+    # Factory authorization: an order owned by a factory is reachable only by a
+    # user with access to that factory (or factory.access_all / superuser).
+    if not user_can_access_factory(db, user, o.factory_id, user.company_id):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "not authorized for this order's factory")
     return o
+
+
+def _bom_in_company(db: Session, user: User, *, bom_id=None, bom_version_id=None) -> None:
+    """Ensure a referenced BOM / version belongs to the acting company."""
+    b = None
+    if bom_version_id is not None:
+        v = db.get(FabricBomVersion, bom_version_id)
+        b = db.get(FabricBom, v.bom_id) if v is not None else None
+    elif bom_id is not None:
+        b = db.get(FabricBom, bom_id)
+    if b is None or b.company_id != user.company_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "BOM not found")
 
 
 @router.get("/orders")
@@ -374,12 +410,21 @@ def list_orders(db: Session = Depends(get_company_db),
         select(ProductionOrder).where(ProductionOrder.company_id == user.company_id)
         .order_by(ProductionOrder.number)
     ).scalars().all()
+    # Hide orders whose factory the user cannot access (company-level orders —
+    # factory_id is None — stay visible); unrestricted for superuser/access_all.
+    allowed = accessible_factory_ids(db, user, user.company_id)
+    if allowed is not None:
+        rows = [o for o in rows if o.factory_id is None or o.factory_id in allowed]
     return [_order_dict(o) for o in rows]
 
 
 @router.post("/orders", status_code=status.HTTP_201_CREATED)
 def create_order(payload: OrderIn, db: Session = Depends(get_company_db),
                  user: User = Depends(require_permission("production.manage"))):
+    # Never trust factory_id / warehouse_id from the client: validate ownership
+    # and access against the acting company before creating anything.
+    _bom_in_company(db, user, bom_id=payload.bom_id, bom_version_id=payload.bom_version_id)
+    _authz(db, user, factory_id=payload.factory_id, warehouse_id=payload.warehouse_id)
     try:
         o = prod.create_order(db, company_id=user.company_id, created_by=user.id, **payload.model_dump())
         db.commit()
@@ -407,7 +452,9 @@ def order_requirements(order_id: uuid.UUID, db: Session = Depends(get_company_db
 @router.post("/orders/{order_id}/issue")
 def issue_material(order_id: uuid.UUID, payload: IssueIn, db: Session = Depends(get_company_db),
                    user: User = Depends(require_permission("production.manage"))):
-    _get_order(db, user, order_id)
+    o = _get_order(db, user, order_id)
+    # a client-supplied issue warehouse must belong to the company + order factory
+    _authz(db, user, factory_id=o.factory_id, warehouse_id=payload.warehouse_id)
     try:
         c = prod.issue_material(db, order_id=order_id, **payload.model_dump())
         db.commit()
@@ -426,7 +473,22 @@ def complete_order(order_id: uuid.UUID, payload: CompleteIn, db: Session = Depen
                    user: User = Depends(require_permission("production.manage"))):
     _get_order(db, user, order_id)
     try:
-        o = prod.complete_order(db, order_id=order_id, produced_qty_kg=payload.produced_qty_kg)
+        o = prod.complete_order(db, order_id=order_id, produced_qty_kg=payload.produced_qty_kg,
+                                allow_outstanding=payload.allow_outstanding)
+        db.commit()
+    except prod.ProductionError as e:
+        db.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e))
+    db.refresh(o)
+    return _order_dict(o)
+
+
+@router.post("/orders/{order_id}/cancel")
+def cancel_order(order_id: uuid.UUID, db: Session = Depends(get_company_db),
+                 user: User = Depends(require_permission("production.manage"))):
+    _get_order(db, user, order_id)
+    try:
+        o = prod.cancel_order(db, order_id=order_id)
         db.commit()
     except prod.ProductionError as e:
         db.rollback()

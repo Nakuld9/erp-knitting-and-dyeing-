@@ -228,3 +228,24 @@ def test_fabric_bom_tables_added_and_reversible(temp_db):
     command.downgrade(cfg, "0010_intercompany_code_based")
     assert not _has_table(path, "fabric_boms")
     assert not _has_column(path, "knitting_production", "production_order_id")
+
+
+def _has_index(path, table, name):
+    import sqlite3
+    con = sqlite3.connect(path)
+    try:
+        rows = con.execute(f"PRAGMA index_list('{table}')").fetchall()
+        return any(r[1] == name for r in rows)
+    finally:
+        con.close()
+
+
+def test_fabric_bom_unique_indexes_added_and_reversible(temp_db):
+    """0012 adds the BOM uniqueness indexes (concurrency safety); reversible."""
+    url, path = temp_db
+    cfg = _alembic_cfg(url)
+    command.upgrade(cfg, "head")
+    assert _has_index(path, "fabric_boms", "uq_fabric_boms_company_code")
+    assert _has_index(path, "fabric_bom_versions", "uq_fabric_bom_versions_bom_versionno")
+    command.downgrade(cfg, "0011_fabric_bom")
+    assert not _has_index(path, "fabric_boms", "uq_fabric_boms_company_code")

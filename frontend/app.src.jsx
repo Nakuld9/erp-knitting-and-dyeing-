@@ -2751,12 +2751,26 @@ function FabricBOM(){
         <div style={{display:"flex",gap:8,marginTop:8}}>
           <button className="btn" onClick={complete}>Complete & cost variance</button>
           <button className="btn-ghost" onClick={showVar}>Variance report</button></div>
-        {varr && <table style={{marginTop:8}}><thead><tr><th>Stage</th><th className="num">Planned ₹</th><th className="num">Actual ₹</th><th className="num">Variance ₹</th><th className="num">%</th><th className="num">Wastage</th></tr></thead>
-          <tbody>{varr.stages.map((s,i)=><tr key={i}><td>{s.stage}</td><td className="num">{inr2(s.planned_cost)}</td><td className="num">{inr2(s.actual_cost)}</td>
-            <td className="num">{inr2(s.variance)}</td><td className="num">{s.variance_pct}</td><td className="num">{inr2(s.wastage_qty)}</td></tr>)}
-            <tr style={{fontWeight:700}}><td>Total</td><td className="num">{inr2(varr.total_planned_cost)}</td><td className="num">{inr2(varr.total_actual_cost)}</td>
-              <td className="num">{inr2(varr.total_variance)}</td><td className="num">{varr.total_variance_pct}</td><td></td></tr>
-          </tbody></table>}
+        {varr && <div>
+          <div className="muted" style={{fontSize:12,margin:"6px 0"}}>Material cost is a genuine standard-vs-actual comparison (FIFO issues). Conversion is standard; its <b>actual</b> is shown only when genuinely recorded.</div>
+          <table style={{marginTop:4}}><thead><tr><th>Stage</th>
+            <th className="num">Plan matl ₹</th><th className="num">Actual matl ₹</th><th className="num">Matl var ₹</th><th className="num">%</th>
+            <th className="num">Std conv ₹</th><th className="num">Actual conv ₹</th><th className="num">Actual out kg</th><th className="num">Wastage</th></tr></thead>
+          <tbody>{varr.stages.map((s,i)=><tr key={i}><td>{s.stage}</td>
+            <td className="num">{inr2(s.planned_material_cost)}</td><td className="num">{inr2(s.actual_material_cost)}</td>
+            <td className="num">{inr2(s.material_variance)}</td><td className="num">{s.material_variance_pct}</td>
+            <td className="num">{inr2(s.std_conversion_cost)}</td>
+            <td className="num">{s.actual_conversion_cost==null?<span className="muted" title="not recorded per order">n/a</span>:inr2(s.actual_conversion_cost)}</td>
+            <td className="num">{s.actual_output_kg==null?<span className="muted">—</span>:inr2(s.actual_output_kg)}</td>
+            <td className="num">{inr2(s.wastage_qty)}</td></tr>)}
+            <tr style={{fontWeight:700}}><td>Total</td>
+              <td className="num">{inr2(varr.total_planned_material_cost)}</td><td className="num">{inr2(varr.total_actual_material_cost)}</td>
+              <td className="num">{inr2(varr.total_material_variance)}</td><td className="num">{varr.total_material_variance_pct}</td>
+              <td className="num">{inr2(varr.total_std_conversion_cost)}</td><td className="num" colSpan="3">
+                {varr.total_actual_cost==null?<span className="muted">actual total n/a (conversion not posted per order)</span>:inr2(varr.total_actual_cost)}</td></tr>
+          </tbody></table>
+          {(varr.notes||[]).map((n,i)=><div key={i} className="muted" style={{fontSize:12,marginTop:4}}>⚠ {n}</div>)}
+        </div>}
       </div>}
     </Panel>}
   </div>);

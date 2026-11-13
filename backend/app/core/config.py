@@ -38,6 +38,14 @@ class Settings(BaseSettings):
     # Production: postgresql+psycopg2://user:pass@host:5432/erp
     # Tests default to in-memory SQLite (see tests/conftest.py).
     database_url: str = "postgresql+psycopg2://erp:erp@localhost:5432/erp"
+    # Connection pool sizing (PostgreSQL). Under database-per-company EACH active
+    # company DSN gets its own engine and therefore its own pool, so total
+    # connections ≈ (active company databases) × (pool_size + max_overflow). Size
+    # these against the server's max_connections and the number of companies.
+    db_pool_size: int = 5
+    db_max_overflow: int = 10
+    db_pool_recycle_seconds: int = 1800        # recycle connections every 30 min
+    db_pool_timeout_seconds: int = 30
 
     # --- Security ---
     secret_key: str = "CHANGE-ME-IN-PRODUCTION-use-a-32+-byte-random-value"

@@ -23,6 +23,14 @@ def _make_engine(url: str) -> Engine:
         # File-backed (dev/demo): a connection per checkout so concurrent requests
         # don't collide on a single SQLite connection.
         kwargs["poolclass"] = StaticPool if is_memory else NullPool
+    else:
+        # PostgreSQL (and any pooled backend): size the pool from settings. Under
+        # database-per-company each company DSN builds its own engine/pool, so
+        # these bounds apply per company database.
+        kwargs["pool_size"] = settings.db_pool_size
+        kwargs["max_overflow"] = settings.db_max_overflow
+        kwargs["pool_recycle"] = settings.db_pool_recycle_seconds
+        kwargs["pool_timeout"] = settings.db_pool_timeout_seconds
     return create_engine(url, connect_args=connect_args, **kwargs)
 
 

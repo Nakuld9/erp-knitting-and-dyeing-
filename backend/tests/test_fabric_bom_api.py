@@ -82,13 +82,23 @@ def test_bom_api_end_to_end(client, bom_masters):
     assert r.status_code == 200, r.text
     assert float(r.json()["actual_cost"]) > 0
 
-    # complete + variance
+    # completion is refused while chemical reservations are still outstanding
+    early = client.post(f"/api/bom/orders/{oid}/complete", headers=h, json={"produced_qty_kg": "99"})
+    assert early.status_code == 422, early.text
+
+    # issue the remaining (chemical) reservations, then complete
+    for x in client.get(f"/api/bom/orders/{oid}/requirements", headers=h).json():
+        if x["item_type"] == "CHEMICAL":
+            assert client.post(f"/api/bom/orders/{oid}/issue", headers=h, json={
+                "reservation_id": x["reservation_id"], "qty": x["planned_qty"]}).status_code == 200
     assert client.post(f"/api/bom/orders/{oid}/complete", headers=h,
                        json={"produced_qty_kg": "99"}).status_code == 200
     r = client.get(f"/api/bom/orders/{oid}/variance", headers=h)
     assert r.status_code == 200, r.text
     var = r.json()
-    assert var["total_actual_cost"] is not None
+    assert var["total_actual_material_cost"] is not None
+    assert var["conversion_actuals_available"] is False
+    assert var["total_actual_cost"] is None   # conversion actuals unavailable → not fabricated
     assert any(s["stage"] == "KNITTING" for s in var["stages"])
 
 

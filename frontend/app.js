@@ -9031,31 +9031,54 @@ function FabricBOM() {
   }, "Complete & cost variance"), /*#__PURE__*/React.createElement("button", {
     className: "btn-ghost",
     onClick: showVar
-  }, "Variance report")), varr && /*#__PURE__*/React.createElement("table", {
+  }, "Variance report")), varr && /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    className: "muted",
     style: {
-      marginTop: 8
+      fontSize: 12,
+      margin: "6px 0"
+    }
+  }, "Material cost is a genuine standard-vs-actual comparison (FIFO issues). Conversion is standard; its ", /*#__PURE__*/React.createElement("b", null, "actual"), " is shown only when genuinely recorded."), /*#__PURE__*/React.createElement("table", {
+    style: {
+      marginTop: 4
     }
   }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Stage"), /*#__PURE__*/React.createElement("th", {
     className: "num"
-  }, "Planned \u20B9"), /*#__PURE__*/React.createElement("th", {
+  }, "Plan matl \u20B9"), /*#__PURE__*/React.createElement("th", {
     className: "num"
-  }, "Actual \u20B9"), /*#__PURE__*/React.createElement("th", {
+  }, "Actual matl \u20B9"), /*#__PURE__*/React.createElement("th", {
     className: "num"
-  }, "Variance \u20B9"), /*#__PURE__*/React.createElement("th", {
+  }, "Matl var \u20B9"), /*#__PURE__*/React.createElement("th", {
     className: "num"
   }, "%"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Std conv \u20B9"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Actual conv \u20B9"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Actual out kg"), /*#__PURE__*/React.createElement("th", {
     className: "num"
   }, "Wastage"))), /*#__PURE__*/React.createElement("tbody", null, varr.stages.map((s, i) => /*#__PURE__*/React.createElement("tr", {
     key: i
   }, /*#__PURE__*/React.createElement("td", null, s.stage), /*#__PURE__*/React.createElement("td", {
     className: "num"
-  }, inr2(s.planned_cost)), /*#__PURE__*/React.createElement("td", {
+  }, inr2(s.planned_material_cost)), /*#__PURE__*/React.createElement("td", {
     className: "num"
-  }, inr2(s.actual_cost)), /*#__PURE__*/React.createElement("td", {
+  }, inr2(s.actual_material_cost)), /*#__PURE__*/React.createElement("td", {
     className: "num"
-  }, inr2(s.variance)), /*#__PURE__*/React.createElement("td", {
+  }, inr2(s.material_variance)), /*#__PURE__*/React.createElement("td", {
     className: "num"
-  }, s.variance_pct), /*#__PURE__*/React.createElement("td", {
+  }, s.material_variance_pct), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(s.std_conversion_cost)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, s.actual_conversion_cost == null ? /*#__PURE__*/React.createElement("span", {
+    className: "muted",
+    title: "not recorded per order"
+  }, "n/a") : inr2(s.actual_conversion_cost)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, s.actual_output_kg == null ? /*#__PURE__*/React.createElement("span", {
+    className: "muted"
+  }, "\u2014") : inr2(s.actual_output_kg)), /*#__PURE__*/React.createElement("td", {
     className: "num"
   }, inr2(s.wastage_qty)))), /*#__PURE__*/React.createElement("tr", {
     style: {
@@ -9063,13 +9086,27 @@ function FabricBOM() {
     }
   }, /*#__PURE__*/React.createElement("td", null, "Total"), /*#__PURE__*/React.createElement("td", {
     className: "num"
-  }, inr2(varr.total_planned_cost)), /*#__PURE__*/React.createElement("td", {
+  }, inr2(varr.total_planned_material_cost)), /*#__PURE__*/React.createElement("td", {
     className: "num"
-  }, inr2(varr.total_actual_cost)), /*#__PURE__*/React.createElement("td", {
+  }, inr2(varr.total_actual_material_cost)), /*#__PURE__*/React.createElement("td", {
     className: "num"
-  }, inr2(varr.total_variance)), /*#__PURE__*/React.createElement("td", {
+  }, inr2(varr.total_material_variance)), /*#__PURE__*/React.createElement("td", {
     className: "num"
-  }, varr.total_variance_pct), /*#__PURE__*/React.createElement("td", null)))))));
+  }, varr.total_material_variance_pct), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(varr.total_std_conversion_cost)), /*#__PURE__*/React.createElement("td", {
+    className: "num",
+    colSpan: "3"
+  }, varr.total_actual_cost == null ? /*#__PURE__*/React.createElement("span", {
+    className: "muted"
+  }, "actual total n/a (conversion not posted per order)") : inr2(varr.total_actual_cost))))), (varr.notes || []).map((n, i) => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    className: "muted",
+    style: {
+      fontSize: 12,
+      marginTop: 4
+    }
+  }, "\u26A0 ", n))))));
 }
 const PAGES = {
   group: {

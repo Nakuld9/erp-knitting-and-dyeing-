@@ -20,6 +20,7 @@ from decimal import Decimal
 import pytest
 
 from app.models.fabric_bom import BomStatus, ProductionOrderStatus, ProductionStage
+from app.models.manufacturing import KnittingProduction
 from app.services.bom import production, service as bom
 from app.services.inventory import service as inventory
 from app.models.inventory import ItemType
@@ -133,9 +134,53 @@ def test_production_order_explodes_reservations_and_issues(db, demo):
     assert knit["wastage_qty"] == Decimal("1.500000")
     # dyeing issued materials too
     assert dye["actual_material_cost"] > 0
-    # conversion costs carried at standard on produced qty
-    assert var["total_actual_cost"] > 0
-    assert var["total_planned_cost"] > 0
+    # material totals are genuine
+    assert var["total_actual_material_cost"] > 0
+    assert var["total_planned_material_cost"] > 0
+    # conversion is standard; its ACTUAL is unavailable (not relabelled as actual)
+    assert var["total_std_conversion_cost"] > 0
+    assert var["conversion_actuals_available"] is False
+    assert knit["actual_conversion_cost"] is None
+    assert knit["conversion_actual_available"] is False
+    # a full actual total is NOT fabricated while conversion actuals are missing
+    assert var["total_actual_cost"] is None
+    assert any("conversion" in n.lower() for n in var["notes"])
+    # no actuals linked yet → no actual output quantity invented
+    assert knit["actual_output_kg"] is None
+
+
+def test_variance_reads_genuine_actual_output_not_fabricated(db, demo):
+    """When a real KnittingProduction is linked to the order, the variance report
+    surfaces its genuine output/wastage; conversion actual stays unavailable."""
+    b, v = _build_bom(db, demo, code="FB-ACTUAL")
+    bom.approve_version(db, version_id=v.id, approved_by=None, effective_from=date(2026, 4, 1))
+    order = production.create_order(
+        db, company_id=demo["company_id"], bom_version_id=v.id, planned_qty_kg=Decimal("100"),
+        number="PO-ACT-1", order_date=date(2026, 6, 1))
+    reqs = production.material_requirements(db, order.id)
+    yarn = next(r for r in reqs if r["item_type"] == "YARN")
+    production.issue_material(db, order_id=order.id, reservation_id=yarn["reservation_id"],
+                             qty=yarn["planned_qty"])
+    # record a GENUINE knitting actual linked to the order
+    db.add(KnittingProduction(
+        company_id=demo["company_id"], number="KN-ACT-1", machine_id=demo["machines"]["knit"],
+        yarn_id=demo["yarn_id"], production_date=date(2026, 6, 2), produced_kg=Decimal("98"),
+        yarn_consumed_kg=Decimal("101"), wastage_kg=Decimal("2"), rejection_kg=Decimal("1"),
+        production_order_id=order.id))
+    db.flush()
+    # chemical reservations intentionally left outstanding here → override completion
+    production.complete_order(db, order_id=order.id, produced_qty_kg=Decimal("98"),
+                              allow_outstanding=True)
+
+    var = production.variance_report(db, order.id)
+    knit = next(s for s in var["stages"] if s["stage"] == "KNITTING")
+    # genuine actual output came from the linked KnittingProduction
+    assert knit["actual_output_kg"] == Decimal("98.000000")
+    assert knit["actual_material_cost_per_kg"] is not None   # actual_material / actual_output
+    # conversion actual is still explicitly unavailable (never substituted by std)
+    assert knit["actual_conversion_cost"] is None
+    assert var["conversion_actuals_available"] is False
+    assert var["total_actual_cost"] is None
 
 
 def test_historical_version_preserved_on_revision(db, demo):

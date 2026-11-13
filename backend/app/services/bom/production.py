@@ -32,7 +32,9 @@ from app.models.fabric_bom import (
     ReservationStatus,
 )
 from app.models.inventory import ItemType
+from app.models.manufacturing import DyeBatch, KnittingProduction
 from app.models.masters import Chemical, RecipeMaterial, RecipeVersion
+from app.models.quality import FinishingTransaction
 from app.services.bom import service as bom_service
 from app.services.inventory import service as inventory
 
@@ -193,8 +195,17 @@ def issue_material(
     wastage_qty=0,
     rejection_qty=0,
     is_reprocess: bool = False,
+    allow_over_issue: bool = False,
 ) -> ProductionConsumption:
-    """Issue (consume) a reserved material from stock against the order."""
+    """Issue (consume) a reserved material from stock against the order.
+
+    Materials may only be issued while the order is PLANNED or IN_PROGRESS.
+    Issuing beyond the reservation's planned quantity is rejected unless
+    ``allow_over_issue`` is set (the authorized over-issue path). The inventory
+    consume, the consumption record and the reservation/order status change all
+    happen in the caller's single transaction (consume takes a PG advisory lock),
+    so a concurrent double-issue cannot draw the same FIFO layer twice.
+    """
     order_id = _uid(order_id)
     reservation_id = _uid(reservation_id)
     lot_id = _uid(lot_id)
@@ -202,14 +213,20 @@ def issue_material(
     order = db.get(ProductionOrder, order_id)
     if order is None:
         raise ProductionError("order not found")
-    if order.status in (ProductionOrderStatus.CANCELLED, ProductionOrderStatus.CLOSED):
-        raise ProductionError(f"order is {order.status.value}; cannot issue materials")
+    if order.status not in (ProductionOrderStatus.PLANNED, ProductionOrderStatus.IN_PROGRESS):
+        raise ProductionError(f"order is {order.status.value}; materials can only be issued "
+                              "while PLANNED or IN_PROGRESS")
     r = db.get(ProductionReservation, reservation_id)
     if r is None or r.production_order_id != order_id:
         raise ProductionError("reservation does not belong to this order")
     qty = _d(qty)
     if qty <= QZERO:
         raise ProductionError("issue qty must be positive")
+    new_issued = _d(r.issued_qty) + qty
+    if not allow_over_issue and new_issued > _d(r.planned_qty):
+        raise ProductionError(
+            f"issue exceeds planned {r.planned_qty} for this reservation "
+            f"(already issued {r.issued_qty}); use the authorized over-issue path")
 
     pref = f"PO:{order.number}:{r.stage}"
     res = inventory.consume(
@@ -236,19 +253,116 @@ def issue_material(
     return cons
 
 
-def complete_order(db: Session, *, order_id: uuid.UUID, produced_qty_kg) -> ProductionOrder:
+def complete_order(db: Session, *, order_id: uuid.UUID, produced_qty_kg,
+                   allow_outstanding: bool = False) -> ProductionOrder:
+    """Record produced quantity and mark the order COMPLETED.
+
+    * produced quantity must be positive;
+    * only a PLANNED/IN_PROGRESS order can be completed (a COMPLETED/CLOSED/
+      CANCELLED order is not silently re-completed — that is an error);
+    * completion is refused while any reservation is still outstanding
+      (RESERVED / PARTIALLY_ISSUED), unless ``allow_outstanding`` is set.
+    """
     order_id = _uid(order_id)
     order = db.get(ProductionOrder, order_id)
     if order is None:
         raise ProductionError("order not found")
-    order.produced_qty_kg = quantize(_d(produced_qty_kg), QTY_SCALE)
+    if order.status not in (ProductionOrderStatus.PLANNED, ProductionOrderStatus.IN_PROGRESS):
+        raise ProductionError(f"order is {order.status.value}; cannot complete")
+    produced = _d(produced_qty_kg)
+    if produced <= QZERO:
+        raise ProductionError("produced_qty_kg must be positive")
+    if not allow_outstanding:
+        outstanding = db.execute(
+            select(ProductionReservation).where(
+                ProductionReservation.production_order_id == order_id,
+                ProductionReservation.status.in_(
+                    [ReservationStatus.RESERVED, ReservationStatus.PARTIALLY_ISSUED]),
+            )
+        ).scalars().first()
+        if outstanding is not None:
+            raise ProductionError(
+                "cannot complete: materials are still outstanding (reserved/partially "
+                "issued). Issue or release them first, or complete with override.")
+    order.produced_qty_kg = quantize(produced, QTY_SCALE)
     order.status = ProductionOrderStatus.COMPLETED
     db.flush()
     return order
 
 
+def cancel_order(db: Session, *, order_id: uuid.UUID) -> ProductionOrder:
+    """Cancel a PLANNED/IN_PROGRESS order and release its open reservations.
+
+    A terminal order (COMPLETED/CLOSED/CANCELLED) cannot be cancelled. Already
+    issued material is not reversed here (stock movements are audited); only open
+    reservations are released."""
+    order_id = _uid(order_id)
+    order = db.get(ProductionOrder, order_id)
+    if order is None:
+        raise ProductionError("order not found")
+    if order.status not in (ProductionOrderStatus.PLANNED, ProductionOrderStatus.IN_PROGRESS):
+        raise ProductionError(f"order is {order.status.value}; cannot cancel")
+    for r in db.execute(
+        select(ProductionReservation).where(ProductionReservation.production_order_id == order_id)
+    ).scalars().all():
+        if r.status in (ReservationStatus.RESERVED, ReservationStatus.PARTIALLY_ISSUED):
+            r.status = ReservationStatus.RELEASED
+    order.status = ProductionOrderStatus.CANCELLED
+    db.flush()
+    return order
+
+
+def _actual_stage_outputs(db: Session, order_id: uuid.UUID) -> dict:
+    """Genuine actual output / loss quantities for an order, read from the real
+    production actuals linked by ``production_order_id``. Empty when nothing is
+    linked yet (these are recorded quantities, never fabricated)."""
+    out = {s.value: {"output_kg": MZERO, "wastage_kg": MZERO, "rejection_kg": MZERO,
+                     "linked": False} for s in ProductionStage}
+    kn = out[ProductionStage.KNITTING.value]
+    for k in db.execute(select(KnittingProduction).where(
+            KnittingProduction.production_order_id == order_id)).scalars().all():
+        kn["output_kg"] += _d(k.produced_kg)
+        kn["wastage_kg"] += _d(k.wastage_kg)
+        kn["rejection_kg"] += _d(k.rejection_kg)
+        kn["linked"] = True
+    dy = out[ProductionStage.DYEING.value]
+    for b in db.execute(select(DyeBatch).where(
+            DyeBatch.production_order_id == order_id)).scalars().all():
+        dy["output_kg"] += _d(b.fabric_kg)
+        dy["linked"] = True
+    fn = out[ProductionStage.FINISHING.value]
+    for f in db.execute(select(FinishingTransaction).where(
+            FinishingTransaction.production_order_id == order_id)).scalars().all():
+        fn["output_kg"] += _d(f.output_weight_kg)
+        fn["linked"] = True
+    return out
+
+
+def _actual_conversion_cost(db: Session, order, stage: str, outputs: dict):
+    """Genuine actual CONVERSION (machine/labour/overhead) cost for a stage, or
+    ``None`` when no such actual is recorded.
+
+    The production actuals (``KnittingProduction``, ``DyeBatch``/``DyeBath``,
+    ``FinishingTransaction``) record *quantities and output*, not an attributable
+    money conversion cost, and GL cost-centre postings are not attributed to a
+    specific production order. So no genuine per-order actual conversion cost
+    exists today — this returns ``None`` (unavailable) rather than substituting
+    the standard. It is the single extension point for a future actual source.
+    """
+    return None
+
+
 def variance_report(db: Session, order_id: uuid.UUID) -> dict:
-    """Stage-wise planned (standard) vs actual cost comparison for an order."""
+    """Stage-wise planned (standard) vs actual cost comparison for an order.
+
+    **Material** cost is compared genuinely: planned = Σ reservation standard
+    cost; actual = Σ consumption cost drawn from FIFO stock. **Conversion** cost
+    (machine/labour/overhead) is reported as a *standard* figure; its actual is
+    only populated from a genuine recorded source and is otherwise marked
+    ``None`` with ``conversion_actual_available = False`` — the standard value is
+    never relabelled as actual. ``actual_output_kg`` comes from the linked
+    production actuals.
+    """
     order_id = _uid(order_id)
     order = db.get(ProductionOrder, order_id)
     if order is None:
@@ -256,18 +370,17 @@ def variance_report(db: Session, order_id: uuid.UUID) -> dict:
     version = db.get(FabricBomVersion, order.bom_version_id)
     planned_qty = _d(order.planned_qty_kg)
     produced_qty = _d(order.produced_qty_kg) or planned_qty
+    outputs = _actual_stage_outputs(db, order_id)
 
     stages = {s.value: {"planned_material": MZERO, "actual_material": MZERO,
                         "std_conversion": MZERO, "wastage_qty": MZERO, "rejection_qty": MZERO}
               for s in ProductionStage}
 
-    # planned material cost = Σ reservation std_cost per stage
     for r in db.execute(
         select(ProductionReservation).where(ProductionReservation.production_order_id == order_id)
     ).scalars().all():
         stages[r.stage]["planned_material"] += _d(r.std_cost)
 
-    # actual material cost + wastage/rejection = Σ consumption per stage
     for c in db.execute(
         select(ProductionConsumption).where(ProductionConsumption.production_order_id == order_id)
     ).scalars().all():
@@ -275,34 +388,56 @@ def variance_report(db: Session, order_id: uuid.UUID) -> dict:
         stages[c.stage]["wastage_qty"] += _d(c.wastage_qty)
         stages[c.stage]["rejection_qty"] += _d(c.rejection_qty)
 
-    # standard conversion cost per stage (from the stamped version) × produced qty
     if version is not None:
         stages[ProductionStage.KNITTING.value]["std_conversion"] = _d(version.std_knitting_cost) * produced_qty
         stages[ProductionStage.DYEING.value]["std_conversion"] = _d(version.std_dyeing_cost) * produced_qty
         stages[ProductionStage.FINISHING.value]["std_conversion"] = _d(version.std_finishing_cost) * produced_qty
 
     stage_rows = []
-    tot_planned = tot_actual = MZERO
+    tot_planned_mat = tot_actual_mat = tot_std_conv = MZERO
+    conversion_actuals_available = True
     for name, s in stages.items():
-        planned = s["planned_material"] + s["std_conversion"]
-        actual = s["actual_material"] + s["std_conversion"]  # conversion at std (no GL actual here)
-        var = actual - planned
-        tot_planned += planned
-        tot_actual += actual
+        pm, am = s["planned_material"], s["actual_material"]
+        std_conv = s["std_conversion"]
+        act_conv = _actual_conversion_cost(db, order, name, outputs)
+        conv_available = act_conv is not None
+        conversion_actuals_available = conversion_actuals_available and conv_available
+        mat_var = am - pm
+        out_kg = outputs[name]["output_kg"] if outputs[name]["linked"] else None
+        tot_planned_mat += pm
+        tot_actual_mat += am
+        tot_std_conv += std_conv
         stage_rows.append({
             "stage": name,
-            "planned_material_cost": quantize(s["planned_material"], MONEY_SCALE),
-            "actual_material_cost": quantize(s["actual_material"], MONEY_SCALE),
-            "std_conversion_cost": quantize(s["std_conversion"], MONEY_SCALE),
-            "planned_cost": quantize(planned, MONEY_SCALE),
-            "actual_cost": quantize(actual, MONEY_SCALE),
-            "variance": quantize(var, MONEY_SCALE),
-            "variance_pct": quantize((var / planned * Decimal("100")) if planned else MZERO, 2),
+            # material (genuine standard vs actual)
+            "planned_material_cost": quantize(pm, MONEY_SCALE),
+            "actual_material_cost": quantize(am, MONEY_SCALE),
+            "material_variance": quantize(mat_var, MONEY_SCALE),
+            "material_variance_pct": quantize((mat_var / pm * Decimal("100")) if pm else MZERO, 2),
+            # conversion (standard; actual only when genuinely recorded)
+            "std_conversion_cost": quantize(std_conv, MONEY_SCALE),
+            "actual_conversion_cost": None if act_conv is None else quantize(act_conv, MONEY_SCALE),
+            "conversion_actual_available": conv_available,
+            # genuine actual output + loss from linked actuals
+            "actual_output_kg": quantize(out_kg, QTY_SCALE) if out_kg is not None else None,
+            "actual_material_cost_per_kg": (
+                quantize(am / out_kg, MONEY_SCALE) if out_kg and out_kg > QZERO else None),
             "wastage_qty": quantize(s["wastage_qty"], QTY_SCALE),
             "rejection_qty": quantize(s["rejection_qty"], QTY_SCALE),
         })
 
-    total_var = tot_actual - tot_planned
+    total_mat_var = tot_actual_mat - tot_planned_mat
+    # A fully-costed actual total is only reported when every stage's conversion
+    # actual is genuinely available; otherwise it stays None (never fabricated).
+    total_actual_cost = (quantize(tot_actual_mat, MONEY_SCALE)
+                         if conversion_actuals_available else None)
+    notes = []
+    if not conversion_actuals_available:
+        notes.append(
+            "Actual conversion cost (machine/labour/overhead) is not recorded per "
+            "production order; only standard conversion is shown. Material actuals "
+            "are genuine (FIFO stock issues). total_actual_cost is therefore "
+            "unavailable and left null rather than substituting standard.")
     return {
         "order_id": str(order.id), "number": order.number,
         "bom_version_id": str(order.bom_version_id),
@@ -310,8 +445,15 @@ def variance_report(db: Session, order_id: uuid.UUID) -> dict:
         "produced_qty_kg": quantize(_d(order.produced_qty_kg), QTY_SCALE),
         "std_total_cost_per_kg": quantize(_d(version.std_total_cost_per_kg) if version else MZERO, MONEY_SCALE),
         "stages": stage_rows,
-        "total_planned_cost": quantize(tot_planned, MONEY_SCALE),
-        "total_actual_cost": quantize(tot_actual, MONEY_SCALE),
-        "total_variance": quantize(total_var, MONEY_SCALE),
-        "total_variance_pct": quantize((total_var / tot_planned * Decimal("100")) if tot_planned else MZERO, 2),
+        # material totals (genuine)
+        "total_planned_material_cost": quantize(tot_planned_mat, MONEY_SCALE),
+        "total_actual_material_cost": quantize(tot_actual_mat, MONEY_SCALE),
+        "total_material_variance": quantize(total_mat_var, MONEY_SCALE),
+        "total_material_variance_pct": quantize(
+            (total_mat_var / tot_planned_mat * Decimal("100")) if tot_planned_mat else MZERO, 2),
+        # conversion (standard)
+        "total_std_conversion_cost": quantize(tot_std_conv, MONEY_SCALE),
+        "conversion_actuals_available": conversion_actuals_available,
+        "total_actual_cost": total_actual_cost,
+        "notes": notes,
     }

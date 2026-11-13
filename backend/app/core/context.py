@@ -150,6 +150,82 @@ def apply_factory_scope(stmt, model, user):
     return stmt
 
 
+# --- explicit factory authorization (for factory_id supplied in a payload) --
+
+def user_factory_ids(db: Session, user: User, company_id: uuid.UUID) -> set[uuid.UUID]:
+    """Branch ids the user has explicit, active factory membership for in a company."""
+    return set(db.execute(
+        select(UserFactoryMembership.branch_id).where(
+            UserFactoryMembership.user_id == user.id,
+            UserFactoryMembership.company_id == company_id,
+            UserFactoryMembership.is_active.is_(True),
+        )
+    ).scalars().all())
+
+
+def accessible_factory_ids(db: Session, user: User, company_id: uuid.UUID) -> set[uuid.UUID] | None:
+    """The factories the user may act in within a company, or ``None`` for
+    'every factory' (superuser or the company-wide ``factory.access_all``)."""
+    if user.is_superuser or user.has_permission(FACTORY_ACCESS_ALL):
+        return None
+    return user_factory_ids(db, user, company_id)
+
+
+def user_can_access_factory(db: Session, user: User, factory_id: uuid.UUID | None,
+                            company_id: uuid.UUID) -> bool:
+    """True when ``factory_id`` belongs to ``company_id`` and the user may act in
+    it. A ``None`` factory (company-level record) is always accessible."""
+    if factory_id is None:
+        return True
+    branch = db.get(Branch, factory_id)
+    if branch is None or branch.company_id != company_id:
+        return False
+    allowed = accessible_factory_ids(db, user, company_id)
+    return allowed is None or factory_id in allowed
+
+
+class FactoryAuthError(TenantScopeError):
+    """A factory/warehouse is outside the acting company or not accessible.
+
+    Carries ``not_found`` so the API layer can distinguish a 404 (wrong company /
+    nonexistent — do not leak existence) from a 403 (exists but no access)."""
+
+    def __init__(self, detail: str, *, not_found: bool = False):
+        super().__init__(detail)
+        self.not_found = not_found
+
+
+def authorize_factory(db: Session, user: User, factory_id: uuid.UUID | None,
+                      company_id: uuid.UUID) -> None:
+    """Raise :class:`FactoryAuthError` unless ``factory_id`` is in the acting
+    company and the user may act in it. ``None`` is allowed (company-level)."""
+    if factory_id is None:
+        return
+    branch = db.get(Branch, factory_id)
+    if branch is None or branch.company_id != company_id:
+        raise FactoryAuthError("Factory not found in the acting company", not_found=True)
+    allowed = accessible_factory_ids(db, user, company_id)
+    if allowed is not None and factory_id not in allowed:
+        raise FactoryAuthError(
+            "Not authorized for the requested factory "
+            "(explicit factory membership or factory.access_all required)")
+
+
+def authorize_warehouse(db: Session, user: User, warehouse_id: uuid.UUID | None,
+                        company_id: uuid.UUID, factory_id: uuid.UUID | None = None) -> None:
+    """Raise :class:`FactoryAuthError` unless ``warehouse_id`` belongs to the
+    acting company and is compatible with ``factory_id`` (a factory-owned
+    warehouse must match the selected factory)."""
+    if warehouse_id is None:
+        return
+    from app.models.masters import Warehouse  # local import avoids a cycle
+    wh = db.get(Warehouse, warehouse_id)
+    if wh is None or wh.company_id != company_id:
+        raise FactoryAuthError("Warehouse not found in the acting company", not_found=True)
+    if factory_id is not None and wh.branch_id is not None and wh.branch_id != factory_id:
+        raise FactoryAuthError("Warehouse does not belong to the selected factory")
+
+
 def _parse_uuid(value: str | None, label: str) -> uuid.UUID | None:
     if value is None or value == "":
         return None

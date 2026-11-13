@@ -29,7 +29,7 @@ import enum
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, Uuid
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.types import Money, Quantity
@@ -71,6 +71,7 @@ class FabricBom(AuditMixin, Base):
     """The finished-fabric definition. Versions hold the actual spec/recipe."""
 
     __tablename__ = "fabric_boms"
+    __table_args__ = (UniqueConstraint("company_id", "code", name="uq_fabric_boms_company_code"),)
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"), index=True)
     code: Mapped[str] = mapped_column(String(40), index=True)         # unique per company
@@ -96,6 +97,9 @@ class FabricBomVersion(AuditMixin, Base):
     """
 
     __tablename__ = "fabric_bom_versions"
+    __table_args__ = (
+        UniqueConstraint("bom_id", "version_no", name="uq_fabric_bom_versions_bom_versionno"),
+    )
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     bom_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("fabric_boms.id", ondelete="CASCADE"), index=True)
     version_no: Mapped[int] = mapped_column(Integer, default=1)
