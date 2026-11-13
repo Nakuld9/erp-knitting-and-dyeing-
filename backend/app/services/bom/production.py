@@ -268,6 +268,127 @@ def complete_order(db: Session, *, order_id: uuid.UUID, produced_qty_kg,
     return order
 
 
+# --- grey fabric actual cost -------------------------------------------------
+
+def _yarn_actual_cost(db: Session, order_id: uuid.UUID) -> Decimal:
+    """Σ genuine actual yarn cost issued to the order (FIFO draws), knitting stage."""
+    total = MZERO
+    for c in db.execute(
+        select(ProductionConsumption).where(
+            ProductionConsumption.production_order_id == order_id,
+            ProductionConsumption.item_type == ItemType.YARN.value,
+        )
+    ).scalars().all():
+        total += _d(c.actual_cost)
+    return quantize(total, MONEY_SCALE)
+
+
+def record_actual_knitting_conversion_cost(db: Session, *, order_id: uuid.UUID, amount) -> ProductionOrder:
+    """Record the ACTUAL knitting conversion cost for an order, independently of
+    the standard. Only a non-negative amount is accepted; it is never derived
+    from the standard. Can be updated until the grey output is valued."""
+    order_id = _uid(order_id)
+    order = db.get(ProductionOrder, order_id)
+    if order is None:
+        raise ProductionError("order not found")
+    if order.grey_valued_at is not None:
+        raise ProductionError("grey output already valued; conversion cost is frozen")
+    amt = _d(amount)
+    if amt < QZERO:
+        raise ProductionError("actual conversion cost cannot be negative")
+    order.actual_knitting_conversion_cost = quantize(amt, MONEY_SCALE)
+    db.flush()
+    return order
+
+
+def value_grey_output(db: Session, *, order_id: uuid.UUID, warehouse_id: uuid.UUID | None = None) -> dict:
+    """Value the completed order's grey fabric into FABRIC inventory at ACTUAL
+    cost, so dyeing can consume it by FIFO.
+
+    Grey actual cost = actual yarn issued (FIFO) + actual knitting conversion
+    (only if entered). The grey fabric is received as an inventory item keyed by
+    the production order id (``ItemType.FABRIC``). Idempotent: refuses a second
+    valuation.
+    """
+    order_id = _uid(order_id)
+    warehouse_id = _uid(warehouse_id)
+    order = db.get(ProductionOrder, order_id)
+    if order is None:
+        raise ProductionError("order not found")
+    if order.status != ProductionOrderStatus.COMPLETED:
+        raise ProductionError("order must be COMPLETED before valuing grey output")
+    if order.grey_valued_at is not None:
+        raise ProductionError("grey output already valued")
+    grey_kg = _d(order.produced_qty_kg)
+    if grey_kg <= QZERO:
+        raise ProductionError("no produced quantity to value")
+
+    yarn_cost = _yarn_actual_cost(db, order_id)
+    conv = order.actual_knitting_conversion_cost
+    total = yarn_cost + (_d(conv) if conv is not None else MZERO)
+    unit = quantize(total / grey_kg, MONEY_SCALE)
+    inventory.receive(
+        db, company_id=order.company_id, item_type=ItemType.FABRIC, item_id=order.id,
+        qty=grey_kg, unit_cost=unit, warehouse_id=warehouse_id or order.warehouse_id,
+        event_type="GREY_PRODUCE", source_module="PRODUCTION_ORDER", source_id=str(order.id),
+        posting_reference=f"PO:{order.number}:grey",
+    )
+    order.grey_inventory_value = quantize(total, MONEY_SCALE)
+    order.grey_valued_at = datetime.now(timezone.utc)
+    db.flush()
+    return {
+        "order_id": str(order.id), "grey_output_kg": quantize(grey_kg, QTY_SCALE),
+        "yarn_cost": yarn_cost,
+        "conversion_cost": quantize(_d(conv), MONEY_SCALE) if conv is not None else None,
+        "grey_total_cost": order.grey_inventory_value, "grey_cost_per_kg": unit,
+    }
+
+
+def grey_actual_cost(db: Session, order_id: uuid.UUID) -> dict:
+    """Grey fabric standard-vs-actual cost report for an order (knitting scope).
+
+    Standard grey cost/kg = std_yarn_cost + std_knitting_cost (from the stamped
+    BOM version). Actual = actual yarn (FIFO) + actual knitting conversion
+    (only if entered). Missing actual components are flagged, not substituted.
+    """
+    order_id = _uid(order_id)
+    order = db.get(ProductionOrder, order_id)
+    if order is None:
+        raise ProductionError("order not found")
+    version = db.get(FabricBomVersion, order.bom_version_id)
+    grey_kg = _d(order.produced_qty_kg)
+
+    yarn_actual = _yarn_actual_cost(db, order_id)
+    conv = order.actual_knitting_conversion_cost
+    conv_entered = conv is not None
+    actual_total = yarn_actual + (_d(conv) if conv_entered else MZERO)
+
+    std_yarn = _d(version.std_yarn_cost) if version else MZERO
+    std_knit = _d(version.std_knitting_cost) if version else MZERO
+    std_per_kg = quantize(std_yarn + std_knit, MONEY_SCALE)
+
+    missing = []
+    if not conv_entered:
+        missing.append("actual_knitting_conversion_cost")
+    actual_per_kg = quantize(actual_total / grey_kg, MONEY_SCALE) if grey_kg > QZERO else None
+    variance_per_kg = (quantize(actual_per_kg - std_per_kg, MONEY_SCALE)
+                       if actual_per_kg is not None else None)
+    return {
+        "order_id": str(order.id), "number": order.number,
+        "grey_output_kg": quantize(grey_kg, QTY_SCALE),
+        "std_grey_cost_per_kg": std_per_kg,
+        "actual_yarn_cost": yarn_actual,
+        "actual_knitting_conversion_cost": quantize(_d(conv), MONEY_SCALE) if conv_entered else None,
+        "actual_grey_total_cost": quantize(actual_total, MONEY_SCALE),
+        "actual_grey_cost_per_kg": actual_per_kg,
+        "variance_per_kg": variance_per_kg,
+        "grey_inventory_value": quantize(_d(order.grey_inventory_value), MONEY_SCALE),
+        "grey_valued": order.grey_valued_at is not None,
+        "missing_cost_components": missing,
+        "cost_complete": not missing,
+    }
+
+
 def cancel_order(db: Session, *, order_id: uuid.UUID) -> ProductionOrder:
     """Cancel a PLANNED/IN_PROGRESS order and release its open reservations.
 

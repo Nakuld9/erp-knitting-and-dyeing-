@@ -242,6 +242,13 @@ class ProductionOrder(AuditMixin, Base):
     planned_end: Mapped[date | None] = mapped_column(Date, nullable=True)
     warehouse_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("warehouses.id"), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # --- grey fabric actual cost (knitting) ---
+    # Actual knitting conversion cost, recorded INDEPENDENTLY (never derived from
+    # the standard). ``None`` means "not entered" → excluded from actual, flagged.
+    actual_knitting_conversion_cost: Mapped[object | None] = mapped_column(Money, nullable=True)
+    # Set once the grey fabric output has been valued into FABRIC inventory.
+    grey_inventory_value: Mapped[object] = mapped_column(Money, default=0)
+    grey_valued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     reservations: Mapped[list["ProductionReservation"]] = relationship(
         back_populates="order", cascade="all, delete-orphan"

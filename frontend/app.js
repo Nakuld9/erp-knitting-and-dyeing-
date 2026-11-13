@@ -9098,6 +9098,495 @@ function FabricBOM() {
     }
   }, "\u26A0 ", n))))));
 }
+
+// ---- Production Cost: grey fabric actual cost + dyeing → actual dyed cost ----
+function ProductionCost() {
+  const [orders, setOrders] = useState([]);
+  const [gc, setGc] = useState(null);
+  const [goid, setGoid] = useState("");
+  const [conv, setConv] = useState("");
+  const [jobs, setJobs] = useState([]);
+  const [err, setErr] = useState("");
+  const [msg, setMsg] = useState("");
+  const [nj, setNj] = useState({
+    number: "",
+    mode: "INTERNAL",
+    grey_production_order_id: ""
+  });
+  const [sel, setSel] = useState(null);
+  const [jc, setJc] = useState(null);
+  const [tr, setTr] = useState(null);
+  const [iss, setIss] = useState({
+    source_production_order_id: "",
+    qty_kg: ""
+  });
+  const [costs, setCosts] = useState({
+    dyeing_charge: "",
+    jobwork_charge: "",
+    chemical_cost: "",
+    finishing_cost: "",
+    testing_cost: "",
+    other_cost: "",
+    reprocess_cost: ""
+  });
+  const [outLot, setOutLot] = useState({
+    lot_code: "",
+    qty_kg: ""
+  });
+  const [comp, setComp] = useState({
+    rejection_kg: "0",
+    reprocess_qty_kg: "0"
+  });
+  const loadOrders = useCallback(() => api("/api/bom/orders").then(setOrders).catch(e => setErr(e.message)), []);
+  const loadJobs = useCallback(() => api("/api/dyeing/jobs").then(setJobs).catch(e => setErr(e.message)), []);
+  useEffect(() => {
+    loadOrders();
+    loadJobs();
+  }, [loadOrders, loadJobs]);
+  const E = fn => fn.catch(e => setErr(e.message));
+  const openGrey = async id => {
+    setErr("");
+    setGoid(id);
+    try {
+      setGc(await api(`/api/bom/orders/${id}/grey-cost`));
+    } catch (e) {
+      setErr(e.message);
+    }
+  };
+  const saveConv = async () => {
+    setErr("");
+    setMsg("");
+    try {
+      await api(`/api/bom/orders/${goid}/conversion-cost`, {
+        method: "POST",
+        body: {
+          amount: conv
+        }
+      });
+      setMsg("Conversion cost recorded");
+      openGrey(goid);
+    } catch (e) {
+      setErr(e.message);
+    }
+  };
+  const valueGrey = async () => {
+    setErr("");
+    setMsg("");
+    try {
+      await api(`/api/bom/orders/${goid}/value-grey`, {
+        method: "POST",
+        body: {}
+      });
+      setMsg("Grey fabric valued into inventory");
+      openGrey(goid);
+      loadOrders();
+    } catch (e) {
+      setErr(e.message);
+    }
+  };
+  const createJob = async e => {
+    e.preventDefault();
+    setErr("");
+    setMsg("");
+    try {
+      const j = await api("/api/dyeing/jobs", {
+        method: "POST",
+        body: {
+          ...nj,
+          grey_production_order_id: nj.grey_production_order_id || null
+        }
+      });
+      setNj({
+        number: "",
+        mode: "INTERNAL",
+        grey_production_order_id: ""
+      });
+      await loadJobs();
+      openJob(j.id);
+    } catch (ex) {
+      setErr(ex.message);
+    }
+  };
+  const openJob = async id => {
+    setErr("");
+    setTr(null);
+    try {
+      const j = await api(`/api/dyeing/jobs/${id}`);
+      setSel(j);
+      setIss({
+        source_production_order_id: j.grey_production_order_id || "",
+        qty_kg: ""
+      });
+      try {
+        setJc(await api(`/api/dyeing/jobs/${id}/cost`));
+      } catch (e) {
+        setJc(null);
+      }
+    } catch (e) {
+      setErr(e.message);
+    }
+  };
+  const refreshJob = async () => {
+    if (sel) await openJob(sel.id);
+  };
+  const clean = o => {
+    const r = {};
+    for (const k in o) {
+      if (o[k] !== "" && o[k] != null) r[k] = o[k];
+    }
+    return r;
+  };
+  const doIssue = async () => {
+    setErr("");
+    setMsg("");
+    try {
+      await api(`/api/dyeing/jobs/${sel.id}/issue-grey`, {
+        method: "POST",
+        body: iss
+      });
+      setMsg("Grey issued (FIFO)");
+      refreshJob();
+    } catch (e) {
+      setErr(e.message);
+    }
+  };
+  const saveCosts = async () => {
+    setErr("");
+    setMsg("");
+    try {
+      await api(`/api/dyeing/jobs/${sel.id}/costs`, {
+        method: "POST",
+        body: clean(costs)
+      });
+      setMsg("Costs recorded");
+      refreshJob();
+    } catch (e) {
+      setErr(e.message);
+    }
+  };
+  const addOutput = async () => {
+    setErr("");
+    setMsg("");
+    try {
+      await api(`/api/dyeing/jobs/${sel.id}/output`, {
+        method: "POST",
+        body: {
+          lots: [outLot]
+        }
+      });
+      setOutLot({
+        lot_code: "",
+        qty_kg: ""
+      });
+      setMsg("Output lot added");
+      refreshJob();
+    } catch (e) {
+      setErr(e.message);
+    }
+  };
+  const complete = async () => {
+    setErr("");
+    setMsg("");
+    try {
+      await api(`/api/dyeing/jobs/${sel.id}/complete`, {
+        method: "POST",
+        body: comp
+      });
+      setMsg("Job completed + dyed fabric valued");
+      refreshJob();
+    } catch (e) {
+      setErr(e.message);
+    }
+  };
+  const showTrace = async () => {
+    setErr("");
+    try {
+      setTr(await api(`/api/dyeing/jobs/${sel.id}/trace`));
+    } catch (e) {
+      setErr(e.message);
+    }
+  };
+  const num = v => v == null ? "—" : inr2(v);
+  return /*#__PURE__*/React.createElement("div", null, err && /*#__PURE__*/React.createElement("div", {
+    className: "err"
+  }, err), msg && /*#__PURE__*/React.createElement("div", {
+    className: "badge ok",
+    style: {
+      marginBottom: 8
+    }
+  }, msg), /*#__PURE__*/React.createElement("div", {
+    className: "grid2"
+  }, /*#__PURE__*/React.createElement(Panel, {
+    title: "Grey fabric \u2014 standard vs actual cost"
+  }, /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Order"), /*#__PURE__*/React.createElement("th", null, "Status"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Produced"), /*#__PURE__*/React.createElement("th", null, "Grey valued"))), /*#__PURE__*/React.createElement("tbody", null, orders.map(o => /*#__PURE__*/React.createElement("tr", {
+    key: o.id,
+    className: goid === o.id ? "sel" : "",
+    style: {
+      cursor: "pointer"
+    },
+    onClick: () => openGrey(o.id)
+  }, /*#__PURE__*/React.createElement("td", null, o.number), /*#__PURE__*/React.createElement("td", null, o.status), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(o.produced_qty_kg)), /*#__PURE__*/React.createElement("td", null, Number(o.grey_inventory_value) > 0 ? /*#__PURE__*/React.createElement("span", {
+    className: "badge ok"
+  }, "valued") : /*#__PURE__*/React.createElement("span", {
+    className: "muted"
+  }, "no")))))), gc && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 10
+    }
+  }, /*#__PURE__*/React.createElement("h4", null, gc.number, " \u2014 grey cost/kg"), /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("tbody", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", null, "Standard grey cost/kg"), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, num(gc.std_grey_cost_per_kg))), /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", null, "Actual yarn (FIFO)"), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, num(gc.actual_yarn_cost))), /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", null, "Actual knitting conversion"), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, gc.actual_knitting_conversion_cost == null ? /*#__PURE__*/React.createElement("span", {
+    className: "muted"
+  }, "not entered") : inr2(gc.actual_knitting_conversion_cost))), /*#__PURE__*/React.createElement("tr", {
+    style: {
+      fontWeight: 700
+    }
+  }, /*#__PURE__*/React.createElement("td", null, "Actual grey cost/kg"), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, num(gc.actual_grey_cost_per_kg))), /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", null, "Variance/kg (actual \u2212 std)"), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, num(gc.variance_per_kg))))), !gc.cost_complete && /*#__PURE__*/React.createElement("div", {
+    className: "muted",
+    style: {
+      fontSize: 12
+    }
+  }, "\u26A0 Incomplete: missing ", gc.missing_cost_components.join(", ")), /*#__PURE__*/React.createElement("div", {
+    className: "row",
+    style: {
+      marginTop: 6
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Actual knitting conversion \u20B9"), /*#__PURE__*/React.createElement("input", {
+    value: conv,
+    onChange: e => setConv(e.target.value),
+    placeholder: "e.g. 600"
+  })), /*#__PURE__*/React.createElement("button", {
+    className: "btn-ghost",
+    onClick: saveConv
+  }, "Record conversion"), !gc.grey_valued && /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    onClick: valueGrey
+  }, "Value grey \u2192 inventory")))), /*#__PURE__*/React.createElement(Panel, {
+    title: "Dyeing jobs"
+  }, /*#__PURE__*/React.createElement("form", {
+    className: "row",
+    onSubmit: createJob
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Job no."), /*#__PURE__*/React.createElement("input", {
+    required: true,
+    value: nj.number,
+    onChange: e => setNj({
+      ...nj,
+      number: e.target.value
+    }),
+    placeholder: "DJ-1"
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Mode"), /*#__PURE__*/React.createElement("select", {
+    value: nj.mode,
+    onChange: e => setNj({
+      ...nj,
+      mode: e.target.value
+    })
+  }, /*#__PURE__*/React.createElement("option", null, "INTERNAL"), /*#__PURE__*/React.createElement("option", null, "JOBWORK"))), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Grey order"), /*#__PURE__*/React.createElement("select", {
+    value: nj.grey_production_order_id,
+    onChange: e => setNj({
+      ...nj,
+      grey_production_order_id: e.target.value
+    })
+  }, /*#__PURE__*/React.createElement("option", {
+    value: ""
+  }, "\u2014"), orders.filter(o => Number(o.grey_inventory_value) > 0).map(o => /*#__PURE__*/React.createElement("option", {
+    key: o.id,
+    value: o.id
+  }, o.number)))), /*#__PURE__*/React.createElement("button", {
+    className: "btn"
+  }, "Create job")), !!jobs.length && /*#__PURE__*/React.createElement("table", {
+    style: {
+      marginTop: 6
+    }
+  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "No."), /*#__PURE__*/React.createElement("th", null, "Mode"), /*#__PURE__*/React.createElement("th", null, "Status"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "In"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Out"), /*#__PURE__*/React.createElement("th", null))), /*#__PURE__*/React.createElement("tbody", null, jobs.map(j => /*#__PURE__*/React.createElement("tr", {
+    key: j.id,
+    className: sel && sel.id === j.id ? "sel" : ""
+  }, /*#__PURE__*/React.createElement("td", null, j.number), /*#__PURE__*/React.createElement("td", null, j.mode), /*#__PURE__*/React.createElement("td", null, j.status), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(j.input_qty_kg)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(j.output_qty_kg)), /*#__PURE__*/React.createElement("td", null, /*#__PURE__*/React.createElement("button", {
+    className: "btn-ghost",
+    onClick: () => openJob(j.id)
+  }, "open")))))))), sel && /*#__PURE__*/React.createElement(Panel, {
+    title: "Dyeing job " + sel.number + " (" + sel.status + ")"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "grid2"
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h4", null, "Operate"), /*#__PURE__*/React.createElement("div", {
+    className: "row"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Issue grey qty kg"), /*#__PURE__*/React.createElement("input", {
+    value: iss.qty_kg,
+    onChange: e => setIss({
+      ...iss,
+      qty_kg: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("button", {
+    className: "btn-ghost",
+    onClick: doIssue,
+    disabled: sel.status !== "PLANNED" && sel.status !== "IN_PROGRESS"
+  }, "Issue grey (FIFO)")), /*#__PURE__*/React.createElement("div", {
+    className: "row"
+  }, ["dyeing_charge", "jobwork_charge", "chemical_cost", "finishing_cost", "testing_cost", "other_cost", "reprocess_cost"].map(k => /*#__PURE__*/React.createElement("div", {
+    className: "field",
+    key: k,
+    style: {
+      minWidth: 120
+    }
+  }, /*#__PURE__*/React.createElement("label", null, k.replace(/_/g, " "), " \u20B9"), /*#__PURE__*/React.createElement("input", {
+    value: costs[k],
+    onChange: e => setCosts({
+      ...costs,
+      [k]: e.target.value
+    })
+  })))), /*#__PURE__*/React.createElement("button", {
+    className: "btn-ghost",
+    onClick: saveCosts
+  }, "Record costs"), /*#__PURE__*/React.createElement("div", {
+    className: "row",
+    style: {
+      marginTop: 8
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Output lot code"), /*#__PURE__*/React.createElement("input", {
+    value: outLot.lot_code,
+    onChange: e => setOutLot({
+      ...outLot,
+      lot_code: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Output qty kg"), /*#__PURE__*/React.createElement("input", {
+    value: outLot.qty_kg,
+    onChange: e => setOutLot({
+      ...outLot,
+      qty_kg: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("button", {
+    className: "btn-ghost",
+    onClick: addOutput
+  }, "Add output lot")), /*#__PURE__*/React.createElement("div", {
+    className: "row"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Rejection kg"), /*#__PURE__*/React.createElement("input", {
+    value: comp.rejection_kg,
+    onChange: e => setComp({
+      ...comp,
+      rejection_kg: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Reprocess kg"), /*#__PURE__*/React.createElement("input", {
+    value: comp.reprocess_qty_kg,
+    onChange: e => setComp({
+      ...comp,
+      reprocess_qty_kg: e.target.value
+    })
+  })), /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    onClick: complete,
+    disabled: sel.status === "COMPLETED"
+  }, "Complete + value dyed"), /*#__PURE__*/React.createElement("button", {
+    className: "btn-ghost",
+    onClick: showTrace
+  }, "Trace"))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h4", null, "Actual dyed fabric cost"), !jc ? /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "\u2014") : /*#__PURE__*/React.createElement("div", null, !jc.cost_complete && /*#__PURE__*/React.createElement("div", {
+    className: "badge bad",
+    style: {
+      marginBottom: 6
+    }
+  }, "INCOMPLETE"), /*#__PURE__*/React.createElement("table", null, /*#__PURE__*/React.createElement("tbody", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", null, "Grey consumed (FIFO)"), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, num(jc.cost_components.grey_cost_consumed))), ["dyeing_charge", "jobwork_charge", "chemical_cost", "finishing_cost", "testing_cost", "other_cost", "reprocess_cost"].map(k => /*#__PURE__*/React.createElement("tr", {
+    key: k
+  }, /*#__PURE__*/React.createElement("td", null, k.replace(/_/g, " ")), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, jc.cost_components[k] == null ? /*#__PURE__*/React.createElement("span", {
+    className: "muted"
+  }, "not recorded") : inr2(jc.cost_components[k])))), /*#__PURE__*/React.createElement("tr", {
+    style: {
+      fontWeight: 700
+    }
+  }, /*#__PURE__*/React.createElement("td", null, "Total actual cost"), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, num(jc.total_actual_cost))), /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", null, "Input / saleable output kg"), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(jc.input_qty_kg), " / ", inr2(jc.saleable_output_kg))), /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("td", null, "Process loss / %"), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(jc.process_loss_kg), " / ", jc.loss_pct == null ? "—" : jc.loss_pct)), /*#__PURE__*/React.createElement("tr", {
+    style: {
+      fontWeight: 700
+    }
+  }, /*#__PURE__*/React.createElement("td", null, "Actual dyed cost/kg"), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, jc.actual_dyed_cost_per_kg == null ? "—" : inr2(jc.actual_dyed_cost_per_kg), !jc.cost_complete && " (lower bound)")))), jc.note && /*#__PURE__*/React.createElement("div", {
+    className: "muted",
+    style: {
+      fontSize: 12,
+      marginTop: 4
+    }
+  }, "\u26A0 ", jc.note), !!(jc.output_lots || []).length && /*#__PURE__*/React.createElement("table", {
+    style: {
+      marginTop: 6
+    }
+  }, /*#__PURE__*/React.createElement("thead", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Lot"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "kg"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "Alloc \u20B9"), /*#__PURE__*/React.createElement("th", {
+    className: "num"
+  }, "\u20B9/kg"))), /*#__PURE__*/React.createElement("tbody", null, jc.output_lots.map((l, i) => /*#__PURE__*/React.createElement("tr", {
+    key: i
+  }, /*#__PURE__*/React.createElement("td", null, l.lot_code), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(l.qty_kg)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, inr2(l.allocated_cost)), /*#__PURE__*/React.createElement("td", {
+    className: "num"
+  }, num(l.cost_per_kg))))))), tr && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 8
+    }
+  }, /*#__PURE__*/React.createElement("h4", null, "Traceability"), tr.grey_sources.map((g, i) => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    className: "muted",
+    style: {
+      fontSize: 12
+    }
+  }, "Grey PO ", g.number, " \u2014 ", inr2(g.grey_issued_kg), " kg @ \u20B9", inr2(g.grey_issue_cost), " \xB7 yarn issues: ", g.yarn_issues.length, g.yarn_issues.map((y, j) => /*#__PURE__*/React.createElement("div", {
+    key: j,
+    style: {
+      marginLeft: 12
+    }
+  }, "\xB7 yarn ", String(y.yarn_item_id).slice(0, 8), " lot ", y.lot_id ? String(y.lot_id).slice(0, 8) : "—", " ", inr2(y.qty_kg), "kg \u20B9", inr2(y.cost))))))))));
+}
 const PAGES = {
   group: {
     t: "Group Dashboard",
@@ -9138,6 +9627,10 @@ const PAGES = {
   bom: {
     t: "Fabric BOM & Production Orders",
     c: FabricBOM
+  },
+  prodcost: {
+    t: "Production Cost (Grey → Dyed)",
+    c: ProductionCost
   },
   inventoryops: {
     t: "Inventory Ops (transfer / split / merge)",
@@ -9251,6 +9744,7 @@ const NAV_ICON = {
   accounts: "💼",
   chemical: "🧪",
   bom: "🧵",
+  prodcost: "💷",
   purchaseorders: "📝",
   purchase: "📥",
   knitting: "🧶",
@@ -9404,7 +9898,7 @@ function App() {
     className: "group"
   }, "Dashboards"), navBtn("group", "Group"), navBtn("owner", "Owner"), navBtn("factory", "Factory"), navBtn("accounts", "Accounts"), navBtn("chemical", "Chemical"), /*#__PURE__*/React.createElement("div", {
     className: "group"
-  }, "Transactions"), navBtn("bom", "Fabric BOM"), navBtn("purchaseorders", "Purchase Orders"), navBtn("purchase", "Purchase (GRN)"), navBtn("knitting", "Knitting"), navBtn("batching", "Batching"), navBtn("pipeline", "Sales Pipeline"), navBtn("salesorders", "Sales Orders"), navBtn("sales", "Sales Invoice"), navBtn("dyeing", "Dyeing & Dispensing"), navBtn("jobwork", "Job Work"), navBtn("vouchers", "Vouchers"), navBtn("inventoryops", "Inventory Ops"), navBtn("stock", "Stock on Hand"), navBtn("stores", "Stores & Spares"), /*#__PURE__*/React.createElement("div", {
+  }, "Transactions"), navBtn("bom", "Fabric BOM"), navBtn("prodcost", "Production Cost"), navBtn("purchaseorders", "Purchase Orders"), navBtn("purchase", "Purchase (GRN)"), navBtn("knitting", "Knitting"), navBtn("batching", "Batching"), navBtn("pipeline", "Sales Pipeline"), navBtn("salesorders", "Sales Orders"), navBtn("sales", "Sales Invoice"), navBtn("dyeing", "Dyeing & Dispensing"), navBtn("jobwork", "Job Work"), navBtn("vouchers", "Vouchers"), navBtn("inventoryops", "Inventory Ops"), navBtn("stock", "Stock on Hand"), navBtn("stores", "Stores & Spares"), /*#__PURE__*/React.createElement("div", {
     className: "group"
   }, "Masters"), navBtn("masters", "Master Data"), navBtn("coa", "Chart of Accounts"), navBtn("customers", "Customers"), navBtn("suppliers", "Suppliers"), navBtn("warehouses", "Warehouses"), /*#__PURE__*/React.createElement("div", {
     className: "group"

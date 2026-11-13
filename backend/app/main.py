@@ -19,6 +19,7 @@ from app.api.routes import (
     bom,
     costing,
     dashboard,
+    dyeing,
     einvoice,
     ewaybill,
     hardware,
@@ -66,6 +67,7 @@ app.include_router(payroll.router)
 app.include_router(presales.router)
 app.include_router(banking.router)
 app.include_router(bom.router)
+app.include_router(dyeing.router)
 app.include_router(dashboard.router)
 app.include_router(quality.router)
 app.include_router(costing.router)

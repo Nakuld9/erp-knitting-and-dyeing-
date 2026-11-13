@@ -155,6 +155,14 @@ class CompleteIn(BaseModel):
     allow_outstanding: bool = False
 
 
+class ConversionCostIn(BaseModel):
+    amount: Decimal
+
+
+class ValueGreyIn(BaseModel):
+    warehouse_id: uuid.UUID | None = None
+
+
 # --- serialization ----------------------------------------------------------
 
 def _version_dict(v: FabricBomVersion) -> dict:
@@ -371,6 +379,10 @@ def _order_dict(o: ProductionOrder) -> dict:
         "planned_qty_kg": str(o.planned_qty_kg), "produced_qty_kg": str(o.produced_qty_kg),
         "factory_id": str(o.factory_id) if o.factory_id else None,
         "sales_order_id": str(o.sales_order_id) if o.sales_order_id else None,
+        "grey_inventory_value": str(o.grey_inventory_value),
+        "grey_valued": o.grey_valued_at is not None,
+        "actual_knitting_conversion_cost": (
+            str(o.actual_knitting_conversion_cost) if o.actual_knitting_conversion_cost is not None else None),
         "reservations": [{
             "id": str(r.id), "stage": r.stage, "item_type": r.item_type, "item_id": str(r.item_id),
             "planned_qty": str(r.planned_qty), "issued_qty": str(r.issued_qty),
@@ -502,6 +514,43 @@ def order_variance(order_id: uuid.UUID, db: Session = Depends(get_company_db),
                    user: User = Depends(require_permission("bom.read"))):
     _get_order(db, user, order_id)
     return prod.variance_report(db, order_id)
+
+
+# --- grey fabric actual cost ------------------------------------------------
+
+@router.post("/orders/{order_id}/conversion-cost")
+def set_conversion_cost(order_id: uuid.UUID, payload: ConversionCostIn,
+                        db: Session = Depends(get_company_db),
+                        user: User = Depends(require_permission("production.manage"))):
+    _get_order(db, user, order_id)
+    try:
+        prod.record_actual_knitting_conversion_cost(db, order_id=order_id, amount=payload.amount)
+        db.commit()
+    except prod.ProductionError as e:
+        db.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e))
+    return prod.grey_actual_cost(db, order_id)
+
+
+@router.post("/orders/{order_id}/value-grey")
+def value_grey(order_id: uuid.UUID, payload: ValueGreyIn, db: Session = Depends(get_company_db),
+               user: User = Depends(require_permission("production.manage"))):
+    o = _get_order(db, user, order_id)
+    _authz(db, user, factory_id=o.factory_id, warehouse_id=payload.warehouse_id)
+    try:
+        res = prod.value_grey_output(db, order_id=order_id, warehouse_id=payload.warehouse_id)
+        db.commit()
+    except prod.ProductionError as e:
+        db.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(e))
+    return {k: (str(v) if isinstance(v, Decimal) else v) for k, v in res.items()}
+
+
+@router.get("/orders/{order_id}/grey-cost")
+def grey_cost(order_id: uuid.UUID, db: Session = Depends(get_company_db),
+              user: User = Depends(require_permission("bom.read"))):
+    _get_order(db, user, order_id)
+    return prod.grey_actual_cost(db, order_id)
 
 
 # NOTE: this single-segment catch-all is declared LAST so literal paths

@@ -249,3 +249,17 @@ def test_fabric_bom_unique_indexes_added_and_reversible(temp_db):
     assert _has_index(path, "fabric_bom_versions", "uq_fabric_bom_versions_bom_versionno")
     command.downgrade(cfg, "0011_fabric_bom")
     assert not _has_index(path, "fabric_boms", "uq_fabric_boms_company_code")
+
+
+def test_grey_cost_and_dyeing_tables_added_and_reversible(temp_db):
+    """0013 adds grey-cost columns + dyeing cost-tracking tables; reversible."""
+    url, path = temp_db
+    cfg = _alembic_cfg(url)
+    command.upgrade(cfg, "head")
+    for t in ("dyeing_jobs", "dyeing_inputs", "dyeing_outputs"):
+        assert _has_table(path, t), t
+    assert _has_column(path, "production_orders", "actual_knitting_conversion_cost")
+    assert _has_column(path, "production_orders", "grey_inventory_value")
+    command.downgrade(cfg, "0012_fabric_bom_unique")
+    assert not _has_table(path, "dyeing_jobs")
+    assert not _has_column(path, "production_orders", "grey_inventory_value")

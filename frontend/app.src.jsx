@@ -2774,6 +2774,131 @@ function FabricBOM(){
   </div>);
 }
 
+// ---- Production Cost: grey fabric actual cost + dyeing → actual dyed cost ----
+function ProductionCost(){
+  const [orders,setOrders]=useState([]); const [gc,setGc]=useState(null); const [goid,setGoid]=useState("");
+  const [conv,setConv]=useState(""); const [jobs,setJobs]=useState([]); const [err,setErr]=useState(""); const [msg,setMsg]=useState("");
+  const [nj,setNj]=useState({number:"",mode:"INTERNAL",grey_production_order_id:""});
+  const [sel,setSel]=useState(null); const [jc,setJc]=useState(null); const [tr,setTr]=useState(null);
+  const [iss,setIss]=useState({source_production_order_id:"",qty_kg:""});
+  const [costs,setCosts]=useState({dyeing_charge:"",jobwork_charge:"",chemical_cost:"",finishing_cost:"",testing_cost:"",other_cost:"",reprocess_cost:""});
+  const [outLot,setOutLot]=useState({lot_code:"",qty_kg:""}); const [comp,setComp]=useState({rejection_kg:"0",reprocess_qty_kg:"0"});
+
+  const loadOrders=useCallback(()=>api("/api/bom/orders").then(setOrders).catch(e=>setErr(e.message)),[]);
+  const loadJobs=useCallback(()=>api("/api/dyeing/jobs").then(setJobs).catch(e=>setErr(e.message)),[]);
+  useEffect(()=>{loadOrders();loadJobs()},[loadOrders,loadJobs]);
+  const E=fn=>fn.catch(e=>setErr(e.message));
+  const openGrey=async id=>{ setErr("");setGoid(id); try{ setGc(await api(`/api/bom/orders/${id}/grey-cost`)); }catch(e){setErr(e.message);} };
+  const saveConv=async()=>{ setErr("");setMsg(""); try{ await api(`/api/bom/orders/${goid}/conversion-cost`,{method:"POST",body:{amount:conv}}); setMsg("Conversion cost recorded"); openGrey(goid);}catch(e){setErr(e.message);} };
+  const valueGrey=async()=>{ setErr("");setMsg(""); try{ await api(`/api/bom/orders/${goid}/value-grey`,{method:"POST",body:{}}); setMsg("Grey fabric valued into inventory"); openGrey(goid); loadOrders(); }catch(e){setErr(e.message);} };
+
+  const createJob=async e=>{ e.preventDefault(); setErr("");setMsg(""); try{ const j=await api("/api/dyeing/jobs",{method:"POST",body:{...nj,grey_production_order_id:nj.grey_production_order_id||null}}); setNj({number:"",mode:"INTERNAL",grey_production_order_id:""}); await loadJobs(); openJob(j.id);}catch(ex){setErr(ex.message);} };
+  const openJob=async id=>{ setErr("");setTr(null); try{ const j=await api(`/api/dyeing/jobs/${id}`); setSel(j); setIss({source_production_order_id:j.grey_production_order_id||"",qty_kg:""}); try{setJc(await api(`/api/dyeing/jobs/${id}/cost`));}catch(e){setJc(null);} }catch(e){setErr(e.message);} };
+  const refreshJob=async()=>{ if(sel) await openJob(sel.id); };
+  const clean=o=>{const r={};for(const k in o){if(o[k]!==""&&o[k]!=null)r[k]=o[k];}return r;};
+  const doIssue=async()=>{ setErr("");setMsg(""); try{ await api(`/api/dyeing/jobs/${sel.id}/issue-grey`,{method:"POST",body:iss}); setMsg("Grey issued (FIFO)"); refreshJob();}catch(e){setErr(e.message);} };
+  const saveCosts=async()=>{ setErr("");setMsg(""); try{ await api(`/api/dyeing/jobs/${sel.id}/costs`,{method:"POST",body:clean(costs)}); setMsg("Costs recorded"); refreshJob();}catch(e){setErr(e.message);} };
+  const addOutput=async()=>{ setErr("");setMsg(""); try{ await api(`/api/dyeing/jobs/${sel.id}/output`,{method:"POST",body:{lots:[outLot]}}); setOutLot({lot_code:"",qty_kg:""}); setMsg("Output lot added"); refreshJob();}catch(e){setErr(e.message);} };
+  const complete=async()=>{ setErr("");setMsg(""); try{ await api(`/api/dyeing/jobs/${sel.id}/complete`,{method:"POST",body:comp}); setMsg("Job completed + dyed fabric valued"); refreshJob();}catch(e){setErr(e.message);} };
+  const showTrace=async()=>{ setErr(""); try{ setTr(await api(`/api/dyeing/jobs/${sel.id}/trace`)); }catch(e){setErr(e.message);} };
+  const num=v=>v==null?"—":inr2(v);
+
+  return (<div>
+    {err && <div className="err">{err}</div>}{msg && <div className="badge ok" style={{marginBottom:8}}>{msg}</div>}
+    <div className="grid2">
+      <Panel title="Grey fabric — standard vs actual cost">
+        <table><thead><tr><th>Order</th><th>Status</th><th className="num">Produced</th><th>Grey valued</th></tr></thead>
+          <tbody>{orders.map(o=><tr key={o.id} className={goid===o.id?"sel":""} style={{cursor:"pointer"}} onClick={()=>openGrey(o.id)}>
+            <td>{o.number}</td><td>{o.status}</td><td className="num">{inr2(o.produced_qty_kg)}</td>
+            <td>{Number(o.grey_inventory_value)>0?<span className="badge ok">valued</span>:<span className="muted">no</span>}</td></tr>)}</tbody></table>
+        {gc && <div style={{marginTop:10}}>
+          <h4>{gc.number} — grey cost/kg</h4>
+          <table><tbody>
+            <tr><td>Standard grey cost/kg</td><td className="num">{num(gc.std_grey_cost_per_kg)}</td></tr>
+            <tr><td>Actual yarn (FIFO)</td><td className="num">{num(gc.actual_yarn_cost)}</td></tr>
+            <tr><td>Actual knitting conversion</td><td className="num">{gc.actual_knitting_conversion_cost==null?<span className="muted">not entered</span>:inr2(gc.actual_knitting_conversion_cost)}</td></tr>
+            <tr style={{fontWeight:700}}><td>Actual grey cost/kg</td><td className="num">{num(gc.actual_grey_cost_per_kg)}</td></tr>
+            <tr><td>Variance/kg (actual − std)</td><td className="num">{num(gc.variance_per_kg)}</td></tr>
+          </tbody></table>
+          {!gc.cost_complete && <div className="muted" style={{fontSize:12}}>⚠ Incomplete: missing {gc.missing_cost_components.join(", ")}</div>}
+          <div className="row" style={{marginTop:6}}>
+            <div className="field"><label>Actual knitting conversion ₹</label><input value={conv} onChange={e=>setConv(e.target.value)} placeholder="e.g. 600"/></div>
+            <button className="btn-ghost" onClick={saveConv}>Record conversion</button>
+            {!gc.grey_valued && <button className="btn" onClick={valueGrey}>Value grey → inventory</button>}
+          </div>
+        </div>}
+      </Panel>
+
+      <Panel title="Dyeing jobs">
+        <form className="row" onSubmit={createJob}>
+          <div className="field"><label>Job no.</label><input required value={nj.number} onChange={e=>setNj({...nj,number:e.target.value})} placeholder="DJ-1"/></div>
+          <div className="field"><label>Mode</label><select value={nj.mode} onChange={e=>setNj({...nj,mode:e.target.value})}><option>INTERNAL</option><option>JOBWORK</option></select></div>
+          <div className="field"><label>Grey order</label><select value={nj.grey_production_order_id} onChange={e=>setNj({...nj,grey_production_order_id:e.target.value})}>
+            <option value="">—</option>{orders.filter(o=>Number(o.grey_inventory_value)>0).map(o=><option key={o.id} value={o.id}>{o.number}</option>)}</select></div>
+          <button className="btn">Create job</button>
+        </form>
+        {!!jobs.length && <table style={{marginTop:6}}><thead><tr><th>No.</th><th>Mode</th><th>Status</th><th className="num">In</th><th className="num">Out</th><th></th></tr></thead>
+          <tbody>{jobs.map(j=><tr key={j.id} className={sel&&sel.id===j.id?"sel":""}><td>{j.number}</td><td>{j.mode}</td><td>{j.status}</td>
+            <td className="num">{inr2(j.input_qty_kg)}</td><td className="num">{inr2(j.output_qty_kg)}</td>
+            <td><button className="btn-ghost" onClick={()=>openJob(j.id)}>open</button></td></tr>)}</tbody></table>}
+      </Panel>
+    </div>
+
+    {sel && <Panel title={"Dyeing job "+sel.number+" ("+sel.status+")"}>
+      <div className="grid2">
+        <div>
+          <h4>Operate</h4>
+          <div className="row">
+            <div className="field"><label>Issue grey qty kg</label><input value={iss.qty_kg} onChange={e=>setIss({...iss,qty_kg:e.target.value})}/></div>
+            <button className="btn-ghost" onClick={doIssue} disabled={sel.status!=="PLANNED"&&sel.status!=="IN_PROGRESS"}>Issue grey (FIFO)</button>
+          </div>
+          <div className="row">
+            {["dyeing_charge","jobwork_charge","chemical_cost","finishing_cost","testing_cost","other_cost","reprocess_cost"].map(k=>
+              <div className="field" key={k} style={{minWidth:120}}><label>{k.replace(/_/g," ")} ₹</label>
+                <input value={costs[k]} onChange={e=>setCosts({...costs,[k]:e.target.value})}/></div>)}
+          </div>
+          <button className="btn-ghost" onClick={saveCosts}>Record costs</button>
+          <div className="row" style={{marginTop:8}}>
+            <div className="field"><label>Output lot code</label><input value={outLot.lot_code} onChange={e=>setOutLot({...outLot,lot_code:e.target.value})}/></div>
+            <div className="field"><label>Output qty kg</label><input value={outLot.qty_kg} onChange={e=>setOutLot({...outLot,qty_kg:e.target.value})}/></div>
+            <button className="btn-ghost" onClick={addOutput}>Add output lot</button>
+          </div>
+          <div className="row">
+            <div className="field"><label>Rejection kg</label><input value={comp.rejection_kg} onChange={e=>setComp({...comp,rejection_kg:e.target.value})}/></div>
+            <div className="field"><label>Reprocess kg</label><input value={comp.reprocess_qty_kg} onChange={e=>setComp({...comp,reprocess_qty_kg:e.target.value})}/></div>
+            <button className="btn" onClick={complete} disabled={sel.status==="COMPLETED"}>Complete + value dyed</button>
+            <button className="btn-ghost" onClick={showTrace}>Trace</button>
+          </div>
+        </div>
+        <div>
+          <h4>Actual dyed fabric cost</h4>
+          {!jc?<div className="muted">—</div>:<div>
+            {!jc.cost_complete && <div className="badge bad" style={{marginBottom:6}}>INCOMPLETE</div>}
+            <table><tbody>
+              <tr><td>Grey consumed (FIFO)</td><td className="num">{num(jc.cost_components.grey_cost_consumed)}</td></tr>
+              {["dyeing_charge","jobwork_charge","chemical_cost","finishing_cost","testing_cost","other_cost","reprocess_cost"].map(k=>
+                <tr key={k}><td>{k.replace(/_/g," ")}</td><td className="num">{jc.cost_components[k]==null?<span className="muted">not recorded</span>:inr2(jc.cost_components[k])}</td></tr>)}
+              <tr style={{fontWeight:700}}><td>Total actual cost</td><td className="num">{num(jc.total_actual_cost)}</td></tr>
+              <tr><td>Input / saleable output kg</td><td className="num">{inr2(jc.input_qty_kg)} / {inr2(jc.saleable_output_kg)}</td></tr>
+              <tr><td>Process loss / %</td><td className="num">{inr2(jc.process_loss_kg)} / {jc.loss_pct==null?"—":jc.loss_pct}</td></tr>
+              <tr style={{fontWeight:700}}><td>Actual dyed cost/kg</td><td className="num">{jc.actual_dyed_cost_per_kg==null?"—":inr2(jc.actual_dyed_cost_per_kg)}{!jc.cost_complete&&" (lower bound)"}</td></tr>
+            </tbody></table>
+            {jc.note && <div className="muted" style={{fontSize:12,marginTop:4}}>⚠ {jc.note}</div>}
+            {!!(jc.output_lots||[]).length && <table style={{marginTop:6}}><thead><tr><th>Lot</th><th className="num">kg</th><th className="num">Alloc ₹</th><th className="num">₹/kg</th></tr></thead>
+              <tbody>{jc.output_lots.map((l,i)=><tr key={i}><td>{l.lot_code}</td><td className="num">{inr2(l.qty_kg)}</td><td className="num">{inr2(l.allocated_cost)}</td><td className="num">{num(l.cost_per_kg)}</td></tr>)}</tbody></table>}
+          </div>}
+          {tr && <div style={{marginTop:8}}><h4>Traceability</h4>
+            {tr.grey_sources.map((g,i)=><div key={i} className="muted" style={{fontSize:12}}>
+              Grey PO {g.number} — {inr2(g.grey_issued_kg)} kg @ ₹{inr2(g.grey_issue_cost)} · yarn issues: {g.yarn_issues.length}
+              {g.yarn_issues.map((y,j)=><div key={j} style={{marginLeft:12}}>· yarn {String(y.yarn_item_id).slice(0,8)} lot {y.lot_id?String(y.lot_id).slice(0,8):"—"} {inr2(y.qty_kg)}kg ₹{inr2(y.cost)}</div>)}
+            </div>)}
+          </div>}
+        </div>
+      </div>
+    </Panel>}
+  </div>);
+}
+
 const PAGES={
   group:{t:"Group Dashboard",c:GroupDash},
   owner:{t:"Owner Dashboard",c:OwnerDash}, factory:{t:"Factory Dashboard",c:FactoryDash},
@@ -2782,6 +2907,7 @@ const PAGES={
   purchase:{t:"Purchase (GRN)",c:Purchase}, knitting:{t:"Knitting Production",c:Knitting},
   batching:{t:"Batching",c:Batching},
   bom:{t:"Fabric BOM & Production Orders",c:FabricBOM},
+  prodcost:{t:"Production Cost (Grey → Dyed)",c:ProductionCost},
   inventoryops:{t:"Inventory Ops (transfer / split / merge)",c:InventoryOps},
   stock:{t:"Stock on Hand",c:StockOnHand},
   stores:{t:"Stores & Spares",c:Stores},
@@ -2803,7 +2929,7 @@ const PAGES={
   tenancy:{t:"Group & Tenancy",c:Tenancy},
   reports:{t:"Reports",c:Reports},
 };
-const NAV_ICON={group:"🏛️",owner:"📊",factory:"🏭",accounts:"💼",chemical:"🧪",bom:"🧵",purchaseorders:"📝",purchase:"📥",
+const NAV_ICON={group:"🏛️",owner:"📊",factory:"🏭",accounts:"💼",chemical:"🧪",bom:"🧵",prodcost:"💷",purchaseorders:"📝",purchase:"📥",
   knitting:"🧶",batching:"🧺",pipeline:"🎯",salesorders:"🛒",sales:"🧾",dyeing:"🎨",vouchers:"📒",
   inventoryops:"🔁",stock:"📦",stores:"🪡",jobwork:"🔄",masters:"🗃️",coa:"📚",customers:"👤",suppliers:"🏢",warehouses:"🏬",quality:"🔍",assets:"🏗️",
   payroll:"💰",costing:"📐",devices:"🖨️",reports:"📈",approvals:"✔️",notifications:"🔔",acctops:"🧮",admin:"⚙️",tenancy:"🏛️"};
@@ -2865,7 +2991,7 @@ function App(){
         {navBtn("group","Group")}{navBtn("owner","Owner")}{navBtn("factory","Factory")}
         {navBtn("accounts","Accounts")}{navBtn("chemical","Chemical")}
         <div className="group">Transactions</div>
-        {navBtn("bom","Fabric BOM")}
+        {navBtn("bom","Fabric BOM")}{navBtn("prodcost","Production Cost")}
         {navBtn("purchaseorders","Purchase Orders")}{navBtn("purchase","Purchase (GRN)")}{navBtn("knitting","Knitting")}
         {navBtn("batching","Batching")}{navBtn("pipeline","Sales Pipeline")}{navBtn("salesorders","Sales Orders")}{navBtn("sales","Sales Invoice")}{navBtn("dyeing","Dyeing & Dispensing")}{navBtn("jobwork","Job Work")}{navBtn("vouchers","Vouchers")}
         {navBtn("inventoryops","Inventory Ops")}{navBtn("stock","Stock on Hand")}{navBtn("stores","Stores & Spares")}

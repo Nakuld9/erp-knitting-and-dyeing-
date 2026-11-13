@@ -76,6 +76,13 @@ from app.models.manufacturing import (  # noqa: F401
     RollKind,
     dye_batch_rolls,
 )
+from app.models.dyeing_cost import (  # noqa: F401
+    DyeingInput,
+    DyeingJob,
+    DyeingMode,
+    DyeingOutput,
+    DyeingStatus,
+)
 from app.models.fabric_bom import (  # noqa: F401
     BomStatus,
     FabricBom,
