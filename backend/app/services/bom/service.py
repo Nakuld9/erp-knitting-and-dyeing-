@@ -177,9 +177,14 @@ def set_spec(db: Session, version_id: uuid.UUID, **fields) -> FabricBomVersion:
     if v is None:
         raise BomError("version not found")
     _editable(v)
+    # NOTE: the fabric BOM is YARN-ONLY at this stage — dye/chemical usage is not
+    # yet tracked, so ``dye_recipe_version_id`` is intentionally NOT settable (the
+    # column is kept, nullable and unused, so dyeing can be switched back on later
+    # without a migration). Conversion standards (incl. std_dyeing_cost as a flat
+    # processing rate) remain.
     allowed = {"construction", "composition", "yarn_count", "gsm", "width_cm", "gauge",
                "diameter_inch", "stitch_length_mm", "finished_gsm", "finished_width_cm",
-               "dye_recipe_version_id", "std_knitting_cost", "std_dyeing_cost",
+               "std_knitting_cost", "std_dyeing_cost",
                "std_labour_cost", "std_overhead_cost", "revision_notes"}
     for k, val in fields.items():
         if k in allowed:
@@ -343,7 +348,8 @@ def compute_cost_rollup(db: Session, version: FabricBomVersion) -> dict:
                  * (Decimal("1") + _d(y.process_loss_percent) / Decimal("100")))
         yarn += gross * _d(y.std_unit_cost)
     yarn = quantize(yarn, MONEY_SCALE)
-    dye_chem = _dye_chem_cost_per_kg(db, version.dye_recipe_version_id)
+    # Yarn-only BOM: no dye/chemical material cost is rolled up at this stage.
+    dye_chem = MZERO
     finishing = quantize(sum((_d(s.std_cost_per_kg) for s in version.finishing_steps), MZERO), MONEY_SCALE)
     knitting = _d(version.std_knitting_cost)
     dyeing = _d(version.std_dyeing_cost)
@@ -393,13 +399,7 @@ def approve_version(
         "std_consumption_per_kg": y.std_consumption_per_kg, "wastage_percent": y.wastage_percent,
         "process_loss_percent": y.process_loss_percent, "std_unit_cost": y.std_unit_cost,
     } for y in v.yarns])
-    # a linked dyeing recipe, if any, must itself be approved
-    if v.dye_recipe_version_id is not None:
-        rv = db.get(RecipeVersion, v.dye_recipe_version_id)
-        if rv is None:
-            raise BomError("linked dyeing recipe version not found")
-        if rv.status != "APPROVED":
-            raise BomError("linked dyeing recipe version must be APPROVED first")
+    # (Yarn-only BOM: no dyeing-recipe linkage to validate at this stage.)
 
     eff = effective_from or _today()
     # A BOM revision supersedes forward in time only: the new version must take

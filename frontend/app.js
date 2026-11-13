@@ -8317,7 +8317,6 @@ function FabricBOM() {
   const [err, setErr] = useState("");
   const [msg, setMsg] = useState("");
   const yarns = useList("/api/masters/yarns");
-  const recipes = useList("/api/masters/recipe-versions");
   const machines = useList("/api/masters/machines");
   const shades = useList("/api/masters/shades");
   const fabrics = useList("/api/masters/fabric-types");
@@ -8374,7 +8373,6 @@ function FabricBOM() {
       gauge: v.gauge || "",
       diameter_inch: v.diameter_inch || "",
       stitch_length_mm: v.stitch_length_mm || "",
-      dye_recipe_version_id: v.dye_recipe_version_id || "",
       std_knitting_cost: v.std_knitting_cost || "",
       std_dyeing_cost: v.std_dyeing_cost || "",
       std_labour_cost: v.std_labour_cost || "",
@@ -8741,20 +8739,12 @@ function FabricBOM() {
       [k]: e.target.value
     })
   })))), /*#__PURE__*/React.createElement("div", {
-    className: "field"
-  }, /*#__PURE__*/React.createElement("label", null, "Dyeing recipe (approved)"), /*#__PURE__*/React.createElement("select", {
-    disabled: !isDraft,
-    value: spec.dye_recipe_version_id || "",
-    onChange: e => setSpec({
-      ...spec,
-      dye_recipe_version_id: e.target.value
-    })
-  }, /*#__PURE__*/React.createElement("option", {
-    value: ""
-  }, "\u2014 none \u2014"), recipes.map(r => /*#__PURE__*/React.createElement("option", {
-    key: r.id,
-    value: r.id
-  }, r.label)))), /*#__PURE__*/React.createElement("div", {
+    className: "muted",
+    style: {
+      fontSize: 12,
+      margin: "4px 0"
+    }
+  }, "Yarn-only BOM \u2014 dye/chemical usage is not tracked at this stage."), /*#__PURE__*/React.createElement("div", {
     className: "row"
   }, ["std_knitting_cost", "std_dyeing_cost", "std_labour_cost", "std_overhead_cost"].map(k => /*#__PURE__*/React.createElement("div", {
     className: "field",
@@ -8937,7 +8927,7 @@ function FabricBOM() {
   }, "Preview standard cost"), isDraft && /*#__PURE__*/React.createElement("button", {
     className: "btn",
     onClick: approve
-  }, "Approve version"), cost && /*#__PURE__*/React.createElement("span", null, "Yarn \u20B9", inr2(cost.std_yarn_cost), " \xB7 Dye/Chem \u20B9", inr2(cost.std_dye_chem_cost), " \xB7 Finishing \u20B9", inr2(cost.std_finishing_cost), " \xB7", /*#__PURE__*/React.createElement("b", null, " Total \u20B9", inr2(cost.std_total_cost_per_kg), "/kg")))), sel && /*#__PURE__*/React.createElement(Panel, {
+  }, "Approve version"), cost && /*#__PURE__*/React.createElement("span", null, "Yarn \u20B9", inr2(cost.std_yarn_cost), " \xB7 Finishing \u20B9", inr2(cost.std_finishing_cost), " \xB7", /*#__PURE__*/React.createElement("b", null, " Total \u20B9", inr2(cost.std_total_cost_per_kg), "/kg")))), sel && /*#__PURE__*/React.createElement(Panel, {
     title: "Production orders · " + sel.code
   }, /*#__PURE__*/React.createElement("form", {
     className: "row",

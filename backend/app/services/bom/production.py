@@ -33,7 +33,6 @@ from app.models.fabric_bom import (
 )
 from app.models.inventory import ItemType
 from app.models.manufacturing import DyeBatch, KnittingProduction
-from app.models.masters import Chemical, RecipeMaterial, RecipeVersion
 from app.models.quality import FinishingTransaction
 from app.services.bom import service as bom_service
 from app.services.inventory import service as inventory
@@ -131,29 +130,8 @@ def create_order(
             status=ReservationStatus.RESERVED,
         ))
 
-    # --- explode dye/chemical reservations (dyeing stage) ---
-    if v.dye_recipe_version_id is not None:
-        mats = db.execute(
-            select(RecipeMaterial).where(RecipeMaterial.version_id == v.dye_recipe_version_id)
-        ).scalars().all()
-        for m in mats:
-            if m.percent_owf is not None:
-                per_kg = _d(m.percent_owf) / Decimal("100")
-            elif m.grams_per_kg is not None:
-                per_kg = _d(m.grams_per_kg) / Decimal("1000")
-            else:
-                per_kg = MZERO
-            qty = quantize(planned * per_kg, QTY_SCALE)
-            if qty <= QZERO:
-                continue
-            chem = db.get(Chemical, m.chemical_id)
-            unit = _d(chem.standard_cost) if chem else MZERO
-            db.add(ProductionReservation(
-                company_id=company_id, production_order_id=order.id, stage=ProductionStage.DYEING.value,
-                item_type=ItemType.CHEMICAL.value, item_id=m.chemical_id, planned_qty=qty,
-                std_unit_cost=quantize(unit, MONEY_SCALE), std_cost=quantize(qty * unit, MONEY_SCALE),
-                status=ReservationStatus.RESERVED,
-            ))
+    # Yarn-only BOM: dye/chemical usage is not tracked at this stage, so no
+    # chemical (dyeing) reservations are exploded. Only yarn is reserved/issued.
     db.flush()
     return order
 

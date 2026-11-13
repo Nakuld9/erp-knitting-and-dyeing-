@@ -2560,7 +2560,7 @@ function GroupDash({refreshKey}){
 function FabricBOM(){
   const [boms,setBoms]=useState(null); const [sel,setSel]=useState(null); // selected BOM detail
   const [verId,setVerId]=useState(""); const [err,setErr]=useState(""); const [msg,setMsg]=useState("");
-  const yarns=useList("/api/masters/yarns"); const recipes=useList("/api/masters/recipe-versions");
+  const yarns=useList("/api/masters/yarns");
   const machines=useList("/api/masters/machines"); const shades=useList("/api/masters/shades");
   const fabrics=useList("/api/masters/fabric-types");
   const [nb,setNb]=useState({code:"",name:"",fabric_type_id:"",shade_id:"",finished_quality:""});
@@ -2579,7 +2579,7 @@ function FabricBOM(){
   const selectVer=(b,id)=>{ setVerId(id); const v=(b||sel).versions.find(x=>x.id===id); setCost(null);
     setSpec({construction:v.construction||"",composition:v.composition||"",yarn_count:v.yarn_count||"",gsm:v.gsm||"",
       width_cm:v.width_cm||"",gauge:v.gauge||"",diameter_inch:v.diameter_inch||"",stitch_length_mm:v.stitch_length_mm||"",
-      dye_recipe_version_id:v.dye_recipe_version_id||"",std_knitting_cost:v.std_knitting_cost||"",
+      std_knitting_cost:v.std_knitting_cost||"",
       std_dyeing_cost:v.std_dyeing_cost||"",std_labour_cost:v.std_labour_cost||"",std_overhead_cost:v.std_overhead_cost||""});
     setYrows(v.yarns.length?v.yarns.map(y=>({...y})):[{yarn_id:"",blend_percent:"100",std_consumption_per_kg:"1.0",wastage_percent:"2",process_loss_percent:"1",std_unit_cost:""}]);
     setKnit(v.knitting||{machine_type:"KNITTING"}); setFrows(v.finishing_steps.length?v.finishing_steps.map(s=>({...s})):[]); };
@@ -2674,9 +2674,7 @@ function FabricBOM(){
               <div className="field" key={k}><label>{k.replace(/_/g," ")}</label>
                 <input disabled={!isDraft} value={spec[k]||""} onChange={e=>setSpec({...spec,[k]:e.target.value})}/></div>)}
           </div>
-          <div className="field"><label>Dyeing recipe (approved)</label>
-            <select disabled={!isDraft} value={spec.dye_recipe_version_id||""} onChange={e=>setSpec({...spec,dye_recipe_version_id:e.target.value})}>
-              <option value="">— none —</option>{recipes.map(r=><option key={r.id} value={r.id}>{r.label}</option>)}</select></div>
+          <div className="muted" style={{fontSize:12,margin:"4px 0"}}>Yarn-only BOM — dye/chemical usage is not tracked at this stage.</div>
           <div className="row">
             {["std_knitting_cost","std_dyeing_cost","std_labour_cost","std_overhead_cost"].map(k=>
               <div className="field" key={k}><label>{k.replace("std_","").replace(/_/g," ")} /kg</label>
@@ -2724,7 +2722,7 @@ function FabricBOM(){
       <div style={{marginTop:12,display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
         <button className="btn-ghost" onClick={previewCost}>Preview standard cost</button>
         {isDraft && <button className="btn" onClick={approve}>Approve version</button>}
-        {cost && <span>Yarn ₹{inr2(cost.std_yarn_cost)} · Dye/Chem ₹{inr2(cost.std_dye_chem_cost)} · Finishing ₹{inr2(cost.std_finishing_cost)} ·
+        {cost && <span>Yarn ₹{inr2(cost.std_yarn_cost)} · Finishing ₹{inr2(cost.std_finishing_cost)} ·
           <b> Total ₹{inr2(cost.std_total_cost_per_kg)}/kg</b></span>}
       </div>
     </Panel>}

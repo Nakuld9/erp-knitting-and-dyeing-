@@ -27,7 +27,8 @@ from app.models.inventory import ItemType
 
 
 def _build_bom(db, demo, *, code="FB-NAVY-SJ"):
-    """A finished Navy single-jersey fabric BOM: one cotton yarn, dye recipe, compacting."""
+    """A finished Navy single-jersey fabric BOM: YARN ONLY (no dye/chemical
+    usage at this stage), with knitting/dyeing/finishing conversion standards."""
     b = bom.create_bom(
         db, company_id=demo["company_id"], code=code, name="Navy SJ 160 GSM",
         fabric_type_id=demo["fabric_type_id"], shade_id=demo["shade_id"],
@@ -37,7 +38,6 @@ def _build_bom(db, demo, *, code="FB-NAVY-SJ"):
     bom.set_spec(db, v.id, construction="Single Jersey", composition="100% Cotton",
                  yarn_count="30s", gsm=Decimal("160"), width_cm=Decimal("180"),
                  gauge=Decimal("24"), diameter_inch=Decimal("34"), stitch_length_mm=Decimal("2.8"),
-                 dye_recipe_version_id=demo["recipe_version_id"],
                  std_knitting_cost=Decimal("12"), std_dyeing_cost=Decimal("30"),
                  std_labour_cost=Decimal("8"), std_overhead_cost=Decimal("5"))
     bom.set_yarns(db, v.id, [{
@@ -64,11 +64,11 @@ def test_bom_version_control_and_cost_rollup(db, demo):
     roll = bom.compute_cost_rollup(db, v)
     # yarn: 1.00 * 1.02 * 1.01 * 240 = 247.248  -> 247.25
     assert roll["std_yarn_cost"] == Decimal("247.25")
-    # dye/chem comes from the approved recipe (percent OWF * standard cost); > 0
-    assert roll["std_dye_chem_cost"] > 0
+    # YARN-ONLY: no dye/chemical material cost at this stage
+    assert roll["std_dye_chem_cost"] == Decimal("0.00")
     assert roll["std_finishing_cost"] == Decimal("6.00")
-    # total = yarn + dye_chem + knit(12) + dye(30) + finish(6) + labour(8) + overhead(5)
-    expected = (roll["std_yarn_cost"] + roll["std_dye_chem_cost"] + Decimal("12")
+    # total = yarn + knit(12) + dye(30) + finish(6) + labour(8) + overhead(5)  (no dye/chem material)
+    expected = (roll["std_yarn_cost"] + Decimal("12")
                 + Decimal("30") + Decimal("6") + Decimal("8") + Decimal("5"))
     assert roll["std_total_cost_per_kg"] == expected
 
@@ -100,13 +100,14 @@ def test_production_order_explodes_reservations_and_issues(db, demo):
     assert str(order.bom_version_id) == str(v.id)
 
     reqs = production.material_requirements(db, order.id)
+    # YARN-ONLY: the only exploded reservation is yarn; no chemical/dyeing material
+    assert all(r["item_type"] == "YARN" for r in reqs)
+    assert not any(r["item_type"] == "CHEMICAL" for r in reqs)
     yarn_req = next(r for r in reqs if r["item_type"] == "YARN")
     # 100 * 1.00 * 1.02 * 1.01 = 103.02 kg yarn
     assert yarn_req["planned_qty"] == Decimal("103.020000")
     assert yarn_req["on_hand"] == Decimal("2000.000000")   # from demo opening stock
     assert yarn_req["shortage"] == Decimal("0")
-    # dyeing chemicals were exploded from the recipe
-    assert any(r["item_type"] == "CHEMICAL" and r["stage"] == ProductionStage.DYEING.value for r in reqs)
 
     # issue the full yarn requirement from FIFO stock
     yarn_res_id = yarn_req["reservation_id"]
@@ -118,12 +119,7 @@ def test_production_order_explodes_reservations_and_issues(db, demo):
     assert bal["qty_on_hand"] == Decimal("1896.980000")
     assert order.status == ProductionOrderStatus.IN_PROGRESS
 
-    # issue every chemical reservation
-    for r in reqs:
-        if r["item_type"] == "CHEMICAL":
-            production.issue_material(db, order_id=order.id, reservation_id=r["reservation_id"],
-                                      qty=r["planned_qty"])
-
+    # yarn fully issued → no outstanding reservations → completion allowed
     production.complete_order(db, order_id=order.id, produced_qty_kg=Decimal("99"))
 
     var = production.variance_report(db, order.id)
@@ -132,9 +128,10 @@ def test_production_order_explodes_reservations_and_issues(db, demo):
     # knitting actual material ≈ planned (issued the planned qty at the same FIFO cost)
     assert knit["actual_material_cost"] > 0
     assert knit["wastage_qty"] == Decimal("1.500000")
-    # dyeing issued materials too
-    assert dye["actual_material_cost"] > 0
-    # material totals are genuine
+    # dyeing has no material (yarn-only BOM)
+    assert dye["actual_material_cost"] == Decimal("0.00")
+    assert dye["planned_material_cost"] == Decimal("0.00")
+    # material totals are genuine (yarn)
     assert var["total_actual_material_cost"] > 0
     assert var["total_planned_material_cost"] > 0
     # conversion is standard; its ACTUAL is unavailable (not relabelled as actual)

@@ -15,6 +15,15 @@ issue, actual-consumption capture and planned-vs-actual variance analysis.
 It **reuses** the existing recipe/production structures rather than duplicating
 them (the inspection that preceded this work is recorded in §6).
 
+> **Scope at this stage — YARN ONLY.** Dye and chemical *usage* is not yet
+> available, so the BOM's **material** side covers **yarn only**: no dyeing-recipe
+> linkage, no dye/chemical material cost in the roll-up, and no chemical
+> reservations on production orders. The dyeing-recipe column
+> (`dye_recipe_version_id`) is **kept but unused** (nullable), so the dyeing
+> material can be switched back on later without a migration. The
+> knitting / dyeing / finishing / labour / overhead **conversion standards**
+> (per-kg rates you enter) are unchanged.
+
 ---
 
 ## 1. Data model (`app/models/fabric_bom.py`, migrations `0011`+`0012`)
@@ -48,9 +57,9 @@ for traceability — additive, no existing data touched.
 * A BOM always has at least one version; new versions start **DRAFT** and are the
   only editable state. `add_version(clone_from_version_id=…)` clones a prior
   version as the base for a revision.
-* **Approval** (`approve_version`) validates the version (needs yarn components;
-  a linked dyeing recipe must itself be APPROVED), **snapshots the standard cost
-  roll-up**, sets `effective_from`, and **supersedes** the previously-effective
+* **Approval** (`approve_version`) validates the version (needs yarn components),
+  **snapshots the standard cost roll-up**, sets `effective_from`, and
+  **supersedes** the previously-effective
   approved version (closing its `effective_to` the day before). The superseded
   version is retained.
 * `effective_version(bom_id, on_date)` resolves the version whose effective
@@ -63,10 +72,9 @@ for traceability — additive, no existing data touched.
 
 ```
 yarn       = Σ  std_consumption_per_kg · (1+wastage%) · (1+process_loss%) · ₹/kg
-dye_chem   = Σ  (percent_owf/100 or grams_per_kg/1000) · chemical.standard_cost
-             over the linked dyeing RecipeVersion's materials
+dye_chem   = 0            # YARN-ONLY at this stage (no dye/chemical material)
 finishing  = Σ  std_cost_per_kg(step)
-total/kg   = yarn + dye_chem + std_knitting + std_dyeing + finishing
+total/kg   = yarn + std_knitting + std_dyeing + finishing
                   + std_labour + std_overhead
 ```
 
@@ -77,8 +85,8 @@ at approval, so historical versions keep the cost they were approved with.
 
 1. **Create order** against an approved version (by `bom_version_id`, or by
    `bom_id` + `order_date` → the effective version). The version id is **stamped**.
-2. **Explode** the BOM into reservations: yarn (knitting stage, grossed for
-   wastage + process loss) and dyes/chemicals (dyeing stage, from the recipe).
+2. **Explode** the BOM into reservations: **yarn only** (knitting stage, grossed
+   for wastage + process loss). No chemical/dyeing reservations at this stage.
 3. **Requirements** (`material_requirements`) show planned vs on-hand, flagging
    shortages.
 4. **Issue** (`issue_material`) consumes from FIFO stock via the inventory
@@ -135,25 +143,26 @@ relabels one as the other:
   (no factory), guarded at the company level.
 * **Validation** (`app/services/bom/service.py`): blend %s must sum to 100 with
   no duplicate yarn; positive consumption; wastage / process-loss in `[0,100)`;
-  valid finishing `process_type`; a linked dyeing recipe must be APPROVED; a new
+  valid finishing `process_type`; a new
   approved version must take effect strictly after the latest approved one (no
   overlapping effective windows). DB unique constraints (migration `0012`) make
   duplicate BOM codes per company and duplicate version numbers per BOM
   concurrency-safe.
 * **UI**: the **Fabric BOM** screen (`frontend/app.src.jsx` → `app.js`) builds a
-  BOM, edits the draft (spec, yarn blend, knitting, finishing, dyeing recipe
-  link), previews/rolls up cost, approves, creates a production order (exploding
+  BOM, edits the draft (spec, yarn blend, knitting, finishing — yarn-only, no
+  dyeing recipe), previews/rolls up cost, approves, creates a production order (exploding
   the BOM), issues materials and shows the variance report (material actual-vs-
   standard, with conversion actual marked *n/a*). Browser-verified.
 
 ## 6. What already existed (not duplicated)
 
 Inspected before building. **Reused:** `UnitOfMeasure` (UoM + conversions),
-`YarnMaster`/`YarnLot`, `FabricType`, `Machine`/`MachineType`, `Chemical`
-(dyes+chemicals+auxiliaries, `standard_cost`), `ShadeCode`, and the **versioned
-dyeing recipe** `Recipe`/`RecipeVersion`/`RecipeMaterial` (percent-OWF /
-grams-per-kg, DRAFT/APPROVED) — the fabric BOM **links** a RecipeVersion for the
-dyeing stage instead of re-modelling it. The actuals
+`YarnMaster`/`YarnLot`, `FabricType`, `Machine`/`MachineType`, `ShadeCode`. The
+**versioned dyeing recipe** `Recipe`/`RecipeVersion`/`RecipeMaterial` and the
+`Chemical` master exist and were inspected; the BOM has a (currently unused)
+`dye_recipe_version_id` column ready to link a `RecipeVersion` for the dyeing
+stage **when dye/chemical usage is added** — at this yarn-only stage it is not
+linked. The actuals
 `KnittingProduction`, `DyeBatch`/`DyeBath`, `FinishingTransaction`, `FabricRoll`
 and the inventory FIFO engine (`inventory.consume`) are reused for issue and
 traceability. **New** (there was no such thing before): the parent finished-fabric

@@ -73,7 +73,7 @@ class SpecIn(BaseModel):
     stitch_length_mm: Decimal | None = None
     finished_gsm: Decimal | None = None
     finished_width_cm: Decimal | None = None
-    dye_recipe_version_id: uuid.UUID | None = None
+    # Yarn-only BOM at this stage: no dye/chemical recipe linkage is accepted.
     std_knitting_cost: Decimal | None = None
     std_dyeing_cost: Decimal | None = None
     std_labour_cost: Decimal | None = None
