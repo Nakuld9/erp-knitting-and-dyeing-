@@ -46,13 +46,25 @@ def receive(
     source_module: str | None = None,
     source_id: str | None = None,
     posting_reference: str | None = None,
+    value=None,
 ) -> StockLayer:
+    """Open a FIFO cost layer for a receipt.
+
+    ``value`` optionally pins the layer's total value exactly (so a produced
+    item is received at its accumulated cost with no per-kg rounding dust, keeping
+    the sub-ledger equal to the GL). When given, ``unit_cost`` is derived from it
+    for display; otherwise value = qty × unit_cost as before.
+    """
     qty = quantize(qty, QTY_SCALE)
-    unit_cost = quantize(unit_cost, MONEY_SCALE)
     if qty <= QZERO:
         raise ValueError("Receipt quantity must be positive")
 
-    received_value = quantize(qty * unit_cost, MONEY_SCALE)
+    if value is not None:
+        received_value = quantize(value, MONEY_SCALE)
+        unit_cost = quantize(received_value / qty, MONEY_SCALE) if qty > QZERO else QZERO
+    else:
+        unit_cost = quantize(unit_cost, MONEY_SCALE)
+        received_value = quantize(qty * unit_cost, MONEY_SCALE)
     layer = StockLayer(
         company_id=company_id, item_type=item_type.value if isinstance(item_type, ItemType) else item_type,
         item_id=item_id, lot_id=lot_id, warehouse_id=warehouse_id, expiry_date=expiry_date,

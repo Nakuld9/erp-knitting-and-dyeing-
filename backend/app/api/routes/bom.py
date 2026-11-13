@@ -553,6 +553,14 @@ def grey_cost(order_id: uuid.UUID, db: Session = Depends(get_company_db),
     return prod.grey_actual_cost(db, order_id)
 
 
+@router.get("/orders/{order_id}/reconciliation")
+def grey_reconciliation(order_id: uuid.UUID, db: Session = Depends(get_company_db),
+                        user: User = Depends(require_permission("report.read"))):
+    _get_order(db, user, order_id)
+    from app.services.accounting import production_reconciliation as prec
+    return prec.grey_order_reconciliation(db, user.company_id, order_id)
+
+
 # NOTE: this single-segment catch-all is declared LAST so literal paths
 # (/orders, /versions/...) are matched before it.
 @router.get("/{bom_id}")

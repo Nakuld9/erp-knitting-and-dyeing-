@@ -28,6 +28,17 @@ DEFAULT_RULES: dict[str, dict[str, str]] = {
     "YARN_ISSUE": {"wip": "1080", "inventory": "1060"},
     "KNITTING_PRODUCTION": {"greige": "1070", "wip": "1080"},
     "WIP_TO_FG": {"fg": "1085", "wip": "1080"},
+    # BOM-driven grey production: yarn + recorded knitting conversion capitalised
+    # into WIP, then received as greige inventory. Conversion is accrued to
+    # Expenses Payable (capitalised into inventory, not expensed to P&L).
+    "GREY_PRODUCTION": {"wip": "1080", "yarn": "1060", "greige": "1070",
+                        "conversion_payable": "2020"},
+    # Dyeing (chemical-free cost tracking): greige issued into dyeing WIP; recorded
+    # internal/chemical/finishing/testing/other/reprocess charges accrued to
+    # Expenses Payable and outside job-work to Accounts Payable; dyed fabric
+    # received as finished inventory at accumulated cost.
+    "DYEING_PRODUCTION": {"wip": "1080", "greige": "1070", "fg": "1085",
+                          "expense_payable": "2020", "jobwork_payable": "2010"},
     # Finishing moves a roll's carried cost from greige to finished inventory.
     "FINISHING_FG": {"fg": "1085", "greige": "1070"},
     "COGS": {"cogs": "5150", "fg": "1085"},

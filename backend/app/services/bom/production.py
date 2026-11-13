@@ -301,14 +301,23 @@ def record_actual_knitting_conversion_cost(db: Session, *, order_id: uuid.UUID, 
     return order
 
 
-def value_grey_output(db: Session, *, order_id: uuid.UUID, warehouse_id: uuid.UUID | None = None) -> dict:
+def value_grey_output(db: Session, *, order_id: uuid.UUID, warehouse_id: uuid.UUID | None = None,
+                      voucher_date: date | None = None, created_by: uuid.UUID | None = None,
+                      post_gl: bool = True) -> dict:
     """Value the completed order's grey fabric into FABRIC inventory at ACTUAL
-    cost, so dyeing can consume it by FIFO.
+    cost, so dyeing can consume it by FIFO, and post the production journal.
 
     Grey actual cost = actual yarn issued (FIFO) + actual knitting conversion
     (only if entered). The grey fabric is received as an inventory item keyed by
-    the production order id (``ItemType.FABRIC``). Idempotent: refuses a second
-    valuation.
+    the production order id (``ItemType.FABRIC``) at exactly the accumulated cost.
+    Idempotent: refuses a second valuation; the GL voucher posting_reference is
+    unique at the DB level.
+
+    GL (one balanced production journal, ``PO:{num}:grey``):
+        Dr WIP (yarn)                 Cr Yarn Inventory (yarn)
+        Dr WIP (conversion)           Cr Expenses Payable (conversion)   [if any]
+        Dr Greige Inventory (total)   Cr WIP (total)
+    WIP nets to zero; greige inventory debit equals the sub-ledger receipt.
     """
     order_id = _uid(order_id)
     warehouse_id = _uid(warehouse_id)
@@ -324,23 +333,42 @@ def value_grey_output(db: Session, *, order_id: uuid.UUID, warehouse_id: uuid.UU
         raise ProductionError("no produced quantity to value")
 
     yarn_cost = _yarn_actual_cost(db, order_id)
-    conv = order.actual_knitting_conversion_cost
-    total = yarn_cost + (_d(conv) if conv is not None else MZERO)
-    unit = quantize(total / grey_kg, MONEY_SCALE)
+    conv = _d(order.actual_knitting_conversion_cost) if order.actual_knitting_conversion_cost is not None else MZERO
+    total = quantize(yarn_cost + conv, MONEY_SCALE)
+    # receive grey fabric at EXACTLY the accumulated cost (no per-kg dust)
     inventory.receive(
         db, company_id=order.company_id, item_type=ItemType.FABRIC, item_id=order.id,
-        qty=grey_kg, unit_cost=unit, warehouse_id=warehouse_id or order.warehouse_id,
+        qty=grey_kg, unit_cost=quantize(total / grey_kg, MONEY_SCALE), value=total,
+        warehouse_id=warehouse_id or order.warehouse_id,
         event_type="GREY_PRODUCE", source_module="PRODUCTION_ORDER", source_id=str(order.id),
         posting_reference=f"PO:{order.number}:grey",
     )
-    order.grey_inventory_value = quantize(total, MONEY_SCALE)
+    if post_gl and total > QZERO:
+        from app.services.accounting import posting_engine as pe
+        from app.services.accounting.posting_rules import resolve_account
+        acc = lambda slot: resolve_account(db, order.company_id, "GREY_PRODUCTION", slot)
+        lines = [pe.PostingLine(acc("wip"), debit=yarn_cost, narration="Yarn into WIP"),
+                 pe.PostingLine(acc("yarn"), credit=yarn_cost, narration="Yarn inventory issue")]
+        if conv > QZERO:
+            lines.append(pe.PostingLine(acc("wip"), debit=conv, narration="Knitting conversion into WIP"))
+            lines.append(pe.PostingLine(acc("conversion_payable"), credit=conv, narration="Conversion accrued"))
+        lines.append(pe.PostingLine(acc("greige"), debit=total, narration="Grey fabric received"))
+        lines.append(pe.PostingLine(acc("wip"), credit=total, narration="WIP to greige"))
+        pe.post_voucher(db, pe.PostingRequest(
+            company_id=order.company_id, voucher_type_code="PJ",
+            voucher_date=voucher_date or _today(), posting_reference=f"PO:{order.number}:grey",
+            narration=f"Grey production {order.number}", branch_id=order.factory_id,
+            source_module="PRODUCTION_ORDER", source_id=str(order.id), created_by=created_by,
+            lines=lines))
+    order.grey_inventory_value = total
     order.grey_valued_at = datetime.now(timezone.utc)
     db.flush()
     return {
         "order_id": str(order.id), "grey_output_kg": quantize(grey_kg, QTY_SCALE),
         "yarn_cost": yarn_cost,
-        "conversion_cost": quantize(_d(conv), MONEY_SCALE) if conv is not None else None,
-        "grey_total_cost": order.grey_inventory_value, "grey_cost_per_kg": unit,
+        "conversion_cost": quantize(conv, MONEY_SCALE) if order.actual_knitting_conversion_cost is not None else None,
+        "grey_total_cost": order.grey_inventory_value,
+        "grey_cost_per_kg": quantize(total / grey_kg, MONEY_SCALE) if grey_kg > QZERO else None,
     }
 
 

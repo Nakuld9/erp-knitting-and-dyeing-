@@ -9137,6 +9137,11 @@ function ProductionCost() {
     rejection_kg: "0",
     reprocess_qty_kg: "0"
   });
+  const [recon, setRecon] = useState(null);
+  const loadRecon = () => {
+    setErr("");
+    api("/api/dyeing/reconciliation").then(setRecon).catch(e => setErr(e.message));
+  };
   const loadOrders = useCallback(() => api("/api/bom/orders").then(setOrders).catch(e => setErr(e.message)), []);
   const loadJobs = useCallback(() => api("/api/dyeing/jobs").then(setJobs).catch(e => setErr(e.message)), []);
   useEffect(() => {
@@ -9314,7 +9319,32 @@ function ProductionCost() {
     style: {
       marginBottom: 8
     }
-  }, msg), /*#__PURE__*/React.createElement("div", {
+  }, msg), /*#__PURE__*/React.createElement(Panel, {
+    title: "Inventory \u2194 GL reconciliation (grey \u2192 dyed)"
+  }, /*#__PURE__*/React.createElement("button", {
+    className: "btn-ghost",
+    onClick: loadRecon
+  }, "Run reconciliation"), recon && /*#__PURE__*/React.createElement("span", {
+    style: {
+      marginLeft: 10
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    className: "badge " + (recon.is_reconciled ? "ok" : "bad")
+  }, recon.is_reconciled ? "RECONCILED" : "DISCREPANCY"), /*#__PURE__*/React.createElement("span", {
+    className: "muted",
+    style: {
+      marginLeft: 8,
+      fontSize: 12
+    }
+  }, "grey orders: ", recon.grey_orders.length, " \xB7 dyeing jobs: ", recon.dyeing_jobs.length)), recon && !recon.is_reconciled && /*#__PURE__*/React.createElement("div", {
+    className: "muted",
+    style: {
+      fontSize: 12,
+      marginTop: 4
+    }
+  }, (recon.workflow_checks || []).filter(c => !c.matched).map((c, i) => /*#__PURE__*/React.createElement("div", {
+    key: i
+  }, "\u26A0 ", c.check, ": ", inr2(c.lhs), " vs ", inr2(c.rhs), " (diff ", inr2(c.difference), ")")))), /*#__PURE__*/React.createElement("div", {
     className: "grid2"
   }, /*#__PURE__*/React.createElement(Panel, {
     title: "Grey fabric \u2014 standard vs actual cost"

@@ -2783,6 +2783,8 @@ function ProductionCost(){
   const [iss,setIss]=useState({source_production_order_id:"",qty_kg:""});
   const [costs,setCosts]=useState({dyeing_charge:"",jobwork_charge:"",chemical_cost:"",finishing_cost:"",testing_cost:"",other_cost:"",reprocess_cost:""});
   const [outLot,setOutLot]=useState({lot_code:"",qty_kg:""}); const [comp,setComp]=useState({rejection_kg:"0",reprocess_qty_kg:"0"});
+  const [recon,setRecon]=useState(null);
+  const loadRecon=()=>{ setErr(""); api("/api/dyeing/reconciliation").then(setRecon).catch(e=>setErr(e.message)); };
 
   const loadOrders=useCallback(()=>api("/api/bom/orders").then(setOrders).catch(e=>setErr(e.message)),[]);
   const loadJobs=useCallback(()=>api("/api/dyeing/jobs").then(setJobs).catch(e=>setErr(e.message)),[]);
@@ -2805,6 +2807,15 @@ function ProductionCost(){
 
   return (<div>
     {err && <div className="err">{err}</div>}{msg && <div className="badge ok" style={{marginBottom:8}}>{msg}</div>}
+    <Panel title="Inventory ↔ GL reconciliation (grey → dyed)">
+      <button className="btn-ghost" onClick={loadRecon}>Run reconciliation</button>
+      {recon && <span style={{marginLeft:10}}>
+        <span className={"badge "+(recon.is_reconciled?"ok":"bad")}>{recon.is_reconciled?"RECONCILED":"DISCREPANCY"}</span>
+        <span className="muted" style={{marginLeft:8,fontSize:12}}>grey orders: {recon.grey_orders.length} · dyeing jobs: {recon.dyeing_jobs.length}</span>
+      </span>}
+      {recon && !recon.is_reconciled && <div className="muted" style={{fontSize:12,marginTop:4}}>
+        {(recon.workflow_checks||[]).filter(c=>!c.matched).map((c,i)=><div key={i}>⚠ {c.check}: {inr2(c.lhs)} vs {inr2(c.rhs)} (diff {inr2(c.difference)})</div>)}</div>}
+    </Panel>
     <div className="grid2">
       <Panel title="Grey fabric — standard vs actual cost">
         <table><thead><tr><th>Order</th><th>Status</th><th className="num">Produced</th><th>Grey valued</th></tr></thead>

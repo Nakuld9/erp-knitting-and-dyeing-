@@ -52,6 +52,10 @@ def _d(v) -> Decimal:
     return Decimal(str(v)) if v is not None else MZERO
 
 
+def _today() -> date:
+    return datetime.now(timezone.utc).date()
+
+
 def _uid(v):
     return v if isinstance(v, uuid.UUID) or v is None else uuid.UUID(str(v))
 
@@ -107,9 +111,18 @@ def issue_grey(
     qty_kg,
     warehouse_id: uuid.UUID | None = None,
     method: str = "FIFO",
+    voucher_date=None,
+    created_by: uuid.UUID | None = None,
+    post_gl: bool = True,
 ) -> DyeingInput:
     """Consume grey fabric from FABRIC inventory (keyed by its grey production
-    order) into the dyeing job at genuine FIFO cost."""
+    order) into the dyeing job at genuine FIFO cost, and move it into dyeing WIP.
+
+    GL (per issue, ``DYE:{num}:grey:{input_id}``):
+        Dr WIP (grey cost)   Cr Greige Inventory (grey cost)
+    The greige credit equals the FIFO sub-ledger reduction; dyeing WIP now holds
+    the grey cost until the dyed fabric is received.
+    """
     job = _get_open_job(db, job_id)
     src = _uid(source_production_order_id)
     qty = _d(qty_kg)
@@ -121,20 +134,33 @@ def issue_grey(
     if order.grey_valued_at is None:
         raise DyeingError("source grey fabric has not been valued into inventory yet")
 
-    pref = f"DYE:{job.number}:grey"
+    pref = f"DYE:{job.number}:greyissue"
     res = inventory.consume(
         db, company_id=job.company_id, item_type=ItemType.FABRIC, item_id=src, qty=qty,
         warehouse_id=_uid(warehouse_id), method=method, event_type="DYE_GREY_ISSUE",
         source_module="DYEING_JOB", source_id=str(job.id), posting_reference=pref,
     )
+    grey_cost = _d(res["total_cost"])
     inp = DyeingInput(
         company_id=job.company_id, job_id=job.id, item_type=ItemType.FABRIC.value,
         item_id=src, source_production_order_id=src, qty_kg=quantize(qty, QTY_SCALE),
-        cost=res["total_cost"], posting_reference=pref,
+        cost=quantize(grey_cost, MONEY_SCALE), posting_reference=pref,
     )
     db.add(inp)
+    db.flush()
+    if post_gl and grey_cost > QZERO:
+        from app.services.accounting import posting_engine as pe
+        from app.services.accounting.posting_rules import resolve_account
+        acc = lambda slot: resolve_account(db, job.company_id, "DYEING_PRODUCTION", slot)
+        pe.post_voucher(db, pe.PostingRequest(
+            company_id=job.company_id, voucher_type_code="PJ",
+            voucher_date=voucher_date or _today(), posting_reference=f"DYE:{job.number}:grey:{inp.id}",
+            narration=f"Grey into dyeing WIP {job.number}", branch_id=job.factory_id,
+            source_module="DYEING_JOB", source_id=str(job.id), created_by=created_by,
+            lines=[pe.PostingLine(acc("wip"), debit=grey_cost, narration="Grey into dyeing WIP"),
+                   pe.PostingLine(acc("greige"), credit=grey_cost, narration="Greige inventory issue")]))
     job.input_qty_kg = quantize(_d(job.input_qty_kg) + qty, QTY_SCALE)
-    job.grey_cost_consumed = quantize(_d(job.grey_cost_consumed) + _d(res["total_cost"]), MONEY_SCALE)
+    job.grey_cost_consumed = quantize(_d(job.grey_cost_consumed) + grey_cost, MONEY_SCALE)
     if job.status == DyeingStatus.PLANNED:
         job.status = DyeingStatus.IN_PROGRESS
     db.flush()
@@ -220,9 +246,20 @@ def complete_job(
     reprocess_qty_kg=0,
     process_loss_kg=None,
     warehouse_id: uuid.UUID | None = None,
+    voucher_date=None,
+    created_by: uuid.UUID | None = None,
+    post_gl: bool = True,
 ) -> DyeingJob:
     """Finalize a dyeing job: allocate accumulated cost across the saleable output
-    lots by weight, value the dyed fabric into inventory, and mark COMPLETED.
+    lots by weight, value the dyed fabric into inventory at exactly that cost, post
+    the production journal, and mark COMPLETED.
+
+    GL (one balanced voucher, ``DYE:{num}:dyed``):
+        Dr WIP (recorded charges)   Cr Expenses Payable (non-job-work charges)
+                                    Cr Accounts Payable (job-work charge)
+        Dr Finished Fabric (total)  Cr WIP (total)
+    Dyeing WIP (grey already in it from issue) nets to zero; the finished-fabric
+    debit equals the accumulated actual cost and the sub-ledger receipt.
 
     Completion needs grey input and at least one output lot. The actual cost is
     whatever has been genuinely recorded — completion does NOT require every
@@ -246,13 +283,10 @@ def complete_job(
         job.process_loss_kg = quantize(_d(process_loss_kg), QTY_SCALE)
 
     total, _missing = _accumulate(job)
-    # Allocate total across lots by weight and value dyed fabric into inventory.
-    # ``allocated_cost`` is the accounting allocation (sums exactly to total);
-    # the inventory layer value is qty×unit_cost, which can differ from the
-    # allocation by per-kg rounding dust — ``dyed_inventory_value`` records the
-    # actual perpetual-inventory value received so the sub-ledger stays exact.
+    # Allocate total across lots by weight and value dyed fabric into inventory at
+    # EXACTLY the allocated cost (``value=`` override → no per-kg dust), so the
+    # sub-ledger equals the GL finished-fabric debit.
     allocated_sum = MZERO
-    inventory_value = MZERO
     for i, o in enumerate(outputs):
         if i == len(outputs) - 1:
             alloc = quantize(total - allocated_sum, MONEY_SCALE)   # last lot absorbs allocation rounding
@@ -262,15 +296,43 @@ def complete_job(
         o.allocated_cost = alloc
         o.is_allocated = True
         o.dyed_item_id = o.dyed_item_id or uuid.uuid4()
-        unit = quantize(alloc / _d(o.qty_kg), MONEY_SCALE) if _d(o.qty_kg) > QZERO else MZERO
-        layer = inventory.receive(
+        inventory.receive(
             db, company_id=job.company_id, item_type=ItemType.FABRIC, item_id=o.dyed_item_id,
-            qty=_d(o.qty_kg), unit_cost=unit, warehouse_id=_uid(warehouse_id) or o.warehouse_id,
+            qty=_d(o.qty_kg), unit_cost=quantize(alloc / _d(o.qty_kg), MONEY_SCALE) if _d(o.qty_kg) > QZERO else MZERO,
+            value=alloc, warehouse_id=_uid(warehouse_id) or o.warehouse_id,
             event_type="DYED_PRODUCE", source_module="DYEING_JOB", source_id=str(job.id),
             posting_reference=f"DYE:{job.number}:dyed:{o.lot_code}",
         )
-        inventory_value += _d(layer.value_remaining)
-    job.dyed_inventory_value = quantize(inventory_value, MONEY_SCALE)
+    job.dyed_inventory_value = quantize(allocated_sum, MONEY_SCALE)
+
+    if post_gl and total > QZERO:
+        from app.services.accounting import posting_engine as pe
+        from app.services.accounting.posting_rules import resolve_account
+        acc = lambda slot: resolve_account(db, job.company_id, "DYEING_PRODUCTION", slot)
+        jobwork = _d(job.jobwork_charge) if job.jobwork_charge is not None else MZERO
+        exp = MZERO
+        for f in _COST_FIELDS:
+            if f == "jobwork_charge":
+                continue
+            val = getattr(job, f)
+            if val is not None:
+                exp += _d(val)
+        lines = []
+        if exp > QZERO:
+            lines.append(pe.PostingLine(acc("wip"), debit=exp, narration="Dyeing charges into WIP"))
+            lines.append(pe.PostingLine(acc("expense_payable"), credit=exp, narration="Dyeing charges accrued"))
+        if jobwork > QZERO:
+            lines.append(pe.PostingLine(acc("wip"), debit=jobwork, narration="Job-work into WIP"))
+            lines.append(pe.PostingLine(acc("jobwork_payable"), credit=jobwork,
+                                        narration="Job-work payable", party_type="supplier",
+                                        party_id=job.jobwork_supplier_id))
+        lines.append(pe.PostingLine(acc("fg"), debit=total, narration="Dyed fabric received"))
+        lines.append(pe.PostingLine(acc("wip"), credit=total, narration="WIP to finished fabric"))
+        pe.post_voucher(db, pe.PostingRequest(
+            company_id=job.company_id, voucher_type_code="PJ",
+            voucher_date=voucher_date or _today(), posting_reference=f"DYE:{job.number}:dyed",
+            narration=f"Dyed fabric {job.number}", branch_id=job.factory_id,
+            source_module="DYEING_JOB", source_id=str(job.id), created_by=created_by, lines=lines))
     job.status = DyeingStatus.COMPLETED
     db.flush()
     return job

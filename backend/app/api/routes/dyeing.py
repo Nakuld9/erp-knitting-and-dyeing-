@@ -240,3 +240,19 @@ def trace(job_id: uuid.UUID, db: Session = Depends(get_company_db),
           user: User = Depends(require_permission("report.read"))):
     _get_job(db, user, job_id)
     return dyeing.trace(db, job_id)
+
+
+@router.get("/jobs/{job_id}/reconciliation")
+def job_reconciliation(job_id: uuid.UUID, db: Session = Depends(get_company_db),
+                       user: User = Depends(require_permission("report.read"))):
+    _get_job(db, user, job_id)
+    from app.services.accounting import production_reconciliation as prec
+    return prec.dyeing_job_reconciliation(db, user.company_id, job_id)
+
+
+@router.get("/reconciliation")
+def production_reconciliation(db: Session = Depends(get_company_db),
+                             user: User = Depends(require_permission("report.financial"))):
+    """Inventory-to-GL reconciliation for the whole grey→dyed workflow (company)."""
+    from app.services.accounting import production_reconciliation as prec
+    return prec.production_ledger_reconciliation(db, user.company_id)
