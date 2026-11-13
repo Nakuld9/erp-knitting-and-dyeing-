@@ -13,15 +13,18 @@ programme on your own infrastructure.
 
 ## 1. Incremental migrations on PostgreSQL
 
-`alembic upgrade head` on a fresh PostgreSQL database applied `0001`→`0008` and
-created **104 tables**; `alembic current` = `0008_company_databases (head)`.
+`alembic upgrade head` on a fresh PostgreSQL database applies `0001`→`0012` and
+creates **113 base tables**; `alembic current` = `0012_fabric_bom_unique (head)`.
+(The original database-per-company foundation run stopped at `0008` / 104 tables;
+the later additive migrations `0009`→`0012` added the inter-company saga, the
+code-based mappings, the Fabric BOM tables and the BOM uniqueness constraints.)
 
-**Reversibility:** `alembic downgrade 0001_initial` reversed `0008`→`0002`
-cleanly, then `alembic upgrade head` re-applied them — the additive tables
-(`company_databases`, `factory_stock_transfers`, `intercompany_account_mappings`,
-`user_company_memberships`, …) were present again. The batch-mode migrations
-(written for SQLite portability) execute as **native `ALTER`** on PostgreSQL. No
-errors.
+**Reversibility:** verified **up → down → up to head** on PostgreSQL for the full
+`0001`→`0012` range this session, including the Fabric BOM migrations. The
+batch-mode migrations (written for SQLite portability) execute as **native
+`ALTER`** on PostgreSQL. One dialect detail handled: a `create_index(unique=True)`
+surfaces on PostgreSQL as a unique *constraint*, so `0012`'s downgrade drops it
+via `DROP CONSTRAINT` on PostgreSQL and `DROP INDEX` on SQLite. No errors.
 
 ## 2. Concurrency on PostgreSQL
 
@@ -69,7 +72,7 @@ export PG_TEST_URL="postgresql+psycopg2://postgres@/erp_conc?host=$SOCK&port=543
 
 ## 6. Results recorded
 
-- Migrations up/down/up on PostgreSQL: **PASS** (104 tables; reversible).
+- Migrations up/down/up on PostgreSQL: **PASS** (`0001`→`0012`, 113 base tables; reversible).
 - `test_pg_concurrency.py` on PostgreSQL: **1 passed**.
 - Database-per-company isolation on two PostgreSQL databases: **ISOLATION OK**.
 - Representative suite subset on PostgreSQL: **66 passed, 0 failed**.
@@ -143,12 +146,20 @@ PGHOST=/tmp/pgv2_sock PGPORT=54331 CTL_DB=erp_ctl A_DB=erp_A B_DB=erp_B \
   PGADMIN='su postgres -c' ./scripts/backup_restore_drill.sh
 ```
 
+## 6d. Fabric BOM on PostgreSQL
+
+The Fabric BOM module (version control, standard cost roll-up, production orders,
+factory authorization, honest actual-vs-standard costing, lifecycle controls and
+validation) was run against **real PostgreSQL**: **39 BOM + migration tests
+passed** (`tests/test_fabric_bom*.py` + `tests/test_migrations.py`), and
+migrations `0011`+`0012` round-tripped up/down/up on PostgreSQL.
+
 ## 7. Still gated (not done here)
 
 - The **full** suite on PostgreSQL in CI (these runs validated a representative
-  subset, the PG-only concurrency path, the two-database cutover and the
-  backup/restore drill; the full suite runs green on SQLite — 348 passed,
-  2 PG-gated skips).
+  subset, the PG-only concurrency path, the two-database cutover, the
+  backup/restore drill and the Fabric BOM suite; the full suite runs green on
+  SQLite — **376 passed, 2 PG-gated skips**).
 - Load/performance testing and the production database-per-company cutover —
   Phase 15/16 on your infrastructure. (Backup/restore is now drilled on real
   PostgreSQL — §6c — but should be rehearsed on your own infrastructure too.)

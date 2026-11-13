@@ -50,8 +50,10 @@ records the change made.
 | `dashboard.py` | COMPANY | `get_company_db` | company dashboards |
 | `approvals.py` / `inbox.py` | COMPANY | `get_company_db` | maker-checker, notifications |
 | `einvoice.py` / `ewaybill.py` | COMPANY | `get_company_db` | e-invoice / e-way (per company) |
+| `bom.py` | COMPANY | `get_company_db` | Fabric BOM + production orders (all 19 routes `get_company_db`; production orders additionally factory-authorized) |
 
-**Result:** 25 company-scoped route modules switched to `get_company_db`; `admin.py`
+**Result:** 26 company-scoped route modules on `get_company_db` (25 at cutover +
+`bom.py`); `admin.py`
 split (periods → company, users/roles → central); `auth.py` and the identity/catalog
 part of `tenancy.py` kept central. No global identity or membership table was moved
 into a company database.

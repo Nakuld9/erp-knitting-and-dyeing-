@@ -1,11 +1,12 @@
 # Project status & pending list
 
 Audit of the implementation against the master specification (the 24-section
-brief). Updated **2026-11-11**. Test suite: **263 passing** (+1 Postgres-gated)
-(`cd backend && pytest`).
+brief). Updated **2026-11-13**. Test suite: **376 passing, 2 Postgres-gated
+skips** (`cd backend && pytest`).
 
 > **Multi-company / multi-factory programme (branch `feat/multi-company-production-ready`).**
-> Migrations `0001`→`0008`, all additive and upgrade/downgrade-proven. Delivered:
+> Migrations `0001`→`0012`, all additive and upgrade/downgrade-proven on SQLite
+> and PostgreSQL. Delivered:
 > - Phase 0 baseline audit + Phase 1 architecture/foundation (orgs, memberships,
 >   GSTRegistration, request-scoped resolver) — `PRODUCTION_READINESS_BASELINE.md`,
 >   `MULTI_COMPANY_ARCHITECTURE.md`.
@@ -32,6 +33,13 @@ brief). Updated **2026-11-11**. Test suite: **263 passing** (+1 Postgres-gated)
 >   `POSTGRES_VALIDATION.md`.
 > - Phase 15 automated multi-company UAT scenario (`tests/test_uat_multicompany.py`)
 >   + `USER_ACCEPTANCE_TEST_PLAN.md`; Phase 16 `PRODUCTION_ACCEPTANCE_CHECKLIST.md`.
+> - **Database-per-company live routing + cross-DB saga + consolidation +
+>   two-database UAT + independent backup/restore drill** (migrations `0009`→`0010`)
+>   — `DATABASE_PER_COMPANY.md`, `POSTGRES_VALIDATION.md`, `ROUTE_DB_ROUTING.md`.
+> - **Fabric BOM** (migrations `0011`→`0012`): version-controlled knit→dye→finish
+>   BOM, standard cost roll-up, production orders with factory authorization,
+>   honest actual-vs-standard costing, lifecycle controls and validation —
+>   `FABRIC_BOM.md`. Browser-verified; 39 BOM/migration tests also pass on PostgreSQL.
 >
 > **Gated on you (Phases 15–16 completion):** legacy backfill on real data +
 > reconciliation then `NOT NULL`; database-per-company live cutover; GST

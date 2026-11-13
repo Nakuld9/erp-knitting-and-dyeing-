@@ -139,6 +139,21 @@ Each company's books stay independent.
   superuser for provisioning/DDL run out of band. Each company database may use a
   distinct role so a leaked credential cannot reach another company's data.
 
+### Engine cache & connection pooling
+
+- **Engine cache.** `db_router` caches **one SQLAlchemy engine per distinct
+  stored DSN** (thread-safe), keyed by the *unexpanded* DSN so the secret is never
+  in the cache key. `reset_engine_cache()` disposes them (config reload / tests).
+- **Pool sizing.** Each company database builds its **own engine and pool**, so
+  total server connections ≈ `(active company databases) × (db_pool_size +
+  db_max_overflow)`. These are now configurable (`app/core/config.py`:
+  `db_pool_size`, `db_max_overflow`, `db_pool_recycle_seconds`,
+  `db_pool_timeout_seconds`; `pool_pre_ping` is on). Size them against the
+  server's `max_connections` and the number of companies.
+- **Known optimization (not blocking):** `resolve_company_dsn` queries the control
+  DB on each request to map company → DSN. A short-TTL cache would remove that
+  per-request lookup under heavy load; correctness is unaffected today.
+
 ## 8. Honest status
 
 Live routing, cross-database consolidation and the inter-company saga are
@@ -152,7 +167,10 @@ data-safety rules apply to every provisioning and cutover step.
 
 ### Backup & restore (per database)
 
-Each company database and the control/platform database are backed up and
+`pg_dump` of a company database captures **all** of its operational tables
+(accounting, inventory, manufacturing, and the Fabric BOM / production-order
+tables added in migrations `0011`+`0012`) — there is no per-table allow-list to
+keep in sync. Each company database and the control/platform database are backed up and
 restored **independently** — fan `scripts/backup.sh` / `scripts/restore.sh` out
 over every DSN, or use `scripts/backup_restore_drill.sh` to rehearse one
 company's restore in isolation. **Recovery order: platform DB first, then each
