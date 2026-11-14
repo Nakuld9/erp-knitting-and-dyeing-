@@ -174,6 +174,9 @@ def issue_material(
     rejection_qty=0,
     is_reprocess: bool = False,
     allow_over_issue: bool = False,
+    voucher_date=None,
+    created_by: uuid.UUID | None = None,
+    post_gl: bool = True,
 ) -> ProductionConsumption:
     """Issue (consume) a reserved material from stock against the order.
 
@@ -220,6 +223,22 @@ def issue_material(
         is_reprocess=is_reprocess, posting_reference=pref,
     )
     db.add(cons)
+    db.flush()
+    # GL at issue time, in the SAME transaction as the FIFO consume (HIGH-2):
+    #   Dr WIP (yarn cost)   Cr Yarn Inventory (yarn cost)
+    # keyed by a per-consumption reference so re-issues never duplicate, and the
+    # DB unique(company_id, posting_reference) prevents concurrent duplicates.
+    if post_gl and _d(res["total_cost"]) > QZERO and r.item_type == ItemType.YARN.value:
+        from app.services.accounting import posting_engine as pe
+        from app.services.accounting.posting_rules import resolve_account
+        acc = lambda slot: resolve_account(db, order.company_id, "GREY_PRODUCTION", slot)
+        pe.post_voucher(db, pe.PostingRequest(
+            company_id=order.company_id, voucher_type_code="PJ",
+            voucher_date=voucher_date or _today(), posting_reference=f"PO:{order.number}:issue:{cons.id}",
+            narration=f"Yarn issue to WIP {order.number}", branch_id=order.factory_id,
+            source_module="PRODUCTION_ORDER", source_id=str(order.id), created_by=created_by,
+            lines=[pe.PostingLine(acc("wip"), debit=res["total_cost"], narration="Yarn into WIP"),
+                   pe.PostingLine(acc("yarn"), credit=res["total_cost"], narration="Yarn inventory issue")]))
     r.issued_qty = quantize(_d(r.issued_qty) + qty, QTY_SCALE)
     if _d(r.issued_qty) >= _d(r.planned_qty):
         r.status = ReservationStatus.ISSUED
@@ -344,11 +363,13 @@ def value_grey_output(db: Session, *, order_id: uuid.UUID, warehouse_id: uuid.UU
         posting_reference=f"PO:{order.number}:grey",
     )
     if post_gl and total > QZERO:
+        # Yarn->WIP was posted at issue time (HIGH-2). This voucher adds the
+        # recorded knitting conversion into WIP and moves WIP into greige
+        # inventory; WIP (holding yarn from issue + conversion here) nets to zero.
         from app.services.accounting import posting_engine as pe
         from app.services.accounting.posting_rules import resolve_account
         acc = lambda slot: resolve_account(db, order.company_id, "GREY_PRODUCTION", slot)
-        lines = [pe.PostingLine(acc("wip"), debit=yarn_cost, narration="Yarn into WIP"),
-                 pe.PostingLine(acc("yarn"), credit=yarn_cost, narration="Yarn inventory issue")]
+        lines = []
         if conv > QZERO:
             lines.append(pe.PostingLine(acc("wip"), debit=conv, narration="Knitting conversion into WIP"))
             lines.append(pe.PostingLine(acc("conversion_payable"), credit=conv, narration="Conversion accrued"))
@@ -417,22 +438,61 @@ def grey_actual_cost(db: Session, order_id: uuid.UUID) -> dict:
     }
 
 
-def cancel_order(db: Session, *, order_id: uuid.UUID) -> ProductionOrder:
-    """Cancel a PLANNED/IN_PROGRESS order and release its open reservations.
+def cancel_order(db: Session, *, order_id: uuid.UUID, voucher_date=None,
+                 created_by: uuid.UUID | None = None, post_gl: bool = True) -> ProductionOrder:
+    """Cancel a PLANNED/IN_PROGRESS order, RETURNING any already-issued material to
+    stock and REVERSING its GL — not silently releasing it as if never consumed
+    (HIGH-2).
 
-    A terminal order (COMPLETED/CLOSED/CANCELLED) cannot be cancelled. Already
-    issued material is not reversed here (stock movements are audited); only open
-    reservations are released."""
+    For each issued consumption:
+      * the FIFO-issue GL voucher is reversed (balanced REVERSAL: Dr Yarn Inv /
+        Cr WIP), preserving audit history; and
+      * the material is returned to inventory at its exact issued cost
+        (``PRODUCTION_RETURN``), restoring the sub-ledger.
+    A terminal order (COMPLETED/CLOSED/CANCELLED) cannot be cancelled, and an
+    order whose grey output has already been valued is refused (the grey fabric
+    now exists in inventory — reverse that separately). Idempotent: a second
+    cancel is rejected by the status guard, and the REVERSAL voucher's unique
+    posting_reference prevents concurrent duplicate reversals.
+    """
     order_id = _uid(order_id)
     order = db.get(ProductionOrder, order_id)
     if order is None:
         raise ProductionError("order not found")
     if order.status not in (ProductionOrderStatus.PLANNED, ProductionOrderStatus.IN_PROGRESS):
         raise ProductionError(f"order is {order.status.value}; cannot cancel")
+    if order.grey_valued_at is not None:
+        raise ProductionError("grey output already valued; cannot cancel (reverse grey separately)")
+
+    from app.models.accounting import VoucherStatus
+    from app.services.accounting import posting_engine as pe
+    vdate = voucher_date or _today()
+    for cons in db.execute(
+        select(ProductionConsumption).where(ProductionConsumption.production_order_id == order_id)
+    ).scalars().all():
+        qty = _d(cons.qty)
+        cost = _d(cons.actual_cost)
+        if qty <= QZERO:
+            continue
+        # reverse the issue GL voucher (balanced), if it was posted
+        if post_gl:
+            iv = pe.find_existing(db, order.company_id, f"PO:{order.number}:issue:{cons.id}")
+            if iv is not None and VoucherStatus(iv.status) == VoucherStatus.POSTED:
+                pe.reverse_voucher(db, iv.id, reason=f"production order {order.number} cancelled",
+                                   created_by=created_by, reversal_date=vdate)
+        # return the material to stock at its exact issued cost
+        inventory.receive(
+            db, company_id=order.company_id, item_type=ItemType(cons.item_type), item_id=cons.item_id,
+            qty=qty, unit_cost=quantize(cost / qty, MONEY_SCALE) if qty > QZERO else MZERO, value=cost,
+            lot_id=cons.lot_id, warehouse_id=order.warehouse_id, event_type="PRODUCTION_RETURN",
+            source_module="PRODUCTION_ORDER", source_id=str(order.id),
+            posting_reference=f"PO:{order.number}:return:{cons.id}")
+
     for r in db.execute(
         select(ProductionReservation).where(ProductionReservation.production_order_id == order_id)
     ).scalars().all():
-        if r.status in (ReservationStatus.RESERVED, ReservationStatus.PARTIALLY_ISSUED):
+        if r.status != ReservationStatus.RELEASED:
+            r.issued_qty = QZERO     # material returned to stock
             r.status = ReservationStatus.RELEASED
     order.status = ProductionOrderStatus.CANCELLED
     db.flush()

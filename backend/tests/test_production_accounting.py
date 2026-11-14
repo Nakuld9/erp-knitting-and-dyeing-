@@ -76,21 +76,34 @@ def _dye_job(db, demo, order, *, number, mode="INTERNAL", costs=None, lots=None,
 
 def test_grey_journal_balanced_and_wip_zero(db, demo):
     o = _grey_order(db, demo, code="ACC1", qty="100", conversion="600")
-    v = _voucher(db, demo["company_id"], f"PO:{o.number}:grey")
-    assert v is not None
-    assert v.total_debit == v.total_credit                 # balanced
-    yarn_d, yarn_c = _line_by_code(db, v, "1060")          # yarn inventory
-    greige_d, greige_c = _line_by_code(db, v, "1070")      # greige inventory
-    wip_d, wip_c = _line_by_code(db, v, "1080")            # WIP
-    conv_d, conv_c = _line_by_code(db, v, "2020")          # expenses payable
-    assert yarn_c == Decimal("24000.00")                   # yarn FIFO credit (100kg * 240)
-    assert conv_c == Decimal("600.00")                     # conversion accrued
+    cid = demo["company_id"]
+    # HIGH-2: yarn->WIP is posted at ISSUE time (its own voucher), not in the grey voucher
+    iv = db.execute(select(Voucher).where(
+        Voucher.company_id == cid, Voucher.posting_reference.like(f"PO:{o.number}:issue:%"))).scalar_one()
+    assert iv.total_debit == iv.total_credit
+    iv_wip_d, _ = _line_by_code(db, iv, "1080")
+    _, iv_yarn_c = _line_by_code(db, iv, "1060")
+    assert iv_wip_d == iv_yarn_c == Decimal("24000.00")    # Dr WIP / Cr Yarn at issue
+    # grey voucher: conversion into WIP + WIP -> greige (no yarn lines)
+    v = _voucher(db, cid, f"PO:{o.number}:grey")
+    assert v.total_debit == v.total_credit
+    assert _line_by_code(db, v, "1060") == (Decimal("0"), Decimal("0"))   # no yarn here
+    greige_d, _ = _line_by_code(db, v, "1070")
+    _, conv_c = _line_by_code(db, v, "2020")
+    assert conv_c == Decimal("600.00")
     assert greige_d == Decimal("24600.00")                 # grey receipt == grey cost (24000 + 600)
-    assert wip_d - wip_c == Decimal("0.00")                # WIP nets to zero
-    # greige GL debit equals the grey FABRIC sub-ledger receipt
-    bal = inventory.balance(db, company_id=demo["company_id"], item_type=ItemType.FABRIC, item_id=o.id)
+    # WIP across BOTH order vouchers nets to zero
+    wD = wC = Decimal("0")
+    for vv in (iv, v):
+        d, c = _line_by_code(db, vv, "1080"); wD += d; wC += c
+    assert wD - wC == Decimal("0.00")
+    bal = inventory.balance(db, company_id=cid, item_type=ItemType.FABRIC, item_id=o.id)
     assert bal["value"] == greige_d
-    assert trial_balance(db, demo["company_id"])["is_balanced"]
+    assert trial_balance(db, cid)["is_balanced"]
+    # yarn sub-ledger reduction now equals the GL 1060 reduction immediately
+    from app.services.accounting.stock_reconciliation import stock_ledger_reconciliation
+    rec = stock_ledger_reconciliation(db, cid)
+    assert rec["is_reconciled"] is True
 
 
 def test_grey_journal_without_conversion_still_balances(db, demo):
