@@ -67,6 +67,7 @@ class WarehouseCreate(BaseModel):
     code: str
     name: str
     kind: str = "STORE"  # STORE / GREIGE / FG / DISPENSING_TANK
+    category: str | None = None  # YARN_STORE / GREIGE / SEMI_FINISHED / FINISHED_GOODS / TRADING
 
 
 class WarehouseOut(ORMModel):
@@ -74,6 +75,7 @@ class WarehouseOut(ORMModel):
     code: str
     name: str
     kind: str
+    category: str | None = None
     is_active: bool
 
 

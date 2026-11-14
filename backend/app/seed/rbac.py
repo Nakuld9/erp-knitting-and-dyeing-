@@ -29,6 +29,7 @@ PERMISSIONS: list[tuple[str, str, str]] = [
     ("report.read", "reports", "View reports and dashboards"),
     ("report.financial", "reports", "View financial statements"),
     ("admin.manage", "admin", "Manage users, roles and configuration"),
+    ("config.manage", "admin", "Manage hybrid-manufacturing / warehouse configuration"),
     ("factory.access_all", "tenancy", "Access every factory of the acting company (company-wide)"),
     ("consolidation.approve", "reports", "Approve group consolidation eliminations (finance)"),
     ("intercompany.approve", "accounting", "Approve inter-company account mappings (accountant)"),
@@ -47,7 +48,7 @@ ROLES: dict[str, tuple[str, list[str]]] = {
     "GENERAL_MANAGER": (
         "General Manager",
         ["master.read", "report.read", "report.financial", "sales.manage", "purchase.manage",
-         "factory.access_all", "transfer.authorize", "bom.read", "bom.approve"],
+         "factory.access_all", "transfer.authorize", "bom.read", "bom.approve", "config.manage"],
     ),
     "PRODUCTION_MANAGER": (
         "Production Manager",

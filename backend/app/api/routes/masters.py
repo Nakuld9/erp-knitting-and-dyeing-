@@ -113,6 +113,14 @@ def create_warehouse(
     ).scalar_one_or_none()
     if exists:
         raise HTTPException(status.HTTP_409_CONFLICT, f"Warehouse code {payload.code} already exists")
+    if payload.category is not None:
+        from app.models.hybrid import WarehouseCategory
+        try:
+            WarehouseCategory(payload.category)
+        except ValueError:
+            allowed = ", ".join(c.value for c in WarehouseCategory)
+            raise HTTPException(status.HTTP_400_BAD_REQUEST,
+                                f"Invalid category '{payload.category}' (allowed: {allowed})")
     wh = Warehouse(company_id=user.company_id, created_by=user.id, **payload.model_dump())
     db.add(wh)
     db.commit()

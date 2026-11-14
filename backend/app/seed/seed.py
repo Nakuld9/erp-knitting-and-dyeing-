@@ -212,6 +212,14 @@ def seed_admin(db: Session, company: Company, roles: dict[str, Role]) -> User:
     return user
 
 
+def seed_process_mode(db: Session, company: Company) -> None:
+    """Default hybrid-manufacturing config: internal ON, outsourced OFF (unchanged
+    behaviour). Idempotent."""
+    from app.services.hybrid import get_or_create_process_mode
+    get_or_create_process_mode(db, company.id)
+    db.flush()
+
+
 def run_seed(db: Session, *, fy_start_year: int | None = None) -> dict:
     if fy_start_year is None:
         today = date.today()
@@ -224,6 +232,7 @@ def run_seed(db: Session, *, fy_start_year: int | None = None) -> dict:
     seed_periods(db, company, fy_start_year)
     seed_cost_centres(db, company)
     seed_uoms(db)
+    seed_process_mode(db, company)
     admin = seed_admin(db, company, roles)
     db.commit()
     return {"company_id": str(company.id), "admin": admin.username, "fiscal_year": fy_start_year}

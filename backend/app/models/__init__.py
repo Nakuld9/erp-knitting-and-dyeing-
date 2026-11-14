@@ -49,6 +49,12 @@ from app.models.accounting import (  # noqa: F401
 from app.models.audit import AuditLog, DocumentSequence  # noqa: F401
 from app.models.branding import CompanyBranding  # noqa: F401
 from app.models.printing import PrintedDocument  # noqa: F401
+from app.models.hybrid import (  # noqa: F401
+    Process,
+    ProcessMode,
+    WarehouseCategory,
+    WorkMode,
+)
 from app.models.inventory import (  # noqa: F401
     InventoryTransaction,
     ItemType,

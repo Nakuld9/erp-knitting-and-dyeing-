@@ -64,8 +64,10 @@ def seed_manufacturing_demo(db: Session, company_id: uuid.UUID, *, opening_qty: 
     db.add(tax)
 
     wh_chem = Warehouse(company_id=company_id, code="WH-CHEM", name="Chemical Store", kind="STORE")
-    wh_greige = Warehouse(company_id=company_id, code="WH-GREIGE", name="Greige Store", kind="GREIGE")
-    wh_fg = Warehouse(company_id=company_id, code="WH-FG", name="Finished Goods", kind="FG")
+    wh_greige = Warehouse(company_id=company_id, code="WH-GREIGE", name="Greige Store", kind="GREIGE",
+                          category="GREIGE")
+    wh_fg = Warehouse(company_id=company_id, code="WH-FG", name="Finished Goods", kind="FG",
+                      category="FINISHED_GOODS")
     db.add_all([wh_chem, wh_greige, wh_fg])
 
     supplier = Supplier(company_id=company_id, code="SUP-CHEM", name="Acme Chemicals",

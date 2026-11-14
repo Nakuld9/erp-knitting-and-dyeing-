@@ -139,6 +139,9 @@ class Warehouse(AuditMixin, Base):
     code: Mapped[str] = mapped_column(String(20), index=True)
     name: Mapped[str] = mapped_column(String(120))
     kind: Mapped[str] = mapped_column(String(30), default="STORE")  # STORE / GREIGE / FG / DISPENSING_TANK
+    # Inventory stage (YARN_STORE / GREIGE / SEMI_FINISHED / FINISHED_GOODS / TRADING).
+    # Additive and nullable; the legacy `kind` string above is left untouched.
+    category: Mapped[str | None] = mapped_column(String(20), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
