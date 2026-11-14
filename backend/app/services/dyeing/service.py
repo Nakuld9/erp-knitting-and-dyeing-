@@ -34,6 +34,7 @@ from app.models.dyeing_cost import (
 )
 from app.models.fabric_bom import ProductionConsumption, ProductionOrder
 from app.models.inventory import ItemType
+from app.models.manufacturing import FabricRoll, RollKind
 from app.services.inventory import service as inventory
 
 MZERO = Decimal("0")
@@ -295,7 +296,21 @@ def complete_job(
         allocated_sum += alloc
         o.allocated_cost = alloc
         o.is_allocated = True
-        o.dyed_item_id = o.dyed_item_id or uuid.uuid4()
+        # HIGH-3: each saleable dyed lot becomes a FINISHED FabricRoll so it is a
+        # traceable, sellable finished-goods item that flows through the EXISTING
+        # order-delivery/dispatch/COGS path. The roll IS the inventory item
+        # (item_id = roll.id); DyeingOutput.dyed_item_id links back to it.
+        if o.dyed_item_id is None or db.get(FabricRoll, o.dyed_item_id) is None:
+            roll = FabricRoll(
+                company_id=job.company_id, factory_id=job.factory_id,
+                roll_no=f"{job.number}-{o.lot_code}", barcode=f"{job.number}-{o.lot_code}",
+                kind=RollKind.FINISHED, weight_kg=quantize(_d(o.qty_kg), QTY_SCALE),
+                sales_order_id=job.sales_order_id, warehouse_id=_uid(warehouse_id) or o.warehouse_id,
+                quality_status="OK", status="ACTIVE",
+            )
+            db.add(roll)
+            db.flush()
+            o.dyed_item_id = roll.id
         inventory.receive(
             db, company_id=job.company_id, item_type=ItemType.FABRIC, item_id=o.dyed_item_id,
             qty=_d(o.qty_kg), unit_cost=quantize(alloc / _d(o.qty_kg), MONEY_SCALE) if _d(o.qty_kg) > QZERO else MZERO,
