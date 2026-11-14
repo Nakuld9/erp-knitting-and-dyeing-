@@ -14,6 +14,7 @@ never writes inventory, accounting or production data.
 """
 from __future__ import annotations
 
+import uuid
 from datetime import date
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -118,3 +119,97 @@ def list_registry(db: Session = Depends(get_company_db),
     return [{"doc_type": r.doc_type, "number": r.number, "source_id": r.source_id,
              "fiscal_year": r.fiscal_year, "reprint_count": r.reprint_count,
              "cancelled": r.cancelled} for r in rows]
+
+
+# --------------------------------------------------------------------------- #
+# Stage 3 — Sales GST Invoice and Delivery Challan (render existing documents)
+# --------------------------------------------------------------------------- #
+from datetime import date as _date  # noqa: E402
+
+from app.core.context import authorize_factory, FactoryAuthError  # noqa: E402
+from app.models.commercial import DeliveryNote, SalesInvoice  # noqa: E402
+from app.models.manufacturing import FabricRoll  # noqa: E402
+from app.services.printing import sales_documents as sdoc  # noqa: E402
+
+INVOICE_DOC_TYPE, INVOICE_SRC = "SALES_INVOICE", "sales_invoice"
+CHALLAN_DOC_TYPE, CHALLAN_SRC = "DELIVERY_CHALLAN", "delivery_note"
+
+
+def _track_and_count(db, user, *, doc_type, source_type, source_id, number, when) -> int:
+    """Register the document's own number for print history (first print) or record
+    a reprint; return the reprint count to stamp. Writes only the print registry +
+    audit log — never a business transaction."""
+    fy = num.fiscal_year_for(when or _date.today())
+    row, created = num.register_existing(
+        db, user.company_id, doc_type=doc_type, source_type=source_type,
+        source_id=str(source_id), number=number, fiscal_year=fy, by=user.id)
+    if not created:
+        num.record_reprint(db, row, by=user.id)
+    db.commit()
+    return row.reprint_count
+
+
+@router.get("/sales-invoice/{invoice_id}/preview")
+def invoice_preview(invoice_id: uuid.UUID, db: Session = Depends(get_company_db),
+                    user: User = Depends(get_current_user)) -> Response:
+    """Preview the GST invoice (watermarked; allocates/records nothing)."""
+    try:
+        doc = sdoc.build_sales_invoice_document(db, user.company_id, invoice_id, is_preview=True)
+    except sdoc.DocumentError as e:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(e))
+    return _pdf_response(render_pdf(doc), filename="invoice-preview.pdf", download=False)
+
+
+@router.get("/sales-invoice/{invoice_id}")
+def invoice_print(invoice_id: uuid.UUID, download: bool = Query(False),
+                  db: Session = Depends(get_company_db),
+                  user: User = Depends(get_current_user)) -> Response:
+    """Print the GST invoice (inline = browser preview/print; download=true = file).
+    Records print/reprint history; posts no accounting entry, creates no invoice."""
+    inv = db.get(SalesInvoice, invoice_id)
+    if inv is None or inv.company_id != user.company_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Invoice not found in the active company")
+    reprints = _track_and_count(db, user, doc_type=INVOICE_DOC_TYPE, source_type=INVOICE_SRC,
+                                source_id=inv.id, number=inv.number, when=inv.invoice_date)
+    doc = sdoc.build_sales_invoice_document(db, user.company_id, invoice_id, reprint_count=reprints)
+    return _pdf_response(render_pdf(doc), filename=f"invoice-{inv.number}.pdf", download=download)
+
+
+def _authorize_challan_factories(db, user, dn: DeliveryNote) -> None:
+    """Respect factory permissions: block printing a challan whose rolls belong to
+    a factory the user may not access."""
+    for line in dn.lines:
+        roll = db.get(FabricRoll, line.fabric_roll_id)
+        if roll is not None and roll.factory_id is not None:
+            try:
+                authorize_factory(db, user, roll.factory_id, user.company_id)
+            except FactoryAuthError as e:
+                raise HTTPException(
+                    status.HTTP_404_NOT_FOUND if e.not_found else status.HTTP_403_FORBIDDEN, e.detail)
+
+
+@router.get("/delivery-challan/{delivery_id}/preview")
+def challan_preview(delivery_id: uuid.UUID, db: Session = Depends(get_company_db),
+                    user: User = Depends(get_current_user)) -> Response:
+    dn = db.get(DeliveryNote, delivery_id)
+    if dn is None or dn.company_id != user.company_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Delivery challan not found in the active company")
+    _authorize_challan_factories(db, user, dn)
+    doc = sdoc.build_delivery_challan_document(db, user.company_id, delivery_id, is_preview=True)
+    return _pdf_response(render_pdf(doc), filename="challan-preview.pdf", download=False)
+
+
+@router.get("/delivery-challan/{delivery_id}")
+def challan_print(delivery_id: uuid.UUID, download: bool = Query(False),
+                  db: Session = Depends(get_company_db),
+                  user: User = Depends(get_current_user)) -> Response:
+    """Print the delivery challan (actual dispatched rolls/qty for THIS challan).
+    Records print/reprint history; changes no stock or ledger."""
+    dn = db.get(DeliveryNote, delivery_id)
+    if dn is None or dn.company_id != user.company_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Delivery challan not found in the active company")
+    _authorize_challan_factories(db, user, dn)
+    reprints = _track_and_count(db, user, doc_type=CHALLAN_DOC_TYPE, source_type=CHALLAN_SRC,
+                                source_id=dn.id, number=dn.number, when=dn.delivery_date)
+    doc = sdoc.build_delivery_challan_document(db, user.company_id, delivery_id, reprint_count=reprints)
+    return _pdf_response(render_pdf(doc), filename=f"challan-{dn.number}.pdf", download=download)

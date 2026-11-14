@@ -110,6 +110,39 @@ def issue_document(db: Session, company_id: uuid.UUID, *, doc_type: str, source_
     return row, True
 
 
+def register_existing(db: Session, company_id: uuid.UUID, *, doc_type: str, source_type: str,
+                      source_id: str, number: str, fiscal_year: str,
+                      by: uuid.UUID | None = None) -> tuple[PrintedDocument, bool]:
+    """Register a document that ALREADY has its own business number (e.g. a sales
+    invoice or delivery challan) for print-history tracking, WITHOUT minting a new
+    number. Idempotent: returns the existing row on a reprint. Returns
+    ``(row, created)``."""
+    existing = get_issued(db, company_id, doc_type=doc_type, source_type=source_type,
+                          source_id=str(source_id))
+    if existing is not None:
+        return existing, False
+    now = datetime.now(timezone.utc)
+    row = PrintedDocument(
+        company_id=company_id, doc_type=doc_type, source_type=source_type,
+        source_id=str(source_id), fiscal_year=fiscal_year, number=number,
+        first_issued_at=now, last_printed_at=now, issued_by=by, created_by=by,
+    )
+    db.add(row)
+    try:
+        with db.begin_nested():
+            db.flush()
+    except IntegrityError:
+        db.rollback()
+        existing = get_issued(db, company_id, doc_type=doc_type, source_type=source_type,
+                              source_id=str(source_id))
+        if existing is not None:
+            return existing, False
+        raise
+    _audit(db, company_id, by, "DOC_ISSUE", number, doc_type)
+    db.flush()
+    return row, True
+
+
 def record_reprint(db: Session, row: PrintedDocument,
                    by: uuid.UUID | None = None) -> PrintedDocument:
     """Record a reprint of an already-issued document (keeps the same number)."""
