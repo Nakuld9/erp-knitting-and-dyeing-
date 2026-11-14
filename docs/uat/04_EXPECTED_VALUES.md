@@ -47,19 +47,28 @@ Key GL accounts used in the cycle: **1060** Yarn · **1070** Greige Fabric ·
 Quantities: purchase 200 kg @ ₹240; issue 100 kg; conversion ₹600; dyeing ₹3,000
 + chemical ₹1,500; lots A 60 kg / B 40 kg; sale 100 kg @ ₹400.
 
-| Step | Voucher (Dr / Cr) | Amount |
-|---|---|---|
-| A1 Yarn GRN | Dr 1060 Yarn / Cr 2010 Payable | ₹48,000 |
-| B2 Yarn issue to WIP | Dr 1080 WIP / Cr 1060 Yarn | ₹24,000 |
-| B2 Knitting conversion (actual) | Dr 1080 WIP / Cr 2020 Expenses Payable | ₹600 |
-| B3 Grey valuation | Dr 1070 Greige / Cr 1080 WIP | ₹24,600 |
-| C1 Grey issued to dyeing | Dr 1080 WIP / Cr 1070 Greige | ₹24,600 |
-| C2 Dyeing charge (actual) | Dr 1080 WIP / Cr 2020 Expenses Payable | ₹3,000 |
-| C2 Chemical cost (actual) | Dr 1080 WIP / Cr 2020 Expenses Payable | ₹1,500 |
-| C3 Dyed output to finished | Dr 1085 Finished / Cr 1080 WIP | ₹29,100 |
-| D2 Dispatch lot A — COGS | Dr 5150 COGS / Cr 1085 Finished | ₹17,460 |
-| D3 Dispatch lot B — COGS | Dr 5150 COGS / Cr 1085 Finished | ₹11,640 |
-| D4 Sales invoice (intra-state) | Dr 1030 Receivable / Cr 4010 Sales + Cr output GST | see §5 |
+| Step | Posting event | Voucher lines (Dr / Cr) | Amount |
+|---|---|---|---|
+| A1 | Yarn GRN (type **PI**; supplier → Cr 2010, else Cr 3010) | Dr 1060 Yarn / Cr 2010 Payable | ₹48,000 |
+| B2 | Yarn issue to WIP (posted atomically with the FIFO issue) | Dr 1080 WIP / Cr 1060 Yarn | ₹24,000 |
+| B3 | **Grey valuation voucher** (`value_grey_output`) — conversion line | Dr 1080 WIP / Cr 2020 Expenses Payable | ₹600 |
+| B3 | **Grey valuation voucher** — greige line | Dr 1070 Greige / Cr 1080 WIP | ₹24,600 |
+| C1 | Grey issued to dyeing (`issue_grey`) | Dr 1080 WIP / Cr 1070 Greige | ₹24,600 |
+| C3 | **Dyeing completion voucher** (`complete_job`) — dyeing+chemical lines | Dr 1080 WIP / Cr 2020 Expenses Payable | ₹4,500 |
+| C3 | **Dyeing completion voucher** — finished line | Dr 1085 Finished / Cr 1080 WIP | ₹29,100 |
+| D2 | Dispatch lot A — COGS | Dr 5150 COGS / Cr 1085 Finished | ₹17,460 |
+| D3 | Dispatch lot B — COGS | Dr 5150 COGS / Cr 1085 Finished | ₹11,640 |
+| D4 | Sales invoice (intra-state) | Dr 1030 Receivable / Cr 4010 Sales + Cr output GST | see §5 |
+
+> **Timing note (verified against the code).** `record_actual_knitting_conversion_cost`
+> and `record_costs` only *capture* the amounts — they post **no** voucher. The
+> conversion line is posted **inside the grey-valuation voucher** at B3; the
+> dyeing-charge (₹3,000) and chemical (₹1,500) lines are posted **inside the
+> dyeing-completion voucher** at C3 (shown combined as ₹4,500 → Cr 2020). For an
+> INTERNAL dyeing job the expense credit is **2020**; a JOBWORK job credits
+> **2010** (job-work payable) instead. So there are, for the reference cycle, GL
+> postings at A1, B2, B3 (one voucher, two line-pairs), C1, C3 (one voucher,
+> two line-pairs), D2, D3 and D4 — not a separate voucher per cost entry.
 
 Every voucher is balanced (Dr = Cr) or nothing commits. Account **names/codes**
 follow the seeded chart of accounts; if your COA differs, map by meaning.
