@@ -41,9 +41,10 @@ async function api(path, {
   method,
   body,
   form,
+  formData,
   blob
 } = {}) {
-  if (!method) method = form || body !== undefined ? "POST" : "GET";
+  if (!method) method = form || formData || body !== undefined ? "POST" : "GET";
   const headers = {};
   const tok = getToken();
   if (tok) headers["Authorization"] = "Bearer " + tok;
@@ -52,7 +53,9 @@ async function api(path, {
   const fid = getScope(FACTORY_KEY);
   if (fid) headers["X-Factory-Id"] = fid;
   let payload;
-  if (form) {
+  if (formData) {
+    payload = formData; /* browser sets multipart Content-Type + boundary */
+  } else if (form) {
     payload = new URLSearchParams(form);
     headers["Content-Type"] = "application/x-www-form-urlencoded";
   } else if (body !== undefined) {
@@ -9617,6 +9620,139 @@ function ProductionCost() {
     }
   }, "\xB7 yarn ", String(y.yarn_item_id).slice(0, 8), " lot ", y.lot_id ? String(y.lot_id).slice(0, 8) : "—", " ", inr2(y.qty_kg), "kg \u20B9", inr2(y.cost))))))))));
 }
+
+// Company Branding settings — upload the active company's logo and letterhead
+// contact details. Scoped to the active company; a non-admin sees it read-only.
+function CompanyBranding() {
+  const [b, setB] = useState(null);
+  const [msg, setMsg] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [form, setForm] = useState({
+    cin: "",
+    phone: "",
+    email: "",
+    website: ""
+  });
+  const load = useCallback(() => api("/api/me/branding").then(x => {
+    setB(x);
+    setForm({
+      cin: x.cin || "",
+      phone: x.phone || "",
+      email: x.email || "",
+      website: x.website || ""
+    });
+  }).catch(e => setErr(e.message)), []);
+  useEffect(() => {
+    load();
+  }, [load]);
+  const run = async fn => {
+    setErr("");
+    setMsg("");
+    setBusy(true);
+    try {
+      await fn();
+      await load();
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const upload = e => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const fd = new FormData();
+    fd.append("file", file);
+    run(async () => {
+      await api("/api/me/branding/logo", {
+        formData: fd
+      });
+      setMsg("Logo updated.");
+    });
+    e.target.value = "";
+  };
+  const saveContact = () => run(async () => {
+    await api("/api/me/branding", {
+      method: "PUT",
+      body: form
+    });
+    setMsg("Contact details saved.");
+  });
+  const removeLogo = () => run(async () => {
+    await api("/api/me/branding/logo", {
+      method: "DELETE"
+    });
+    setMsg("Logo removed.");
+  });
+  if (!b) return /*#__PURE__*/React.createElement("div", {
+    className: "card"
+  }, err ? /*#__PURE__*/React.createElement("div", {
+    className: "err"
+  }, err) : "Loading…");
+  const F = (k, label, ph) => /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, label), /*#__PURE__*/React.createElement("input", {
+    value: form[k],
+    placeholder: ph || "",
+    onChange: e => setForm({
+      ...form,
+      [k]: e.target.value
+    })
+  }));
+  return /*#__PURE__*/React.createElement("div", {
+    className: "grid2"
+  }, /*#__PURE__*/React.createElement("div", {
+    className: "card"
+  }, /*#__PURE__*/React.createElement("h3", null, "Company identity"), /*#__PURE__*/React.createElement("p", {
+    className: "muted"
+  }, "Shown on the sidebar and on printed documents. The legal name, GSTIN and registered address come from the company master."), /*#__PURE__*/React.createElement("table", {
+    className: "kv"
+  }, /*#__PURE__*/React.createElement("tbody", null, /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Legal name"), /*#__PURE__*/React.createElement("td", null, b.legal_name || "—")), /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Trade name"), /*#__PURE__*/React.createElement("td", null, b.name || "—")), /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "GSTIN"), /*#__PURE__*/React.createElement("td", null, b.gstin || "—")), /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "State code"), /*#__PURE__*/React.createElement("td", null, b.state_code || "—")), /*#__PURE__*/React.createElement("tr", null, /*#__PURE__*/React.createElement("th", null, "Registered address"), /*#__PURE__*/React.createElement("td", null, b.address || "—"))))), /*#__PURE__*/React.createElement("div", {
+    className: "card"
+  }, /*#__PURE__*/React.createElement("h3", null, "Logo"), /*#__PURE__*/React.createElement("div", {
+    className: "brand-preview"
+  }, b.logo_data_url ? /*#__PURE__*/React.createElement("img", {
+    src: b.logo_data_url,
+    alt: "Company logo",
+    style: {
+      maxHeight: 80,
+      maxWidth: 240,
+      objectFit: "contain"
+    }
+  }) : /*#__PURE__*/React.createElement("div", {
+    className: "muted"
+  }, "No logo uploaded \u2014 a clean text identity (", (b.legal_name || "◆").slice(0, 2).toUpperCase(), ") is used.")), /*#__PURE__*/React.createElement("div", {
+    className: "field"
+  }, /*#__PURE__*/React.createElement("label", null, "Upload logo (PNG, JPEG or WebP; max 512\xA0KB)"), /*#__PURE__*/React.createElement("input", {
+    type: "file",
+    accept: "image/png,image/jpeg,image/webp",
+    disabled: busy,
+    onChange: upload
+  })), b.has_logo && /*#__PURE__*/React.createElement("button", {
+    className: "btn sec",
+    disabled: busy,
+    onClick: removeLogo
+  }, "Remove logo"), /*#__PURE__*/React.createElement("h3", {
+    style: {
+      marginTop: 16
+    }
+  }, "Letterhead contact"), F("cin", "CIN (where applicable)", "U17110__1990PLC000000"), F("phone", "Phone"), F("email", "Email"), F("website", "Website"), /*#__PURE__*/React.createElement("button", {
+    className: "btn",
+    disabled: busy,
+    onClick: saveContact
+  }, "Save contact details"), msg && /*#__PURE__*/React.createElement("div", {
+    className: "ok",
+    style: {
+      marginTop: 8
+    }
+  }, msg), err && /*#__PURE__*/React.createElement("div", {
+    className: "err",
+    style: {
+      marginTop: 8
+    }
+  }, err)));
+}
 const PAGES = {
   group: {
     t: "Group Dashboard",
@@ -9758,6 +9894,10 @@ const PAGES = {
     t: "Administration",
     c: Admin
   },
+  branding: {
+    t: "Company Branding",
+    c: CompanyBranding
+  },
   tenancy: {
     t: "Group & Tenancy",
     c: Tenancy
@@ -9803,6 +9943,7 @@ const NAV_ICON = {
   notifications: "🔔",
   acctops: "🧮",
   admin: "⚙️",
+  branding: "🏷️",
   tenancy: "🏛️"
 };
 function fyLabel() {
@@ -9844,6 +9985,9 @@ function App() {
   const [ctx, setCtx] = useState(null);
   const [companyId, setCompanyId] = useState(() => getScope(COMPANY_KEY));
   const [factoryId, setFactoryId] = useState(() => getScope(FACTORY_KEY));
+  // Active-company branding (legal name + logo), resolved from the server context.
+  const [branding, setBranding] = useState(null);
+  const loadBranding = useCallback(() => api("/api/me/branding").then(setBranding).catch(() => setBranding(null)), []);
   const loadCtx = useCallback(recover => {
     api("/api/me/context").then(c => {
       setCtx(c);
@@ -9864,6 +10008,9 @@ function App() {
   useEffect(() => {
     loadCtx();
   }, [loadCtx]);
+  useEffect(() => {
+    loadBranding();
+  }, [loadBranding, companyId, factoryId, refreshKey]);
   useEffect(() => {
     api("/api/admin/periods").then(ps => {
       const years = [...new Set((ps || []).map(p => p.fiscal_year).filter(Boolean))].sort().reverse();
@@ -9913,6 +10060,11 @@ function App() {
   }, /*#__PURE__*/React.createElement("span", {
     className: "nav-ico"
   }, NAV_ICON[id] || "•"), label);
+  // Sidebar identity: active legal company name + logo; selected factory shown
+  // SEPARATELY (never merged with the company name).
+  const legalName = branding && branding.legal_name || activeCompany && activeCompany.name || "Textile ERP";
+  const selFactory = factories.find(f => f.id === factoryId) || branding && branding.factory;
+  const monogram = (legalName.match(/\b[A-Za-z]/g) || ["◆"]).slice(0, 2).join("").toUpperCase();
   return /*#__PURE__*/React.createElement("div", {
     className: "app" + (drawer ? " drawer-open" : "")
   }, /*#__PURE__*/React.createElement("div", {
@@ -9921,8 +10073,18 @@ function App() {
   }), /*#__PURE__*/React.createElement("aside", {
     className: "sidebar"
   }, /*#__PURE__*/React.createElement("div", {
-    className: "brand"
-  }, "\u25C6 Textile ERP", /*#__PURE__*/React.createElement("small", null, "Knit \xB7 Dye \xB7 Finish \xB7 Grow")), /*#__PURE__*/React.createElement("nav", {
+    className: "brand",
+    title: legalName
+  }, branding && branding.logo_data_url ? /*#__PURE__*/React.createElement("img", {
+    className: "brand-logo",
+    src: branding.logo_data_url,
+    alt: ""
+  }) : /*#__PURE__*/React.createElement("span", {
+    className: "brand-mono",
+    "aria-hidden": "true"
+  }, monogram), /*#__PURE__*/React.createElement("span", {
+    className: "brand-name"
+  }, legalName), /*#__PURE__*/React.createElement("small", null, selFactory ? "Factory: " + selFactory.name : "All factories")), /*#__PURE__*/React.createElement("nav", {
     className: "nav"
   }, /*#__PURE__*/React.createElement("div", {
     className: "group"
@@ -9944,7 +10106,7 @@ function App() {
     className: "group"
   }, "Reports"), navBtn("reports", "Reports"), /*#__PURE__*/React.createElement("div", {
     className: "group"
-  }, "Admin"), navBtn("approvals", "Approvals"), navBtn("acctops", "GST Adj / Year-End"), navBtn("admin", "Administration"), navBtn("tenancy", "Group & Tenancy"), /*#__PURE__*/React.createElement("div", {
+  }, "Admin"), navBtn("approvals", "Approvals"), navBtn("acctops", "GST Adj / Year-End"), navBtn("admin", "Administration"), navBtn("branding", "Company Branding"), navBtn("tenancy", "Group & Tenancy"), /*#__PURE__*/React.createElement("div", {
     className: "group"
   }, "Session"), /*#__PURE__*/React.createElement("button", {
     onClick: () => {

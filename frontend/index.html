@@ -16,9 +16,18 @@
   .app{display:flex; min-height:100vh}
   .sidebar{width:230px; background:var(--navy); color:#cbd5e1; display:flex; flex-direction:column;
     position:fixed; top:0; bottom:0; left:0}
-  .brand{padding:20px 18px; font-weight:700; color:#fff; font-size:16px; letter-spacing:.3px;
+  .brand{padding:18px 16px; font-weight:700; color:#fff; font-size:15px; letter-spacing:.2px;
     border-bottom:1px solid #1e293b}
-  .brand small{display:block; color:#64748b; font-weight:500; font-size:11px; margin-top:3px}
+  .brand small{display:block; color:#64748b; font-weight:500; font-size:11px; margin-top:4px}
+  .brand-logo{display:block; max-height:40px; max-width:190px; object-fit:contain; margin-bottom:8px; background:#fff; border-radius:4px; padding:3px}
+  .brand-mono{display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px;
+    border-radius:8px; background:#1d4ed8; color:#fff; font-weight:800; font-size:14px; margin-bottom:8px}
+  .brand-name{display:block; line-height:1.25}
+  .brand-preview{min-height:90px; display:flex; align-items:center; justify-content:center;
+    border:1px dashed #cbd5e1; border-radius:8px; padding:10px; margin-bottom:12px}
+  .kv{width:100%; border-collapse:collapse}
+  .kv th{text-align:left; color:#64748b; font-weight:600; padding:4px 10px 4px 0; vertical-align:top; white-space:nowrap}
+  .kv td{padding:4px 0}
   .nav{padding:10px 8px; overflow:auto}
   .nav button{display:flex; align-items:center; gap:10px; width:100%; text-align:left; border:0;
     background:transparent; color:#cbd5e1; padding:10px 12px; border-radius:8px; cursor:pointer; font-size:13.5px}

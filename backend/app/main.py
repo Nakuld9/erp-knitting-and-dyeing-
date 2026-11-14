@@ -17,6 +17,7 @@ from app.api.routes import (
     auth,
     banking,
     bom,
+    branding,
     costing,
     dashboard,
     dyeing,
@@ -86,6 +87,7 @@ app.include_router(jobwork.router)
 app.include_router(stores.router)
 app.include_router(tenancy.router)
 app.include_router(transfers.router)
+app.include_router(branding.router)
 
 observability.install_observability(app)
 

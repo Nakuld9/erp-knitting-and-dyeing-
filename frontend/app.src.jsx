@@ -12,13 +12,14 @@ function setToken(t){ try{ t?localStorage.setItem(TOKEN_KEY,t):localStorage.remo
 function getScope(k){ try{ return localStorage.getItem(k)||"" }catch(e){ return "" } }
 function setScope(k,v){ try{ v?localStorage.setItem(k,v):localStorage.removeItem(k) }catch(e){} }
 
-async function api(path, {method, body, form, blob}={}){
-  if(!method) method = (form || body!==undefined) ? "POST" : "GET";
+async function api(path, {method, body, form, formData, blob}={}){
+  if(!method) method = (form || formData || body!==undefined) ? "POST" : "GET";
   const headers={}; const tok=getToken(); if(tok) headers["Authorization"]="Bearer "+tok;
   const cid=getScope(COMPANY_KEY); if(cid) headers["X-Company-Id"]=cid;
   const fid=getScope(FACTORY_KEY); if(fid) headers["X-Factory-Id"]=fid;
   let payload;
-  if(form){ payload=new URLSearchParams(form); headers["Content-Type"]="application/x-www-form-urlencoded"; }
+  if(formData){ payload=formData; /* browser sets multipart Content-Type + boundary */ }
+  else if(form){ payload=new URLSearchParams(form); headers["Content-Type"]="application/x-www-form-urlencoded"; }
   else if(body!==undefined){ payload=JSON.stringify(body); headers["Content-Type"]="application/json"; }
   const res=await fetch(path,{method,headers,body:payload});
   if(res.status===401){ setToken(null); location.reload(); throw new Error("Unauthorized"); }
@@ -2910,6 +2911,61 @@ function ProductionCost(){
   </div>);
 }
 
+// Company Branding settings — upload the active company's logo and letterhead
+// contact details. Scoped to the active company; a non-admin sees it read-only.
+function CompanyBranding(){
+  const [b,setB]=useState(null); const [msg,setMsg]=useState(""); const [err,setErr]=useState("");
+  const [busy,setBusy]=useState(false);
+  const [form,setForm]=useState({cin:"",phone:"",email:"",website:""});
+  const load=useCallback(()=>api("/api/me/branding").then(x=>{ setB(x);
+    setForm({cin:x.cin||"",phone:x.phone||"",email:x.email||"",website:x.website||""}); }).catch(e=>setErr(e.message)),[]);
+  useEffect(()=>{ load(); },[load]);
+  const run=async(fn)=>{ setErr(""); setMsg(""); setBusy(true); try{ await fn(); await load(); }
+    catch(e){ setErr(e.message); } finally{ setBusy(false); } };
+  const upload=e=>{ const file=e.target.files&&e.target.files[0]; if(!file) return;
+    const fd=new FormData(); fd.append("file",file);
+    run(async()=>{ await api("/api/me/branding/logo",{formData:fd}); setMsg("Logo updated."); });
+    e.target.value=""; };
+  const saveContact=()=>run(async()=>{ await api("/api/me/branding",{method:"PUT",body:form}); setMsg("Contact details saved."); });
+  const removeLogo=()=>run(async()=>{ await api("/api/me/branding/logo",{method:"DELETE"}); setMsg("Logo removed."); });
+  if(!b) return <div className="card">{err? <div className="err">{err}</div> : "Loading…"}</div>;
+  const F=(k,label,ph)=> <div className="field"><label>{label}</label>
+    <input value={form[k]} placeholder={ph||""} onChange={e=>setForm({...form,[k]:e.target.value})}/></div>;
+  return (<div className="grid2">
+    <div className="card">
+      <h3>Company identity</h3>
+      <p className="muted">Shown on the sidebar and on printed documents. The legal name, GSTIN
+        and registered address come from the company master.</p>
+      <table className="kv"><tbody>
+        <tr><th>Legal name</th><td>{b.legal_name||"—"}</td></tr>
+        <tr><th>Trade name</th><td>{b.name||"—"}</td></tr>
+        <tr><th>GSTIN</th><td>{b.gstin||"—"}</td></tr>
+        <tr><th>State code</th><td>{b.state_code||"—"}</td></tr>
+        <tr><th>Registered address</th><td>{b.address||"—"}</td></tr>
+      </tbody></table>
+    </div>
+    <div className="card">
+      <h3>Logo</h3>
+      <div className="brand-preview">
+        {b.logo_data_url
+          ? <img src={b.logo_data_url} alt="Company logo" style={{maxHeight:80,maxWidth:240,objectFit:"contain"}}/>
+          : <div className="muted">No logo uploaded — a clean text identity ({(b.legal_name||"◆").slice(0,2).toUpperCase()}) is used.</div>}
+      </div>
+      <div className="field"><label>Upload logo (PNG, JPEG or WebP; max 512&nbsp;KB)</label>
+        <input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={upload}/></div>
+      {b.has_logo && <button className="btn sec" disabled={busy} onClick={removeLogo}>Remove logo</button>}
+      <h3 style={{marginTop:16}}>Letterhead contact</h3>
+      {F("cin","CIN (where applicable)","U17110__1990PLC000000")}
+      {F("phone","Phone")}
+      {F("email","Email")}
+      {F("website","Website")}
+      <button className="btn" disabled={busy} onClick={saveContact}>Save contact details</button>
+      {msg && <div className="ok" style={{marginTop:8}}>{msg}</div>}
+      {err && <div className="err" style={{marginTop:8}}>{err}</div>}
+    </div>
+  </div>);
+}
+
 const PAGES={
   group:{t:"Group Dashboard",c:GroupDash},
   owner:{t:"Owner Dashboard",c:OwnerDash}, factory:{t:"Factory Dashboard",c:FactoryDash},
@@ -2937,13 +2993,14 @@ const PAGES={
   costing:{t:"Costing & Profitability",c:Costing}, devices:{t:"Devices & Labels",c:Devices},
   masters:{t:"Master Data",c:MastersManager}, coa:{t:"Chart of Accounts",c:ChartOfAccounts},
   vouchers:{t:"Vouchers",c:Vouchers}, admin:{t:"Administration",c:Admin},
+  branding:{t:"Company Branding",c:CompanyBranding},
   tenancy:{t:"Group & Tenancy",c:Tenancy},
   reports:{t:"Reports",c:Reports},
 };
 const NAV_ICON={group:"🏛️",owner:"📊",factory:"🏭",accounts:"💼",chemical:"🧪",bom:"🧵",prodcost:"💷",purchaseorders:"📝",purchase:"📥",
   knitting:"🧶",batching:"🧺",pipeline:"🎯",salesorders:"🛒",sales:"🧾",dyeing:"🎨",vouchers:"📒",
   inventoryops:"🔁",stock:"📦",stores:"🪡",jobwork:"🔄",masters:"🗃️",coa:"📚",customers:"👤",suppliers:"🏢",warehouses:"🏬",quality:"🔍",assets:"🏗️",
-  payroll:"💰",costing:"📐",devices:"🖨️",reports:"📈",approvals:"✔️",notifications:"🔔",acctops:"🧮",admin:"⚙️",tenancy:"🏛️"};
+  payroll:"💰",costing:"📐",devices:"🖨️",reports:"📈",approvals:"✔️",notifications:"🔔",acctops:"🧮",admin:"⚙️",branding:"🏷️",tenancy:"🏛️"};
 function fyLabel(){ const d=new Date(); const y=d.getMonth()>=3?d.getFullYear():d.getFullYear()-1; return `FY ${y}–${(y+1)%100}`; }
 
 // Financial year helpers: FY string "2026-2027" -> the as-of date to query.
@@ -2965,6 +3022,9 @@ function App(){
   const [ctx,setCtx]=useState(null);
   const [companyId,setCompanyId]=useState(()=>getScope(COMPANY_KEY));
   const [factoryId,setFactoryId]=useState(()=>getScope(FACTORY_KEY));
+  // Active-company branding (legal name + logo), resolved from the server context.
+  const [branding,setBranding]=useState(null);
+  const loadBranding=useCallback(()=>api("/api/me/branding").then(setBranding).catch(()=>setBranding(null)),[]);
   const loadCtx=useCallback((recover)=>{ api("/api/me/context").then(c=>{ setCtx(c);
     if(c && c.active){ if(c.active.company_id) setCompanyId(c.active.company_id); }
   }).catch(()=>{ // stale scope (e.g. membership changed) -> clear once and retry
@@ -2972,6 +3032,7 @@ function App(){
       api("/api/me/context").then(setCtx).catch(()=>{}); }
   }); },[]);
   useEffect(()=>{ loadCtx(); },[loadCtx]);
+  useEffect(()=>{ loadBranding(); },[loadBranding, companyId, factoryId, refreshKey]);
   useEffect(()=>{ api("/api/admin/periods").then(ps=>{
     const years=[...new Set((ps||[]).map(p=>p.fiscal_year).filter(Boolean))].sort().reverse();
     if(!years.includes(currentFY())) years.unshift(currentFY());
@@ -2993,10 +3054,21 @@ function App(){
   const Cur=PAGES[page].c;
   const navBtn=(id,label)=> <button className={page===id?"active":""} onClick={()=>go(id)}>
     <span className="nav-ico">{NAV_ICON[id]||"•"}</span>{label}</button>;
+  // Sidebar identity: active legal company name + logo; selected factory shown
+  // SEPARATELY (never merged with the company name).
+  const legalName = (branding && branding.legal_name) || (activeCompany && activeCompany.name) || "Textile ERP";
+  const selFactory = factories.find(f=>f.id===factoryId) || (branding && branding.factory);
+  const monogram = (legalName.match(/\b[A-Za-z]/g)||["◆"]).slice(0,2).join("").toUpperCase();
   return (<div className={"app"+(drawer?" drawer-open":"")}>
     <div className="scrim" onClick={()=>setDrawer(false)}></div>
     <aside className="sidebar">
-      <div className="brand">◆ Textile ERP<small>Knit · Dye · Finish · Grow</small></div>
+      <div className="brand" title={legalName}>
+        {branding && branding.logo_data_url
+          ? <img className="brand-logo" src={branding.logo_data_url} alt=""/>
+          : <span className="brand-mono" aria-hidden="true">{monogram}</span>}
+        <span className="brand-name">{legalName}</span>
+        <small>{selFactory ? ("Factory: "+selFactory.name) : "All factories"}</small>
+      </div>
       <nav className="nav">
         <div className="group">Dashboards</div>
         {navBtn("group","Group")}{navBtn("owner","Owner")}{navBtn("factory","Factory")}
@@ -3014,7 +3086,7 @@ function App(){
         <div className="group">Costing</div>{navBtn("costing","Costing")}
         <div className="group">Devices</div>{navBtn("devices","Devices & Labels")}
         <div className="group">Reports</div>{navBtn("reports","Reports")}
-        <div className="group">Admin</div>{navBtn("approvals","Approvals")}{navBtn("acctops","GST Adj / Year-End")}{navBtn("admin","Administration")}{navBtn("tenancy","Group & Tenancy")}
+        <div className="group">Admin</div>{navBtn("approvals","Approvals")}{navBtn("acctops","GST Adj / Year-End")}{navBtn("admin","Administration")}{navBtn("branding","Company Branding")}{navBtn("tenancy","Group & Tenancy")}
         <div className="group">Session</div>
         <button onClick={()=>{setToken(null); setScope(COMPANY_KEY,""); setScope(FACTORY_KEY,""); location.reload();}}>Log out</button>
       </nav>
