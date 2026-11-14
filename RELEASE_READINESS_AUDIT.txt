@@ -1,0 +1,293 @@
+================================================================================
+INTEGRATED TEXTILE ERP - INDEPENDENT RELEASE-READINESS AUDIT
+================================================================================
+Repository : Nakuld9/erp-knitting-and-dyeing-
+Branch     : feat/multi-company-production-ready
+HEAD commit: 86ba4bc  (docs: GL accounting integration + reconciliation evidence)
+Audit date : 2026-11-14
+Scope      : Grey fabric BOM, chemical-free dyeing cost tracking, GL accounting
+             integration, inventory-to-GL reconciliation, multi-company/factory
+             security, operational reliability, and the end-to-end workflow.
+Method     : Independent inspection of actual source, migrations, tests, config
+             and git history. Findings below were REPRODUCED, not taken from
+             prior completion reports.
+
+NOTE: This audit made NO code changes. Nothing was merged to main. No data was
+migrated. Chemical BOM explosion/reservation remains disabled.
+
+--------------------------------------------------------------------------------
+FINAL VERDICT
+--------------------------------------------------------------------------------
+    B - READY FOR CONTROLLED STAGING / UAT ONLY.
+
+NOT ready for a production pilot (C) or production (D) until HIGH-1, HIGH-2 and
+HIGH-3 below are fixed and MEDIUM-4 is reviewed by a qualified Indian CA.
+
+Rationale: the ledgers are internally consistent and the double-entry engine
+controls are solid, but three HIGH defects sit directly on the advertised
+grey -> dyed -> sales -> accounting path, and NONE of them is caught by the
+402-test suite. A passing test suite is not proof of production readiness.
+
+--------------------------------------------------------------------------------
+1. STATE VERIFICATION (confirmed, not trusted)
+--------------------------------------------------------------------------------
+- Branch feat/multi-company-production-ready; HEAD 86ba4bc; tracking
+  origin/feat/multi-company-production-ready; nothing unpushed; working tree
+  clean. MATCHES the reported state.
+- Migration chain 0001..0013 upgrades to head, downgrades to base, and
+  re-upgrades cleanly on SQLite. Head = 0013_grey_cost_and_dyeing.
+- Chemical BOM automation confirmed DISABLED (set_spec rejects
+  dye_recipe_version_id; create_order explodes no chemical reservations).
+- Nothing merged to main; no data migration.
+
+--------------------------------------------------------------------------------
+2. TEST RESULTS (actually executed during this audit)
+--------------------------------------------------------------------------------
+SQLite full suite:
+    cd backend && pytest -p no:warnings -q
+    => 402 passed, 2 skipped, 0 failed  (independently character-tallied)
+    The 2 skips are PostgreSQL-gated: test_pg_concurrency, test_uat_two_databases.
+
+PostgreSQL (real PostgreSQL 16, targeted):
+    DATABASE_URL=postgresql+psycopg2://.../erp_t PG_TEST_URL=.../erp_conc \
+    pytest test_production_accounting.py test_dyeing_cost.py test_dyeing_api.py \
+           test_fabric_bom.py test_fabric_bom_api.py test_fabric_bom_factory_authz.py \
+           test_migrations.py test_pg_concurrency.py test_stock_reconciliation.py
+    => 57 passed (includes test_pg_concurrency, which is only SKIPPED on SQLite,
+       so it genuinely ran green on PostgreSQL).
+
+NOT run on PostgreSQL this session (NOT reported as passed):
+    - the full 400+ suite on PostgreSQL;
+    - test_uat_two_databases (requires three separate physical PG databases).
+
+Coverage gap: no automated test exercises stock-vs-GL reconciliation after a
+finishing/dyeing flow, nor the in-process yarn case (see Findings 1 and 2),
+which is why the suite is green while those paths are broken.
+
+================================================================================
+FINDINGS  (Critical > High > Medium > Low)
+================================================================================
+
+--------------------------------------------------------------------------------
+[HIGH-1] Stock-vs-GL reconciliation breaks once any dyed fabric exists
+--------------------------------------------------------------------------------
+File     : backend/app/services/accounting/stock_reconciliation.py  (GROUPS)
+Evidence : After ONE completed dyeing job, stock_ledger_reconciliation returns
+           is_reconciled = False:
+             greige/FABRIC sub-ledger = 29100.00
+             GL 1070 (Greige)         = 0.00        difference = -29100.00
+             GL 1085 (Finished)       = 29100.00    <- dyed fabric lives here
+Cause    : GROUPS maps ALL ItemType.FABRIC to greige account 1070. Dyed fabric
+           (and legacy FINISHED rolls) are valued into GL 1085, but there is no
+           FABRIC-finished group and no partition of grey vs dyed layers.
+Impact   : Acceptance criterion "Inventory valuation reconciles" and the
+           Reports -> "Stock vs GL Reconciliation" screen are WRONG for any
+           company that has run a dyeing job - the opposite of what the project
+           advertises. test_stock_reconciliation.py only covers opening stock +
+           yarn/chemical consumption, so it stays green.
+Business : A core financial control reports a false discrepancy; finance cannot
+impact     trust the headline inventory reconciliation.
+Proposed : Partition FABRIC layers in the reconciliation groups - grey
+fix        production-order items -> 1070, dyeing-output / finished-roll items ->
+           1085 - and add a test that runs a full knit->dye flow then asserts
+           reconciliation.
+
+--------------------------------------------------------------------------------
+[HIGH-2] BOM yarn issue moves the sub-ledger with NO GL entry until grey valuation
+--------------------------------------------------------------------------------
+File     : backend/app/services/bom/production.py  (issue_material, value_grey_output,
+           cancel_order)
+Evidence : Issue yarn via a BOM order, do NOT value grey yet, then reconcile:
+             yarn sub-ledger = 456000.00
+             GL 1060 (Yarn)  = 480000.00   difference = 24000.00
+             is_reconciled   = False
+Cause    : issue_material calls inventory.consume only; the yarn->WIP GL credit
+           is deferred to value_grey_output. (The legacy record_production path
+           posts yarn GL immediately; the new BOM path does not.)
+Impact   : For any IN-PROCESS order (yarn issued, grey not yet valued) the GL
+           overstates raw-material inventory and understates WIP - a genuine
+           period-cutoff defect at month-end. If an order is ABANDONED or
+           CANCELLED after issuing yarn, the discrepancy is PERMANENT:
+           cancel_order releases reservations but neither reverses the yarn
+           stock movement nor posts any GL. (Amounts are correct; only timing
+           and cancellation handling are wrong.)
+Business : Month-end trial balance / stock valuation misstated while production
+impact     is in progress; permanent misstatement on cancelled orders.
+Proposed : Post the yarn->WIP GL at issue time (and WIP->greige at valuation),
+fix        or post a compensating GL/stock reversal in cancel_order for already-
+           issued material; add tests for in-process and cancelled-after-issue
+           reconciliation.
+
+--------------------------------------------------------------------------------
+[HIGH-3] Dyed fabric cannot be sold; finished-goods GL (1085) never clears
+--------------------------------------------------------------------------------
+Files    : backend/app/services/order_lifecycle.py (deliver_rolls, FABRIC_DELIVERY)
+           backend/app/models/dyeing_cost.py (DyeingOutput.dyed_item_id)
+Evidence : Dispatch/COGS operates only on FabricRoll ids. The dyeing job's dyed
+           output is a synthetic FABRIC inventory item keyed by
+           DyeingOutput.dyed_item_id (a bare UUID) with NO FabricRoll. Grep
+           confirms dyed_item_id has no consumer outside the dyeing module and
+           the reconciliation service.
+Impact   : The required workflow "dyed fabric inventory -> sales -> accounting"
+           is NOT achievable - there is no screen or service to dispatch/sell a
+           dyed lot. The 1085 debit from dyeing is never relieved by COGS, and
+           revenue/COGS matching for dyed goods is broken. This is a MISSING
+           operational flow, not just a defect.
+Business : You cannot actually sell the dyed fabric the factory produces through
+impact     the system; finished-goods inventory accumulates with no sell-through.
+Proposed : Materialise dyed output as FabricRoll(kind=FINISHED) (or extend the
+fix        delivery path to accept dyeing-output items) so dyed lots flow through
+           the existing dispatch/COGS path; add an end-to-end test
+           (grey -> dye -> dispatch -> COGS).
+
+--------------------------------------------------------------------------------
+[MEDIUM-4] Accrual-side accounting requires a qualified Indian CA's review
+--------------------------------------------------------------------------------
+Files    : backend/app/services/accounting/posting_rules.py (GREY_PRODUCTION,
+           DYEING_PRODUCTION); backend/app/services/dyeing/service.py; jobwork.py
+Detail   : The grey/dyeing flow capitalises conversion, dyeing, chemical,
+           finishing, testing, other, reprocess and OUTSIDE JOB-WORK costs into
+           WIP, crediting Expenses Payable (2020) / Accounts Payable (2010),
+           WITH NO purchase invoice and NO GST / input-credit treatment.
+           The system now holds TWO conventions: the standalone job-work module
+           EXPENSES processing (Dr 5110 Job Work Expenses / Cr 2010), while this
+           flow CAPITALISES (Dr WIP / Cr 2020). Direct-cost P&L accounts
+           (5020 Knitting Wages, 5090 Processing Charges, 5100 Finishing Charges,
+           5110 Job Work Expenses) exist but are BYPASSED.
+A CA must confirm:
+   (a) which treatment (capitalise vs expense) is correct for the business;
+   (b) whether accruing a liability for manually-entered costs without a vendor
+       bill or GST is acceptable;
+   (c) GST input-credit handling for job-work / testing services.
+Business : Statutory correctness of inventory valuation and GST credits.
+impact
+
+--------------------------------------------------------------------------------
+[MEDIUM-5] Loss / rejection / reprocessing lack explicit accounting control
+--------------------------------------------------------------------------------
+File     : backend/app/services/dyeing/service.py (complete_job, _accumulate)
+Detail   : Normal process loss is absorbed into the good-output unit cost
+           (acceptable). But REJECTED quantity is only excluded from saleable
+           output, so its share of cost is silently absorbed into good output -
+           there is NO abnormal-loss write-off to a P&L loss account and no
+           rejected-goods inventory. REPROCESSING records a reprocess_cost/qty
+           but does not re-feed material as a distinct inventory flow.
+Impact   : For a factory with real rejection, the cost of good output is
+           overstated and abnormal losses are hidden in inventory value.
+Proposed : Define a rejection/abnormal-loss policy and post write-offs to a loss
+fix        account; model reprocessing as an explicit re-entry if required.
+
+--------------------------------------------------------------------------------
+[MEDIUM-6] GL posting depends on accounting being provisioned and the period open
+--------------------------------------------------------------------------------
+Files    : backend/app/services/bom/production.py (value_grey_output)
+           backend/app/services/dyeing/service.py (issue_grey, complete_job)
+           backend/app/services/company_provisioning.py
+Detail   : Grey/dyed valuation now REQUIRES a configured voucher type, posting
+           rules (default fallback - OK) and an OPEN accounting period for the
+           voucher date, else it raises ClosedPeriodError / PostingError.
+Impact   : A newly provisioned company database without periods covering the
+           valuation date will FAIL production valuation operationally.
+Proposed : Ensure provisioning seeds periods for the relevant range; surface a
+fix        clear operator error; consider a provisioning health check.
+
+--------------------------------------------------------------------------------
+[LOW-7]  WIP is transient for grey production (posted in-and-out in one voucher).
+         Presentation only; WIP balance tracking is meaningful for dyeing, where
+         it is posted correctly.
+
+[LOW-8]  Standing gated items (already documented in
+         PRODUCTION_ACCEPTANCE_CHECKLIST.md as NOT done): per-company backup/
+         restore DRILL on your infrastructure, load/performance test, independent
+         security review / pen-test, GST professional review, real-user UAT,
+         management sign-off. These remain correctly marked as outstanding.
+
+================================================================================
+AREAS CONFIRMED SOUND (no finding)
+================================================================================
+- Double-entry posting engine (posting_engine.py): balanced-or-nothing;
+  idempotent on posting_reference backed by a REAL DB UniqueConstraint
+  (company_id, posting_reference) - concurrency-safe, not only an app check;
+  immutable posted vouchers; reversals via reverse_voucher; audit trail.
+- NEW per-workflow reconciliation (production_reconciliation.py: order/job/
+  company) is correct and passes; it is the stock_reconciliation.py REPORT that
+  is wrong (HIGH-1).
+- Multi-company: all BOM/dyeing routes use get_company_db (0 get_db leaks);
+  database-per-company router with ${ENV} DSN expansion + password masking.
+- Factory authorization on every per-order / per-job endpoint: factory_id and
+  warehouse_id validated against the acting company and the user's access;
+  forged id -> 404, cross-factory -> 403; company-level reconciliation guarded by
+  report.financial.
+- Production admin password fails closed (>=12 chars, not a known default) when
+  environment=production.
+- Migrations 0001..0013 up/down/up proven; additive and reversible.
+
+================================================================================
+MULTI-COMPANY / FACTORY SECURITY (summary)
+================================================================================
+- Separate operational database per legal company: implemented via db_router +
+  company_databases registry; falls back to the central DB when a company is
+  unregistered (single-DB installs unchanged).
+- Company selection/membership/permissions: resolved server-side from
+  memberships; forged company/factory id rejected.
+- Factory-level access enforced on BOM and dyeing APIs (no relevant background
+  jobs exist for these modules). Verified by negative tests
+  (test_fabric_bom_factory_authz.py, test_dyeing_api.py).
+- DSN credentials: ${ENV_VAR} placeholders, expanded only at engine build,
+  masked for logs/display. Restricted non-superuser role recommended per docs.
+
+================================================================================
+OPERATIONAL RELIABILITY (summary)
+================================================================================
+- Migrations: upgrade/downgrade/upgrade proven (SQLite); 0013 also round-tripped
+  on PostgreSQL in prior validation.
+- Backup/restore: scripts present (scripts/backup.sh, restore.sh,
+  backup_restore_drill.sh); an independent per-company restore drill was
+  demonstrated earlier on PostgreSQL. A real drill on YOUR infrastructure is
+  still required (LOW-8).
+- Concurrency/idempotency/transactions: FIFO consume takes a PG advisory lock;
+  voucher posting idempotent + DB-unique-constrained; service calls run in the
+  caller's single transaction.
+- Deployment/default credentials: production admin password fails closed.
+
+================================================================================
+END-TO-END WORKFLOW REVIEW
+================================================================================
+Yarn purchase -> yarn inventory ........................ OK (GRN + GL)
+Grey fabric BOM (yarn-only) ............................ OK (versioned, approved)
+Knitting production / grey actual cost ................. OK, BUT HIGH-2 (yarn GL
+                                                         timing + cancellation)
+Grey fabric inventory ................................. OK (valued at actual cost)
+Dyeing job (chemical-free) ............................ OK (genuine actual cost,
+                                                         incomplete-aware)
+Dyed fabric inventory ................................. OK (valued), BUT HIGH-1
+                                                         (reconciliation mapping)
+Sales / dispatch of dyed fabric ....................... MISSING (HIGH-3)
+Accounting / COGS for dyed fabric ..................... BLOCKED by HIGH-3
+
+Missing operational pieces identified:
+  * No dispatch/sales path for dyed-fabric lots (HIGH-3).
+  * No rejection/abnormal-loss write-off control (MEDIUM-5).
+  * Stock-vs-GL reconciliation report not dyeing-aware (HIGH-1).
+
+================================================================================
+RECOMMENDED FIX ORDER (pending your approval - no changes made yet)
+================================================================================
+  1. HIGH-1  Make stock_reconciliation.py dyeing/finished-aware + add test.
+  2. HIGH-2  Post yarn GL at issue (and handle cancel-after-issue) + tests.
+  3. HIGH-3  Make dyed output a sellable finished roll through dispatch/COGS
+             + end-to-end test.
+  4. MEDIUM-4 CA review of capitalisation vs expensing and GST treatment.
+  5. MEDIUM-5 / MEDIUM-6 rejection write-off policy; provisioning period checks.
+
+Each should be a separate, reviewed change. Do not merge into main; do not
+migrate live data; keep chemical BOM automation disabled; preserve the
+database-per-legal-company architecture and factory isolation.
+
+================================================================================
+STRICT RESTRICTIONS OBSERVED DURING THIS AUDIT
+================================================================================
+No code changed. No merge to main. No data migrated. No business records
+altered. Chemical BOM explosion/reservation left disabled. Database-per-legal-
+company architecture unchanged. Factory-level permissions and isolation intact.
+================================================================================

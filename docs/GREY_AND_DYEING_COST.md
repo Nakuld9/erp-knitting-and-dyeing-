@@ -79,15 +79,29 @@ Dyed-fabric and grey-fabric are received into inventory at **exactly** the
 accumulated cost (an exact-value override on `inventory.receive`, so the
 sub-ledger equals the GL with no rounding dust).
 
-**A. Knitting → grey** (`value_grey_output`, one voucher `PO:{n}:grey`):
+**A1. Yarn issue** (`issue_material`, per issue `PO:{n}:issue:{consumption}`) —
+posted **atomically with the FIFO stock issue** (HIGH-2 fix), so the yarn
+sub-ledger and GL move together even while the order is in process:
 
 | Dr | Cr | Amount |
 |----|----|--------|
 | 1080 Work in Progress | 1060 Yarn Inventory | actual yarn (FIFO) |
+
+**A2. Knitting → grey** (`value_grey_output`, one voucher `PO:{n}:grey`):
+
+| Dr | Cr | Amount |
+|----|----|--------|
 | 1080 Work in Progress | 2020 Expenses Payable | actual knitting conversion *(only if recorded)* |
 | 1070 Greige Fabric Inventory | 1080 Work in Progress | grey total (yarn + conversion) |
 
-WIP nets to **zero**; the greige debit equals the grey inventory receipt.
+WIP (holding yarn from A1 + conversion here) nets to **zero** across A1+A2; the
+greige debit equals the grey inventory receipt.
+
+**Cancellation** (`cancel_order`, before grey is valued): each already-issued
+consumption is **returned to stock** (`PRODUCTION_RETURN`) at its exact issued
+cost and its A1 issue voucher is **reversed** (balanced `reverse_voucher`:
+Dr Yarn Inventory / Cr WIP), restoring both sub-ledger and GL — issued material
+is never released as if it had not been consumed.
 
 **B. Grey → dyeing WIP** (`issue_grey`, per issue `DYE:{n}:grey:{input}`):
 
@@ -105,6 +119,22 @@ WIP nets to **zero**; the greige debit equals the grey inventory receipt.
 
 Dyeing WIP (grey already debited at issue) nets to **zero**; the finished-fabric
 debit equals the dyed inventory receipt and the accumulated actual cost.
+
+**D. Dispatch / sale of dyed fabric** (existing `order_lifecycle.create_delivery`,
+voucher `DN:{n}`). Each saleable dyed output lot is materialised by `complete_job`
+as a **FINISHED `FabricRoll`** (the inventory item itself; `DyeingOutput.dyed_item_id`
+links to it), so it flows through the **unchanged** sales → dispatch → invoice →
+COGS path (HIGH-3 fix):
+
+| Dr | Cr | Amount |
+|----|----|--------|
+| 5150 Cost of Goods Sold | 1085 Finished Fabric Inventory | FIFO actual dyed cost of the dispatched roll |
+
+Finished inventory decreases on dispatch; `FabricRoll.delivery_note_id` prevents
+duplicate dispatch and the idempotent delivery `posting_reference` prevents
+duplicate COGS; multiple lots support partial dispatch; FIFO prevents overselling.
+Traceability runs sales invoice/delivery → finished roll → `DyeingOutput` →
+dyeing job → grey production order → yarn issue lots.
 
 **Account mapping** is through two new posting *rules* (existing codes only):
 `GREY_PRODUCTION` {wip 1080, yarn 1060, greige 1070, conversion_payable 2020} and
@@ -158,6 +188,36 @@ Production Cost screen):
   contribution of this workflow.
 
 Discrepancies are reported, never hidden.
+
+The company-wide **Stock vs GL Reconciliation** report
+(`accounting/stock_reconciliation.py`) is now **dyeing-aware** (HIGH-1 fix): FABRIC
+sub-ledger value is split by the actual identity of each layer — grey
+production-order fabric and GREIGE rolls against **1070**, dyed-output fabric and
+FINISHED rolls against **1085** — mirroring the GL boundary that finishing and
+dyeing both cross. Previously all FABRIC was mapped to 1070, so the report showed
+a false discrepancy once any dyed/finished fabric existed.
+
+### Release-audit fixes (HIGH-1 / HIGH-2 / HIGH-3)
+
+An independent release-readiness audit (see `RELEASE_READINESS_AUDIT.txt`) found,
+and these changes resolve, three HIGH defects — each in a separate commit:
+
+* **HIGH-1** — Stock vs GL reconciliation is now dyeing/finished-aware (grey 1070,
+  finished 1085).
+* **HIGH-2** — Yarn → WIP GL is posted **atomically at issue** (not deferred to
+  grey valuation), and **cancellation returns issued material to stock with a
+  balanced GL reversal** instead of releasing it as if never consumed.
+* **HIGH-3** — Dyed output is a **sellable FINISHED `FabricRoll`** that flows
+  through the existing sales → dispatch → invoice → COGS process (not a new
+  parallel inventory item), so finished-goods GL (1085) clears on sale and
+  end-to-end traceability is preserved.
+
+A full end-to-end acceptance test
+(`tests/test_e2e_grey_to_dyed_sales.py`) exercises yarn purchase → GRN → FIFO
+issue → knitting → grey receipt → dyeing → multiple dyed lots → sales order →
+dispatch → COGS and asserts quantity, FIFO value, WIP, grey/dyed value, GL
+balances and stock-vs-GL reconciliation at **every** stage, plus partial
+production, rejection and reprocessing.
 
 ## 7. API, UI, permissions, isolation
 
