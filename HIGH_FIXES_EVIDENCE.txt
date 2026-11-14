@@ -1,0 +1,142 @@
+================================================================================
+RELEASE-AUDIT FIXES - COMPLETION EVIDENCE
+Project: ERP Knitting & Dyeing
+Branch:  feat/multi-company-production-ready
+Status:  All three accepted HIGH findings fixed. NOT merged, NOT deployed.
+================================================================================
+
+SCOPE
+-----
+The independent release-readiness audit raised three HIGH findings. All three
+were accepted and are now fixed as three separate, independently reviewable
+commits on the existing branch, plus one supporting commit for the end-to-end
+acceptance test and documentation.
+
+No schema change. No migration. No live-data migration. Not merged to main.
+
+
+COMMITS (pushed to feat/multi-company-production-ready)
+-------------------------------------------------------
+  a6aa5dc  HIGH-1  Dyeing-aware stock-vs-GL reconciliation
+                   (grey -> GL 1070, dyed/finished -> GL 1085)
+
+  1010e72  HIGH-2  Yarn -> WIP GL posted atomically at FIFO issue;
+                   cancellation returns material + reverses GL
+
+  db44a31  HIGH-3  Dyed output is a sellable FINISHED FabricRoll inside the
+                   EXISTING dispatch / COGS flow (no new inventory item type)
+
+  ca85e13  ----    E2E acceptance test + docs
+
+Push confirmed:  86ba4bc..ca85e13 -> feat/multi-company-production-ready
+
+
+FILES CHANGED PER FIX
+---------------------
+HIGH-1
+  backend/app/services/accounting/stock_reconciliation.py
+    - Removed FABRIC from the single-group map.
+    - Added _fabric_stock_split(): classifies each FABRIC stock layer as
+      finished (ids from DyeingOutput.dyed_item_id UNION FabricRoll.kind==FINISHED)
+      -> GL 1085, otherwise greige -> GL 1070, and emits BOTH GL rows.
+    - Yarn (1060) / chemical (1100) / dye (1090) reconciliation preserved.
+  Test: backend/tests/test_stock_reconciliation.py
+        ::test_reconciles_after_full_knit_dye_flow
+
+HIGH-2
+  backend/app/services/bom/production.py
+    - issue_material() now posts Dr WIP / Cr Yarn in the SAME transaction as the
+      FIFO consume (idempotent key PO:{n}:issue:{cons.id}).
+    - Grey voucher no longer double-posts yarn.
+    - cancel_order() rewritten: refuses once grey is valued; otherwise reverses
+      each issue voucher (reverse_voucher) and returns stock via PRODUCTION_RETURN
+      at exact cost, resets reservations to RELEASED. Status guard blocks a
+      second/concurrent cancel.
+  backend/app/services/inventory/service.py
+    - receive() gained an exact-value override (no per-kg rounding dust).
+  Tests: backend/tests/test_production_cancel.py (6 scenarios)
+         backend/tests/test_production_accounting.py (updated)
+
+HIGH-3
+  backend/app/services/dyeing/service.py
+    - complete_job() creates a FabricRoll(kind=FINISHED) per output lot, carrying
+      sales_order_id, shade, weight, warehouse; sets DyeingOutput.dyed_item_id =
+      roll.id; receives inventory keyed by that roll id at the allocated dyed cost.
+    - Dispatch therefore flows through the EXISTING order_lifecycle.create_delivery
+      -> FIFO-by-roll -> COGS Dr 5150 / Cr 1085 path. No new inventory item type,
+      no parallel sales flow. Overselling / duplicate dispatch / duplicate COGS
+      prevented by the existing delivery-note guard.
+  Test: backend/tests/test_dyed_dispatch.py (4 tests:
+        finished-roll identity, COGS posting, multi-lot/partial/no-oversell,
+        traceability back to grey PO and yarn lots)
+
+ACCEPTANCE + DOCS
+  backend/tests/test_e2e_grey_to_dyed_sales.py  (2 tests)
+  docs/GREY_AND_DYEING_COST.md                  (sections 5-6)
+  RELEASE_READINESS_AUDIT.txt
+
+
+MANDATORY END-TO-END ACCEPTANCE TEST
+------------------------------------
+test_full_yarn_to_dyed_sale covers the full chain and asserts physical quantity,
+FIFO inventory value, WIP, grey value, dyed value, GL account balances and
+stock-vs-GL reconciliation AT EVERY STAGE:
+
+  yarn purchase -> GRN -> FIFO yarn issue -> knitting -> grey fabric receipt ->
+  dyeing -> multiple dyed output lots -> sales order -> dispatch -> COGS ->
+  stock-vs-GL reconciliation
+
+test_partial_production_and_rejection_reprocess additionally covers partial
+production (produce < planned), rejection and reprocessing; reconciliation holds
+throughout.
+
+
+TEST RESULTS
+------------
+  Full SQLite suite : 415 passed, 2 skipped, 0 failed
+                      (up from 402; +13 = 1 reconciliation + 6 cancel
+                       + 4 dispatch + 2 e2e). The 2 skips are PostgreSQL-gated.
+
+  PostgreSQL (real) : 62 passed
+                      (the three fixes + E2E + accounting + reconciliation +
+                       order-lifecycle + concurrency + migrations), on a
+                       throwaway real PostgreSQL cluster.
+
+
+MIGRATION IMPACT
+----------------
+  NONE. No schema change. All three fixes are logic / reconciliation only.
+  DyeingOutput.dyed_item_id now holds the finished roll id (a value, not a new
+  column). No Alembic revision added. No live-data migration.
+
+
+RESTRICTIONS HONORED
+--------------------
+  - Chemical BOM explosion / chemical reservation still DISABLED.
+  - No historical records deleted or rewritten.
+  - NOT merged to main.
+  - No live-data migration.
+  - Database-per-legal-company architecture unchanged.
+  - Factory-level authorization and company isolation preserved.
+  - No existing accounting control weakened.
+  - Three independent, reviewable commits (not combined).
+  - MEDIUM-4 NOT started.
+
+
+REMAINING LIMITATIONS (out of scope of these three fixes)
+---------------------------------------------------------
+  MEDIUM-4  Indian CA review of capitalise-vs-expense treatment, GST and
+            job-work costing. REQUIRED BEFORE PRODUCTION. Explicitly deferred
+            pending that review.
+  MEDIUM-5  Formal rejection / abnormal-loss accounting policy (currently
+            absorbed into saleable cost).
+  MEDIUM-6  Provisioning / period-close hardening.
+  Standing  Backup/restore drill, security review, load test, UAT.
+
+
+VERDICT
+-------
+  Remains B (controlled staging / UAT) pending MEDIUM-4 and the standing
+  gated items. Do not promote to production until MEDIUM-4 (CA review) and the
+  gated items are cleared.
+================================================================================
