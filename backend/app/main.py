@@ -33,6 +33,7 @@ from app.api.routes import (
     orders,
     payroll,
     presales,
+    printing,
     quality,
     reports,
     rolls,
@@ -88,6 +89,7 @@ app.include_router(stores.router)
 app.include_router(tenancy.router)
 app.include_router(transfers.router)
 app.include_router(branding.router)
+app.include_router(printing.router)
 
 observability.install_observability(app)
 
