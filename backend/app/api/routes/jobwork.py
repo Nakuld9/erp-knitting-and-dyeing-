@@ -192,34 +192,58 @@ class JobWorkBillIn(BaseModel):
     process: str | None = None
     factory_id: uuid.UUID | None = None
     tax_code_id: uuid.UUID | None = None
+    tds_section_code: str | None = None          # resolved against authorised TDS config
     additional_charges: Decimal = Decimal("0")
-    tds_rate: Decimal = Decimal("0")
+    is_advance: bool = False
+    original_bill_id: uuid.UUID | None = None     # required for credit/debit notes
     remarks: str | None = None
-    authorize_over_allocation: bool = False
+    over_allocation_reason: str | None = None     # required when over-allocating
 
 
 @router.post("/bills", status_code=status.HTTP_201_CREATED)
 def create_jobwork_bill(payload: JobWorkBillIn, db: Session = Depends(get_company_db),
                         user: User = Depends(require_permission("voucher.create"))):
-    """Enter a job-work vendor bill (DRAFT). Does not post or touch inventory."""
+    """Enter a job-work vendor bill (DRAFT). Does not post or touch inventory.
+
+    Over-allocation beyond the agreed charge is honoured only when the caller holds
+    the dedicated 'jobwork.over_allocate' permission (server-side) AND supplies a
+    reason — the request cannot self-authorise it with a boolean.
+    """
+    from sqlalchemy.exc import IntegrityError
+    from app.core.context import FactoryAuthError, authorize_factory
     from app.services import jobwork_billing as bl
+    if payload.factory_id is not None:
+        try:
+            authorize_factory(db, user, payload.factory_id, user.company_id)
+        except FactoryAuthError:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "not authorized for this factory")
+    over_ok = user.has_permission(bl.OVER_ALLOCATE_PERMISSION)
     try:
         bill = bl.create_bill(db, company_id=user.company_id, created_by=user.id,
                               lines=[ln.model_dump() for ln in payload.lines],
+                              over_allocation_authorized=over_ok, authorized_by=user.id,
                               **payload.model_dump(exclude={"lines"}))
         db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "Duplicate job-work invoice for this vendor")
+    except bl.JobWorkPostingBlocked as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
     except (bl.JobWorkBillError, ValueError) as exc:
         db.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
     return {"id": str(bill.id), "invoice_no": bill.invoice_no, "taxable_amount": str(bill.taxable_amount),
             "tds_amount": str(bill.tds_amount), "total_amount": str(bill.total_amount),
+            "is_over_allocated": bill.is_over_allocated,
             "status": bill.status.value if hasattr(bill.status, "value") else bill.status}
 
 
 @router.post("/bills/{bill_id}/approve")
 def approve_jobwork_bill(bill_id: uuid.UUID, db: Session = Depends(get_company_db),
                          user: User = Depends(require_permission("voucher.post"))):
-    """Approve + post a job-work bill to Direct Expenses (reuses the posting engine)."""
+    """Approve + post a job-work bill to Direct Expenses. Ambiguous postings
+    (advance bills, debit notes, unapproved credit-note treatment) are blocked."""
     from app.models.jobwork import JobWorkBill
     from app.services import jobwork_billing as bl
     bill = db.get(JobWorkBill, bill_id)
@@ -228,10 +252,57 @@ def approve_jobwork_bill(bill_id: uuid.UUID, db: Session = Depends(get_company_d
     try:
         v = bl.approve_bill(db, bill, created_by=user.id)
         db.commit()
+    except bl.JobWorkPostingBlocked as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
     except (bl.JobWorkBillError, ValueError) as exc:
         db.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
-    return {"id": str(bill.id), "status": "APPROVED", "voucher_number": v.number if v else None}
+    return {"id": str(bill.id), "status": "APPROVED", "voucher_number": v.number if v else None,
+            "approved_by": str(bill.approved_by) if bill.approved_by else None}
+
+
+class TdsRateIn(BaseModel):
+    section_code: str
+    rate: Decimal
+    description: str | None = None
+
+
+@router.post("/config/tds-rates", status_code=status.HTTP_201_CREATED)
+def set_tds_rate_endpoint(payload: TdsRateIn, db: Session = Depends(get_company_db),
+                          user: User = Depends(require_permission("config.manage"))):
+    """Enter an authorised TDS section + rate (CA-supplied). Bills reference the
+    section; the rate is never taken from bill request input."""
+    from app.services import jobwork_billing as bl
+    try:
+        r = bl.set_tds_rate(db, user.company_id, section_code=payload.section_code, rate=payload.rate,
+                            description=payload.description, updated_by=user.id)
+        db.commit()
+    except (bl.JobWorkBillError, ValueError) as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    return {"section_code": r.section_code, "rate": str(r.rate), "is_active": r.is_active}
+
+
+class BillingPolicyIn(BaseModel):
+    credit_note_posting_approved: bool | None = None
+    debit_note_posting_approved: bool | None = None
+    advance_posting_approved: bool | None = None
+
+
+@router.put("/config/billing-policy")
+def set_billing_policy_endpoint(payload: BillingPolicyIn, db: Session = Depends(get_company_db),
+                                user: User = Depends(require_permission("config.manage"))):
+    """Record that the CA-approved accounting treatment for ambiguous job-work
+    postings has been supplied. Both default OFF (postings blocked)."""
+    from app.services import jobwork_billing as bl
+    pol = bl.set_policy(db, user.company_id, credit_note=payload.credit_note_posting_approved,
+                        debit_note=payload.debit_note_posting_approved,
+                        advance=payload.advance_posting_approved, updated_by=user.id)
+    db.commit()
+    return {"credit_note_posting_approved": pol.credit_note_posting_approved,
+            "debit_note_posting_approved": pol.debit_note_posting_approved,
+            "advance_posting_approved": pol.advance_posting_approved}
 
 
 @router.get("/issues/{issue_id}/lot-reconciliation")

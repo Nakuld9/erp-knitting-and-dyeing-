@@ -50,6 +50,12 @@ def _tb(db, demo, code):
     return next((r for r in rows if r["account_code"] == code), None)
 
 
+def _tds(db, demo, rate="2", section="194C"):
+    """Configure an authorised TDS section (simulating CA entry) and return it."""
+    bill.set_tds_rate(db, demo["company_id"], section_code=section, rate=Decimal(rate))
+    return section
+
+
 # ---- entry + Direct Expense posting + GST/TDS ----
 
 def test_create_and_approve_posts_direct_expense_with_gst_tds(db, demo):
@@ -57,7 +63,8 @@ def test_create_and_approve_posts_direct_expense_with_gst_tds(db, demo):
     o = _order(db, demo, number="JWO-1", rate="20")
     iss = _issue(db, demo, o, number="KP-B1")
     b = bill.create_bill(db, company_id=demo["company_id"], supplier_id=demo["supplier_id"],
-                         invoice_no="INV-1", invoice_date=WHEN, process="DYEING", tax_code_id=demo["tax_id"], tds_rate=Decimal("2"),
+                         invoice_no="INV-1", invoice_date=WHEN, process="DYEING", tax_code_id=demo["tax_id"],
+                         tds_section_code=_tds(db, demo, "2"),
                          lines=[{"job_work_id": o.id, "job_work_issue_id": iss.id, "qty": "100", "rate": "20",
                                  "amount": "2000"}])
     assert b.taxable_amount == Decimal("2000.00")
@@ -130,11 +137,13 @@ def test_over_allocation_blocked_without_authorisation(db, demo):
     with pytest.raises(bill.JobWorkBillError):
         bill.create_bill(db, company_id=demo["company_id"], supplier_id=demo["supplier_id"],
                          invoice_no="OV-1", invoice_date=WHEN, lines=[{"job_work_issue_id": iss.id, "amount": "2500"}])
-    # with authorisation it is allowed
+    # with authorisation (permission resolved upstream) + a reason it is allowed
     b = bill.create_bill(db, company_id=demo["company_id"], supplier_id=demo["supplier_id"],
-                         invoice_no="OV-2", invoice_date=WHEN, authorize_over_allocation=True,
+                         invoice_no="OV-2", invoice_date=WHEN, over_allocation_authorized=True,
+                         over_allocation_reason="extra rework agreed with vendor", authorized_by=uuid.uuid4(),
                          lines=[{"job_work_issue_id": iss.id, "amount": "2500"}])
     assert b.taxable_amount == Decimal("2500.00")
+    assert b.is_over_allocated is True and b.over_allocation_reason
 
 
 # ---- credit note adjustment ----
@@ -146,8 +155,11 @@ def test_credit_note_reduces_billed_and_posts_reverse(db, demo):
                            invoice_no="INV-6", invoice_date=WHEN, process="DYEING",
                            lines=[{"job_work_issue_id": iss.id, "amount": "2000"}])
     bill.approve_bill(db, inv, created_by=None)
+    # credit-note posting treatment is CA-gated; enable it (simulating sign-off)
+    bill.set_policy(db, demo["company_id"], credit_note=True)
     cn = bill.create_bill(db, company_id=demo["company_id"], supplier_id=demo["supplier_id"],
                           invoice_no="CN-6", invoice_date=WHEN, bill_type="CREDIT_NOTE", process="DYEING",
+                          original_bill_id=inv.id,
                           lines=[{"job_work_issue_id": iss.id, "amount": "500"}])
     bill.approve_bill(db, cn, created_by=None); db.commit()
     # net billed = 2000 - 500

@@ -14,9 +14,9 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import date
+from datetime import date, datetime
 
-from sqlalchemy import Boolean, Date, ForeignKey, String, UniqueConstraint, Uuid
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, String, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.types import Money, Quantity
@@ -135,6 +135,15 @@ class JobWorkIssue(AuditMixin, Base):
     process_loss_qty: Mapped[object] = mapped_column(Quantity, default=0)
     shortage_qty: Mapped[object] = mapped_column(Quantity, default=0)
 
+    # Agreed-charge snapshot (Stage 3F / M1): frozen at the FIRST bill allocation so
+    # later order-rate or receipt-qty changes never rewrite an approved bill's
+    # baseline. NULL until first billed.
+    agreed_charge_snapshot: Mapped[object | None] = mapped_column(Money, nullable=True)
+    agreed_rate_snapshot: Mapped[object | None] = mapped_column(Money, nullable=True)
+    agreed_basis_snapshot: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    agreed_qty_snapshot: Mapped[object | None] = mapped_column(Quantity, nullable=True)
+    agreed_uom_snapshot: Mapped[str | None] = mapped_column(String(10), nullable=True)
+
 
 class JobWorkReceipt(AuditMixin, Base):
     """One receipt event against a :class:`JobWorkIssue`. An issue may have many
@@ -234,10 +243,26 @@ class JobWorkBill(AuditMixin, Base):
     tds_amount: Mapped[object] = mapped_column(Money, default=0)
     total_amount: Mapped[object] = mapped_column(Money, default=0)   # payable to vendor (gross - TDS)
 
+    tds_section_code: Mapped[str | None] = mapped_column(String(20), nullable=True)   # authorised TDS section
+    tds_source: Mapped[str | None] = mapped_column(String(20), nullable=True)          # e.g. CONFIG
+    is_advance: Mapped[bool] = mapped_column(Boolean, default=False)                   # M4: advance vs final
+
+    # credit/debit note linkage (H2/M3): required for notes; must match company+supplier
+    original_bill_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("job_work_bills.id"), nullable=True)
+
+    # over-allocation authorisation audit (H3/M2)
+    is_over_allocated: Mapped[bool] = mapped_column(Boolean, default=False)
+    over_allocation_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    over_allocated_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    over_allocated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
     status: Mapped[JobWorkBillStatus] = mapped_column(String(12), default=JobWorkBillStatus.DRAFT, index=True)
     payment_status: Mapped[str] = mapped_column(String(10), default="UNPAID")
     posting_reference: Mapped[str | None] = mapped_column(String(120), index=True)
     remarks: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # approval actor (L2)
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     lines: Mapped[list["JobWorkBillLine"]] = relationship(back_populates="bill", cascade="all, delete-orphan")
 
@@ -271,3 +296,43 @@ class JobWorkBillLine(AuditMixin, Base):
     narration: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     bill: Mapped[JobWorkBill] = relationship(back_populates="lines")
+
+
+class JobWorkTdsRate(AuditMixin, Base):
+    """Company-authorised TDS section + rate for job-work bills (Stage 3F / H4).
+
+    TDS on a job-work bill is NOT taken from free request input; the caller names a
+    section and the rate is resolved from this approved configuration. Empty by
+    default — until a company (its CA) enters an approved section, TDS cannot be
+    applied and a bill requesting TDS is blocked. This stores the authorised rate;
+    it does not invent a legally-correct value or calculation base."""
+
+    __tablename__ = "jobwork_tds_rates"
+    __table_args__ = (
+        UniqueConstraint("company_id", "section_code", name="uq_jwtds_company_section"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"), index=True)
+    section_code: Mapped[str] = mapped_column(String(20), index=True)   # e.g. 194C
+    rate: Mapped[object] = mapped_column(Quantity, default=0)           # percent, as approved
+    description: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+class JobWorkBillingPolicy(AuditMixin, Base):
+    """Per-company switches recording that the CA-approved accounting treatment for
+    ambiguous job-work billing postings has been supplied (Stage 3F). Both default
+    OFF so ambiguous postings are blocked until explicitly approved. Data entry and
+    linkage are unaffected — only posting is gated."""
+
+    __tablename__ = "jobwork_billing_policies"
+    __table_args__ = (
+        UniqueConstraint("company_id", name="uq_jwpolicy_company"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"), index=True)
+    credit_note_posting_approved: Mapped[bool] = mapped_column(Boolean, default=False)
+    debit_note_posting_approved: Mapped[bool] = mapped_column(Boolean, default=False)
+    advance_posting_approved: Mapped[bool] = mapped_column(Boolean, default=False)

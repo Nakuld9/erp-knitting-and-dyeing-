@@ -150,6 +150,7 @@ from app.models.jobwork import (  # noqa: F401
     JobWork,
     JobWorkBill,
     JobWorkBillLine,
+    JobWorkBillingPolicy,
     JobWorkBillStatus,
     JobWorkBillType,
     JobWorkDirection,
@@ -159,6 +160,7 @@ from app.models.jobwork import (  # noqa: F401
     JobWorkProcess,
     JobWorkReceipt,
     JobWorkStatus,
+    JobWorkTdsRate,
 )
 from app.models.ewaybill import EWayBill, EWayBillStatus  # noqa: F401
 from app.models.banking import BankReconciliation, BankStatementLine  # noqa: F401

@@ -105,13 +105,31 @@ def _charge(jw: JobWork) -> Decimal:
 
 
 def bill(db: Session, jw: JobWork, *, created_by: uuid.UUID | None = None):
-    """Post the money event (inward income or outward cost) and mark BILLED."""
+    """Post the money event (inward income or outward cost) and mark BILLED.
+
+    Legacy path. Stage 3F (H1): the new jobwork_billing module is authoritative for
+    new vendor bills, so this refuses to post if the same job has already been
+    billed through an approved JobWorkBill. Historical legacy bills are unaffected.
+    """
     direction = JobWorkDirection(jw.direction)
     process = JobWorkProcess(jw.process)
     if JobWorkStatus(jw.status) == JobWorkStatus.BILLED:
         return pe.find_existing(db, jw.company_id, jw.posting_reference) if jw.posting_reference else None
     if JobWorkStatus(jw.status) == JobWorkStatus.CANCELLED:
         raise JobWorkError("Cancelled job work cannot be billed")
+    # H1 cross-path guard: lock the order row and refuse if a new-path bill line
+    # (any non-cancelled JobWorkBill) already charges this job.
+    from sqlalchemy import select as _select
+    from app.models.jobwork import JobWorkBill, JobWorkBillLine, JobWorkBillStatus
+    db.execute(_select(JobWork).where(JobWork.id == jw.id).with_for_update()).first()
+    clash = db.execute(
+        _select(JobWorkBillLine.id).join(JobWorkBill, JobWorkBill.id == JobWorkBillLine.bill_id)
+        .where(JobWorkBillLine.company_id == jw.company_id, JobWorkBillLine.job_work_id == jw.id,
+               JobWorkBill.status != JobWorkBillStatus.CANCELLED)).first()
+    if clash is not None:
+        raise JobWorkError(
+            f"Job work {jw.number} is already billed via the vendor-bill workflow; "
+            "the legacy billing path is disabled for it.")
 
     company = db.get(Company, jw.company_id)
     party = _party(db, jw)

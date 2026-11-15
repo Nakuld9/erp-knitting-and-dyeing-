@@ -39,6 +39,7 @@ PERMISSIONS: list[tuple[str, str, str]] = [
     ("bom.write", "bom", "Create/edit fabric BOM versions (draft)"),
     ("bom.approve", "bom", "Approve / obsolete fabric BOM versions"),
     ("production.manage", "bom", "Create production orders and issue materials"),
+    ("jobwork.over_allocate", "accounting", "Authorise job-work billing beyond the agreed charge"),
 ]
 
 # role_code -> (name, [permission codes]); "*" means all permissions.
@@ -48,7 +49,8 @@ ROLES: dict[str, tuple[str, list[str]]] = {
     "GENERAL_MANAGER": (
         "General Manager",
         ["master.read", "report.read", "report.financial", "sales.manage", "purchase.manage",
-         "factory.access_all", "transfer.authorize", "bom.read", "bom.approve", "config.manage"],
+         "factory.access_all", "transfer.authorize", "bom.read", "bom.approve", "config.manage",
+         "jobwork.over_allocate"],
     ),
     "PRODUCTION_MANAGER": (
         "Production Manager",
@@ -78,7 +80,7 @@ ROLES: dict[str, tuple[str, list[str]]] = {
             "master.read", "voucher.create", "voucher.post", "voucher.approve",
             "voucher.reverse", "period.close", "bank.reconcile", "report.read", "report.financial",
             "inventory.adjust", "asset.manage", "payroll.manage", "consolidation.approve",
-            "intercompany.approve",
+            "intercompany.approve", "jobwork.over_allocate",
         ],
     ),
     "AUDITOR": ("Auditor", ["master.read", "report.read", "report.financial"]),
