@@ -36,6 +36,7 @@ from app.models.fabric_bom import ProductionConsumption, ProductionOrder
 from app.models.inventory import ItemType
 from app.models.manufacturing import FabricRoll, RollKind
 from app.services.inventory import service as inventory
+from app.services.manufacturing import roll_genealogy, roll_identity
 
 MZERO = Decimal("0")
 QZERO = Decimal("0")
@@ -287,6 +288,18 @@ def complete_job(
     # Allocate total across lots by weight and value dyed fabric into inventory at
     # EXACTLY the allocated cost (``value=`` override → no per-kg dust), so the
     # sub-ledger equals the GL finished-fabric debit.
+    # Stage-2 traceability: the greige rolls fed into this job become the source
+    # rolls of each dyed output. Grey lots that are not specific rolls are skipped.
+    source_roll_ids = [
+        inp.item_id for inp in db.execute(
+            select(DyeingInput).where(DyeingInput.job_id == job.id)
+        ).scalars()
+        if db.get(FabricRoll, inp.item_id) is not None
+    ]
+    roll_identity.assert_factory_in_company(db, company_id=job.company_id, factory_id=job.factory_id)
+    dye_event_group = uuid.uuid4()
+    dye_when = voucher_date or job.dye_date or _today()
+
     allocated_sum = MZERO
     for i, o in enumerate(outputs):
         if i == len(outputs) - 1:
@@ -301,16 +314,24 @@ def complete_job(
         # order-delivery/dispatch/COGS path. The roll IS the inventory item
         # (item_id = roll.id); DyeingOutput.dyed_item_id links back to it.
         if o.dyed_item_id is None or db.get(FabricRoll, o.dyed_item_id) is None:
+            # Protected, company-scoped dyed Roll ID; the human "{job}-{lot}" is
+            # preserved as a separate searchable reference (ref_code). kind=DYED
+            # distinguishes dyed output from greige/finished (Stage-2 req 3 & 5).
+            dyed_roll_no = roll_identity.new_dyed_roll_id(db, company_id=job.company_id, when=dye_when)
             roll = FabricRoll(
                 company_id=job.company_id, factory_id=job.factory_id,
-                roll_no=f"{job.number}-{o.lot_code}", barcode=f"{job.number}-{o.lot_code}",
-                kind=RollKind.FINISHED, weight_kg=quantize(_d(o.qty_kg), QTY_SCALE),
+                roll_no=dyed_roll_no, ref_code=f"{job.number}-{o.lot_code}", barcode=dyed_roll_no,
+                kind=RollKind.DYED, weight_kg=quantize(_d(o.qty_kg), QTY_SCALE),
                 sales_order_id=job.sales_order_id, warehouse_id=_uid(warehouse_id) or o.warehouse_id,
                 quality_status="OK", status="ACTIVE",
             )
             db.add(roll)
             db.flush()
             o.dyed_item_id = roll.id
+            # Traceability: greige -> dyed (one edge per source greige roll).
+            roll_genealogy.record_dyeing(
+                db, roll, source_roll_ids, event_group_id=dye_event_group,
+                production_ref=job.number, recorded_by=created_by)
         inventory.receive(
             db, company_id=job.company_id, item_type=ItemType.FABRIC, item_id=o.dyed_item_id,
             qty=_d(o.qty_kg), unit_cost=quantize(alloc / _d(o.qty_kg), MONEY_SCALE) if _d(o.qty_kg) > QZERO else MZERO,

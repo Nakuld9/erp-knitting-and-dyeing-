@@ -26,7 +26,8 @@ def test_roll_auto_numbering_and_lineage(db, demo):
         {"roll_no": "", "weight_kg": "125"},                                   # blank -> auto
     ])
     numbers = [r.roll_no for r in rolls]
-    assert all(n.startswith("GR-K-01-") for n in numbers)     # GR-<machine>-<seq>
+    # Protected identity (Stage 2): GR-<COMPANY_CODE>-<FY>-<SEQ>, not a machine code.
+    assert all(n.startswith("GR-DEMO-") for n in numbers)
     assert len(set(numbers)) == 2                             # unique
     for r in rolls:
         assert r.barcode == r.roll_no

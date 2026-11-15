@@ -50,7 +50,11 @@ def test_dyed_output_is_finished_fabric_roll(db, demo):
     out = db.execute(select(DyeingOutput).where(DyeingOutput.job_id == job.id)).scalar_one()
     roll = db.get(FabricRoll, out.dyed_item_id)
     assert roll is not None
-    assert (roll.kind == RollKind.FINISHED or roll.kind == RollKind.FINISHED.value)
+    # Stage 2: dyed output is now distinguished as kind=DYED (was FINISHED).
+    assert (roll.kind == RollKind.DYED or roll.kind == RollKind.DYED.value)
+    # Protected dyed Roll ID with the human "{job}-{lot}" kept as ref_code.
+    assert roll.roll_no.startswith("DY-DEMO-")
+    assert roll.ref_code == f"{job.number}-L1"
     assert Decimal(str(roll.weight_kg)) == Decimal("95")
     # inventory for the roll == allocated cost (total 29100 for the single lot)
     bal = inventory.balance(db, company_id=demo["company_id"], item_type=ItemType.FABRIC, item_id=roll.id)

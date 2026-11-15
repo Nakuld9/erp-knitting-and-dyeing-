@@ -10,12 +10,10 @@ from sqlalchemy.orm import Session
 from app.core.types import MONEY_SCALE, QTY_SCALE, quantize
 from app.models.inventory import ItemType
 from app.models.manufacturing import FabricRoll, KnittingProduction, RollKind
-from app.models.masters import Machine
 from app.services import inventory
 from app.services.accounting import posting_engine as pe
-from app.services.accounting.posting_engine import fiscal_year_for
 from app.services.accounting.posting_rules import resolve_account
-from app.services.sequences import next_document_number
+from app.services.manufacturing import roll_genealogy, roll_identity
 
 
 def record_production(
@@ -74,21 +72,26 @@ def record_production(
         total_kg = Decimal(str(kp.produced_kg)) or Decimal("1")
     per_kg_cost = quantize(yarn_cost / total_kg, MONEY_SCALE)
 
-    machine = db.get(Machine, kp.machine_id)
-    mcode = (machine.code if machine else "KN")
-    fy = fiscal_year_for(kp.production_date)
+    # Factory association for new greige rolls (Stage-2 requirement 6): the roll
+    # inherits the production's factory; isolation is enforced (factory must
+    # belong to this company). Historical NULL factories are untouched.
+    roll_identity.assert_factory_in_company(db, company_id=kp.company_id, factory_id=kp.factory_id)
+    event_group_id = uuid.uuid4()
 
     rolls = []
     for spec in roll_specs:
-        # Auto-number when no roll number is supplied: GR-<machine>-<seq>.
+        # Protected identity (Stage-2 requirement 3): a caller-supplied roll_no is
+        # honoured only on this trusted service path (seeding / authorised import /
+        # migration). The web API never forwards a client roll_no, so web output is
+        # always auto-minted as GR-<COMPANY>-<FY>-<SEQ>. The DB unique index on
+        # (company_id, roll_no) is the final backstop against duplicates.
         roll_no = (spec.get("roll_no") or "").strip()
         if not roll_no:
-            seq = next_document_number(db, company_id=kp.company_id, doc_type="ROLL",
-                                       fiscal_year=fy, prefix=f"GR-{mcode}-")
-            roll_no = seq
+            roll_no = roll_identity.new_greige_roll_id(
+                db, company_id=kp.company_id, when=kp.production_date)
         roll = FabricRoll(
-            company_id=kp.company_id, roll_no=roll_no, kind=RollKind.GREIGE,
-            knitting_production_id=kp.id, fabric_type_id=kp.fabric_type_id,
+            company_id=kp.company_id, factory_id=kp.factory_id, roll_no=roll_no,
+            kind=RollKind.GREIGE, knitting_production_id=kp.id, fabric_type_id=kp.fabric_type_id,
             machine_id=kp.machine_id, yarn_id=kp.yarn_id, yarn_lot_id=kp.yarn_lot_id,
             sales_order_id=kp.sales_order_id, weight_kg=spec["weight_kg"],
             length_m=spec.get("length_m"), gsm=spec.get("gsm"), width_cm=spec.get("width_cm"),
@@ -102,6 +105,10 @@ def record_production(
             event_type="PRODUCE", source_module="knitting", source_id=str(kp.id),
             posting_reference=produce_ref,
         )
+        # Traceability (Stage-2 requirement 7): yarn store -> greige origin event.
+        roll_genealogy.record_knitting(
+            db, roll, event_group_id=event_group_id, production_ref=kp.number,
+            recorded_by=created_by)
         rolls.append(roll)
 
     kp.posting_reference = issue_ref

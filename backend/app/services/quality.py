@@ -69,6 +69,12 @@ def record_finishing(db: Session, company_id: uuid.UUID, *, process_type, proces
                 roll.weight_kg = output_weight_kg
             if was_greige:
                 _transfer_greige_to_fg(db, company_id, roll, process_date, created_by)
+            # Traceability (Stage-2 req 7): semi-finished -> finished. The SAME
+            # roll keeps its identity (no new Roll ID); source == output.
+            from app.services.manufacturing import roll_genealogy
+            roll_genealogy.record_finishing(
+                db, roll, input_weight_kg=input_weight_kg, output_weight_kg=output_weight_kg,
+                production_ref=ft.number, recorded_by=created_by)
     db.flush()
     return ft
 

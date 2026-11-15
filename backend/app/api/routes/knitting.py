@@ -23,7 +23,9 @@ router = APIRouter(prefix="/api/knitting", tags=["knitting"])
 
 
 class RollIn(BaseModel):
-    roll_no: str = ""
+    # Roll IDs are system-minted (protected identity). A client-supplied roll_no
+    # is intentionally NOT accepted here; the trusted service/import path handles
+    # authorised manual IDs.
     weight_kg: Decimal
     length_m: Decimal | None = None
     warehouse_id: uuid.UUID | None = None
@@ -48,7 +50,8 @@ class ProductionIn(BaseModel):
 def post_production(payload: ProductionIn, db: Session = Depends(get_company_db),
                    user: User = Depends(require_permission("knitting.manage"))):
     kp = KnittingProduction(
-        company_id=user.company_id, number=payload.number, machine_id=payload.machine_id,
+        company_id=user.company_id, factory_id=getattr(user, "acting_factory_id", None),
+        number=payload.number, machine_id=payload.machine_id,
         yarn_id=payload.yarn_id, sales_order_id=payload.sales_order_id, yarn_lot_id=payload.yarn_lot_id,
         fabric_type_id=payload.fabric_type_id, production_date=payload.production_date,
         shift=payload.shift, produced_kg=payload.produced_kg,

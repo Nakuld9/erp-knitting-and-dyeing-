@@ -102,7 +102,7 @@ def _fabric_stock_split(db: Session, company_id: uuid.UUID) -> tuple[object, obj
         select(FabricRoll.id, FabricRoll.kind).where(FabricRoll.company_id == company_id)
     ).all():
         k = kind.value if isinstance(kind, RollKind) else kind
-        if k == RollKind.FINISHED.value:
+        if k in (RollKind.FINISHED.value, RollKind.DYED.value):
             finished_ids.add(rid)
 
     greige_val = finished_val = ZERO

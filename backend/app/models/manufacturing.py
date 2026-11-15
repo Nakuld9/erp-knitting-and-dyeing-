@@ -5,7 +5,7 @@ import enum
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Column, Date, DateTime, ForeignKey, Integer, String, Table, Text, Uuid
+from sqlalchemy import Column, Date, DateTime, ForeignKey, Index, Integer, String, Table, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.types import Money, Quantity
@@ -15,6 +15,7 @@ from app.models.base import AuditMixin, Base
 class RollKind(str, enum.Enum):
     GREIGE = "GREIGE"
     FINISHED = "FINISHED"
+    DYED = "DYED"        # dyed output (additive; historical FINISHED rows unchanged)
 
 
 class BatchStatus(str, enum.Enum):
@@ -65,11 +66,20 @@ class KnittingProduction(AuditMixin, Base):
 
 class FabricRoll(AuditMixin, Base):
     __tablename__ = "fabric_rolls"
+    # Company-scoped roll identity: a roll_no is unique within a company (NULLs are
+    # distinct, so company-less historical rows are never blocked). Not global —
+    # separate company databases may legitimately reuse a roll_no.
+    __table_args__ = (
+        Index("uq_fabric_rolls_company_roll_no", "company_id", "roll_no", unique=True),
+    )
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"), index=True)
     # factory/branch owner (additive; nullable — backfill is approval-gated)
     factory_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("branches.id"), nullable=True, index=True)
     roll_no: Mapped[str] = mapped_column(String(40), index=True)
+    # Secondary, searchable human-readable reference kept alongside the protected
+    # roll_no (e.g. a dyed roll's "{job}-{lot}"). Nullable; historical rows stay NULL.
+    ref_code: Mapped[str | None] = mapped_column(String(60), nullable=True, index=True)
     barcode: Mapped[str | None] = mapped_column(String(60), nullable=True, index=True)
     kind: Mapped[RollKind] = mapped_column(String(10), default=RollKind.GREIGE)
     knitting_production_id: Mapped[uuid.UUID | None] = mapped_column(
