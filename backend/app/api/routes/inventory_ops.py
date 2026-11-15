@@ -18,7 +18,6 @@ from app.models.inventory import ItemType, StockTransfer
 from app.services import inventory
 from app.services.inventory.service import InsufficientStockError
 from app.services.accounting.posting_engine import fiscal_year_for
-from app.services.manufacturing import roll_ops
 from app.services.sequences import next_document_number
 
 router = APIRouter(prefix="/api/inventory", tags=["inventory-ops"])
@@ -143,21 +142,16 @@ class SplitIn(BaseModel):
     parts: list[SplitPart] = Field(min_length=1)
 
 
-@router.post("/rolls/{roll_id}/split", status_code=status.HTTP_201_CREATED)
+_SPLIT_MERGE_RETIRED = ("Roll split/merge operations are not supported. Roll identity is "
+                        "protected and these legacy operations have been retired.")
+
+
+@router.post("/rolls/{roll_id}/split")
 def split_roll(roll_id: uuid.UUID, payload: SplitIn, db: Session = Depends(get_company_db),
                user: User = Depends(require_permission("greige.manage"))):
-    try:
-        res = roll_ops.split_roll(db, company_id=user.company_id, roll_id=roll_id,
-                                  parts=[p.model_dump() for p in payload.parts], created_by=user.id)
-        db.commit()
-    except roll_ops.RollOpError as exc:
-        db.rollback()
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
-    except InsufficientStockError as exc:
-        db.rollback()
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
-    return {"parent_remaining_kg": str(res["parent_remaining_kg"]), "parent_status": res["parent_status"],
-            "children": [{"roll_no": c["roll_no"], "weight_kg": str(c["weight_kg"])} for c in res["children"]]}
+    """RETIRED (Stage 4A). Roll split is no longer supported; returns 410 Gone and
+    performs no split, no derived Roll ID and no inventory/genealogy change."""
+    raise HTTPException(status.HTTP_410_GONE, _SPLIT_MERGE_RETIRED)
 
 
 class MergeIn(BaseModel):
@@ -165,15 +159,9 @@ class MergeIn(BaseModel):
     new_roll_no: str | None = None
 
 
-@router.post("/rolls/merge", status_code=status.HTTP_201_CREATED)
+@router.post("/rolls/merge")
 def merge_rolls(payload: MergeIn, db: Session = Depends(get_company_db),
                 user: User = Depends(require_permission("greige.manage"))):
-    try:
-        res = roll_ops.merge_rolls(db, company_id=user.company_id, roll_ids=payload.roll_ids,
-                                   new_roll_no=payload.new_roll_no, created_by=user.id)
-        db.commit()
-    except roll_ops.RollOpError as exc:
-        db.rollback()
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
-    return {"merged_roll_no": res["roll_no"], "weight_kg": str(res["weight_kg"]),
-            "cost_value": str(res["cost_value"]), "sources": res["sources"]}
+    """RETIRED (Stage 4A). Roll merge is no longer supported; returns 410 Gone and
+    performs no merge, no derived Roll ID and no inventory/genealogy change."""
+    raise HTTPException(status.HTTP_410_GONE, _SPLIT_MERGE_RETIRED)

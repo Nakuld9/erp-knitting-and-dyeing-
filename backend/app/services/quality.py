@@ -64,6 +64,13 @@ def record_finishing(db: Session, company_id: uuid.UUID, *, process_type, proces
     if fabric_roll_id and pt in FINISHING_PROCESSES:
         roll = db.get(FabricRoll, fabric_roll_id)
         if roll is not None:
+            # Stage 4A: a roll physically in a job worker's custody cannot be
+            # internally finished until its return to company custody is recorded.
+            from app.services.jobwork_custody import JobWorkCustodyError, assert_available_for_use
+            try:
+                assert_available_for_use(db, roll, action="finished")
+            except JobWorkCustodyError as _cust_exc:
+                raise ValueError(str(_cust_exc))
             # Stage 3B: validate the FG destination and quality acceptance BEFORE
             # mutating the roll, so a rejected/rework roll is never finished into
             # finished goods and the move target is a FINISHED_GOODS warehouse.

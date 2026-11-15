@@ -102,47 +102,98 @@ def _roll(db, demo, weight="250"):
     return rolls[0]
 
 
-def test_split_roll_preserves_value(db, demo):
+# Stage 4A: roll split/merge are RETIRED (unsafe legacy operations). They reject
+# every call, create no derived Roll IDs, and change no inventory or genealogy.
+import uuid as _uuid
+
+import pytest
+from sqlalchemy import func, select
+
+from app.models.genealogy import RollGenealogyEdge
+from app.models.manufacturing import FabricRoll
+
+
+def _counts(db, demo):
+    cid = demo["company_id"]
+    rolls = db.execute(select(func.count()).select_from(FabricRoll).where(FabricRoll.company_id == cid)).scalar()
+    edges = db.execute(select(func.count()).select_from(RollGenealogyEdge).where(
+        RollGenealogyEdge.company_id == cid)).scalar()
+    return rolls, edges
+
+
+def test_split_service_rejected_no_side_effects(db, demo):
     parent = _roll(db, demo, "250")
-    before = inventory.balance(db, company_id=demo["company_id"], item_type=ItemType.FABRIC,
-                               item_id=parent.id)["value"]
-    res = roll_ops.split_roll(db, company_id=demo["company_id"], roll_id=parent.id,
-                              parts=[{"weight_kg": "100"}, {"weight_kg": "150"}])
-    db.commit()
-    assert len(res["children"]) == 2
-    db.refresh(parent)
-    assert parent.status == "SPLIT" and parent.weight_kg == Decimal("0.000000")
-    assert before > 0
-    # The parent's stock is fully moved to the children.
-    assert inventory.balance(db, company_id=demo["company_id"], item_type=ItemType.FABRIC,
-                             item_id=parent.id)["value"] == Decimal("0.00")
-    # Value is conserved: the two children together hold the parent's old value.
-    from app.models.manufacturing import FabricRoll
-    children = db.query(FabricRoll).filter(FabricRoll.parent_roll_id == parent.id).all()
-    child_val = sum((inventory.balance(db, company_id=demo["company_id"], item_type=ItemType.FABRIC,
-                     item_id=c.id)["value"] for c in children), Decimal("0"))
-    assert child_val == before
-
-
-def test_split_exceeding_weight_rejected(db, demo):
-    parent = _roll(db, demo, "100")
-    try:
+    rolls0, edges0 = _counts(db, demo)
+    bal0 = inventory.balance(db, company_id=demo["company_id"], item_type=ItemType.FABRIC, item_id=parent.id)["value"]
+    with pytest.raises(roll_ops.RollOpError):
         roll_ops.split_roll(db, company_id=demo["company_id"], roll_id=parent.id,
-                            parts=[{"weight_kg": "80"}, {"weight_kg": "40"}])
-        assert False, "expected RollOpError"
-    except roll_ops.RollOpError:
-        db.rollback()
+                            parts=[{"weight_kg": "100"}, {"weight_kg": "150"}])
+    rolls1, edges1 = _counts(db, demo)
+    assert rolls1 == rolls0 and edges1 == edges0          # no new roll / no genealogy
+    db.refresh(parent)
+    assert parent.status == "ACTIVE" and parent.weight_kg == Decimal("250.000000")   # unchanged
+    assert inventory.balance(db, company_id=demo["company_id"], item_type=ItemType.FABRIC,
+                             item_id=parent.id)["value"] == bal0                      # balance unchanged
+    # no derived "-S" roll was created
+    assert db.execute(select(func.count()).select_from(FabricRoll).where(
+        FabricRoll.roll_no.like(f"{parent.roll_no}-S%"))).scalar() == 0
 
 
-def test_merge_rolls_combines_value(db, demo):
-    r1 = _roll(db, demo, "120")
-    r2 = _roll(db, demo, "130")
-    v1 = inventory.balance(db, company_id=demo["company_id"], item_type=ItemType.FABRIC, item_id=r1.id)["value"]
-    v2 = inventory.balance(db, company_id=demo["company_id"], item_type=ItemType.FABRIC, item_id=r2.id)["value"]
-    res = roll_ops.merge_rolls(db, company_id=demo["company_id"], roll_ids=[r1.id, r2.id])
-    db.commit()
-    assert res["weight_kg"] == Decimal("250.000000")
-    assert res["cost_value"] == v1 + v2                            # value conserved
+def test_merge_service_rejected_no_side_effects(db, demo):
+    r1 = _roll(db, demo, "120"); r2 = _roll(db, demo, "130")
+    rolls0, edges0 = _counts(db, demo)
+    with pytest.raises(roll_ops.RollOpError):
+        roll_ops.merge_rolls(db, company_id=demo["company_id"], roll_ids=[r1.id, r2.id])
+    rolls1, edges1 = _counts(db, demo)
+    assert rolls1 == rolls0 and edges1 == edges0
     db.refresh(r1); db.refresh(r2)
-    assert r1.status == "MERGED" and r2.status == "MERGED"
-    assert inventory.balance(db, company_id=demo["company_id"], item_type=ItemType.FABRIC, item_id=r1.id)["value"] == Decimal("0.00")
+    assert r1.status == "ACTIVE" and r2.status == "ACTIVE"
+    assert db.execute(select(func.count()).select_from(FabricRoll).where(
+        FabricRoll.roll_no.like("%-MRG"))).scalar() == 0
+
+
+def test_split_api_returns_410(client, auth_headers, db, demo):
+    parent = _roll(db, demo, "250")
+    r = client.post(f"/api/inventory/rolls/{parent.id}/split", headers=auth_headers,
+                    json={"parts": [{"weight_kg": "100"}, {"weight_kg": "150"}]})
+    assert r.status_code == 410
+    assert "not supported" in r.json()["detail"].lower()
+
+
+def test_merge_api_returns_410(client, auth_headers, db, demo):
+    r1 = _roll(db, demo, "120"); r2 = _roll(db, demo, "130")
+    r = client.post("/api/inventory/rolls/merge", headers=auth_headers,
+                    json={"roll_ids": [str(r1.id), str(r2.id)]})
+    assert r.status_code == 410
+
+
+def test_custody_roll_cannot_be_split_or_merged(db, demo):
+    from app.models.masters import Supplier
+    from app.services import jobwork_custody as cust
+    from app.services.hybrid import update_process_mode
+    s = db.get(Supplier, demo["supplier_id"]); s.is_job_worker = True; db.flush()
+    update_process_mode(db, demo["company_id"], {"dye_outsourced": True})
+    roll = _roll(db, demo, "100")
+    cust.issue_to_vendor(db, company_id=demo["company_id"], job_worker_id=demo["supplier_id"],
+                         process="DYEING", item_type=ItemType.FABRIC, item_id=roll.id, qty=Decimal("100"),
+                         source_warehouse_id=roll.warehouse_id, fabric_roll_id=roll.id, issue_date=date(2026, 11, 8))
+    db.refresh(roll); custody_wh = roll.warehouse_id
+    with pytest.raises(roll_ops.RollOpError):
+        roll_ops.split_roll(db, company_id=demo["company_id"], roll_id=roll.id, parts=[{"weight_kg": "50"}])
+    with pytest.raises(roll_ops.RollOpError):
+        roll_ops.merge_rolls(db, company_id=demo["company_id"], roll_ids=[roll.id, _roll(db, demo, "60").id])
+    db.refresh(roll)
+    assert roll.warehouse_id == custody_wh               # still in custody, untouched
+
+
+def test_historical_split_merge_records_readable(db, demo):
+    # simulate a historical split: a parent closed SPLIT with a child pointing to it
+    parent = _roll(db, demo, "250")
+    child = FabricRoll(company_id=demo["company_id"], roll_no="HIST-S1", kind=RollKind.GREIGE,
+                       weight_kg=Decimal("250"), parent_roll_id=parent.id, status="ACTIVE")
+    parent.status = "SPLIT"; parent.weight_kg = Decimal("0")
+    db.add(child); db.commit()
+    # historical records remain readable (not deleted or renumbered)
+    got = db.get(FabricRoll, child.id)
+    assert got is not None and got.parent_roll_id == parent.id and got.roll_no == "HIST-S1"
+    assert db.get(FabricRoll, parent.id).status == "SPLIT"
