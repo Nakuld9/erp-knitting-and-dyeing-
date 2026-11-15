@@ -6,7 +6,7 @@ from datetime import date
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -163,6 +163,86 @@ def issue_reconciliation(issue_id: uuid.UUID, db: Session = Depends(get_company_
     if issue is None or issue.company_id != user.company_id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Job-work issue not found")
     return cust.reconciliation(db, issue)
+
+
+class JobWorkBillLineIn(BaseModel):
+    job_work_id: uuid.UUID | None = None
+    job_work_issue_id: uuid.UUID | None = None
+    fabric_roll_id: uuid.UUID | None = None
+    lot_no: str | None = None
+    process: str | None = None
+    qty: Decimal = Decimal("0")
+    uom: str = "KG"
+    weight_kg: Decimal | None = None
+    length_m: Decimal | None = None
+    rate: Decimal = Decimal("0")
+    rate_basis: str = "PER_KG"
+    amount: Decimal | None = None
+    is_disputed: bool = False
+    disputed_amount: Decimal = Decimal("0")
+    narration: str | None = None
+
+
+class JobWorkBillIn(BaseModel):
+    supplier_id: uuid.UUID
+    invoice_no: str
+    invoice_date: date
+    lines: list[JobWorkBillLineIn] = Field(min_length=1)
+    bill_type: str = "INVOICE"
+    process: str | None = None
+    factory_id: uuid.UUID | None = None
+    tax_code_id: uuid.UUID | None = None
+    additional_charges: Decimal = Decimal("0")
+    tds_rate: Decimal = Decimal("0")
+    remarks: str | None = None
+    authorize_over_allocation: bool = False
+
+
+@router.post("/bills", status_code=status.HTTP_201_CREATED)
+def create_jobwork_bill(payload: JobWorkBillIn, db: Session = Depends(get_company_db),
+                        user: User = Depends(require_permission("voucher.create"))):
+    """Enter a job-work vendor bill (DRAFT). Does not post or touch inventory."""
+    from app.services import jobwork_billing as bl
+    try:
+        bill = bl.create_bill(db, company_id=user.company_id, created_by=user.id,
+                              lines=[ln.model_dump() for ln in payload.lines],
+                              **payload.model_dump(exclude={"lines"}))
+        db.commit()
+    except (bl.JobWorkBillError, ValueError) as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    return {"id": str(bill.id), "invoice_no": bill.invoice_no, "taxable_amount": str(bill.taxable_amount),
+            "tds_amount": str(bill.tds_amount), "total_amount": str(bill.total_amount),
+            "status": bill.status.value if hasattr(bill.status, "value") else bill.status}
+
+
+@router.post("/bills/{bill_id}/approve")
+def approve_jobwork_bill(bill_id: uuid.UUID, db: Session = Depends(get_company_db),
+                         user: User = Depends(require_permission("voucher.post"))):
+    """Approve + post a job-work bill to Direct Expenses (reuses the posting engine)."""
+    from app.models.jobwork import JobWorkBill
+    from app.services import jobwork_billing as bl
+    bill = db.get(JobWorkBill, bill_id)
+    if bill is None or bill.company_id != user.company_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Bill not found")
+    try:
+        v = bl.approve_bill(db, bill, created_by=user.id)
+        db.commit()
+    except (bl.JobWorkBillError, ValueError) as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    return {"id": str(bill.id), "status": "APPROVED", "voucher_number": v.number if v else None}
+
+
+@router.get("/issues/{issue_id}/lot-reconciliation")
+def lot_reconciliation_endpoint(issue_id: uuid.UUID, db: Session = Depends(get_company_db),
+                                user: User = Depends(require_permission("report.read"))):
+    """Lot-wise material + billing reconciliation (Stage 3E)."""
+    from app.services import jobwork_billing as bl
+    try:
+        return bl.lot_reconciliation(db, user.company_id, issue_id)
+    except bl.JobWorkBillError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
 
 
 @router.post("/{jw_id}/dispatch")

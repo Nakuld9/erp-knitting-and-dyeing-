@@ -148,6 +148,10 @@ from app.models.einvoice import EInvoice, EInvoiceStatus  # noqa: F401
 from app.models.stores import StoreCategory, StoreItem  # noqa: F401
 from app.models.jobwork import (  # noqa: F401
     JobWork,
+    JobWorkBill,
+    JobWorkBillLine,
+    JobWorkBillStatus,
+    JobWorkBillType,
     JobWorkDirection,
     JobWorkInspection,
     JobWorkIssue,

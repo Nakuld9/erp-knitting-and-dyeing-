@@ -16,8 +16,8 @@ import enum
 import uuid
 from datetime import date
 
-from sqlalchemy import Boolean, Date, ForeignKey, String, Uuid
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import Boolean, Date, ForeignKey, String, UniqueConstraint, Uuid
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.types import Money, Quantity
 from app.models.base import AuditMixin, Base
@@ -184,3 +184,90 @@ class JobWorkReceipt(AuditMixin, Base):
     is_excess: Mapped[bool] = mapped_column(Boolean, default=False)
     authorized_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     posting_reference: Mapped[str | None] = mapped_column(String(120), index=True)
+
+
+class JobWorkBillType(str, enum.Enum):
+    INVOICE = "INVOICE"
+    CREDIT_NOTE = "CREDIT_NOTE"
+    DEBIT_NOTE = "DEBIT_NOTE"
+
+
+class JobWorkBillStatus(str, enum.Enum):
+    DRAFT = "DRAFT"
+    APPROVED = "APPROVED"     # posted to Direct Expenses
+    CANCELLED = "CANCELLED"
+
+
+class JobWorkBill(AuditMixin, Base):
+    """A job worker's (subcontractor's) bill for processing charges. On approval it
+    posts to Direct Expenses through the EXISTING posting engine (Dr Direct Expense
+    + Dr Input GST, Cr TDS Payable, Cr Accounts Payable). It NEVER touches inventory,
+    custody, Roll IDs or outstanding material — billing and custody are separate but
+    linked by the lines. Supports flexible matching (multi-job / multi-lot / partial
+    / consolidated), advance/final invoices and credit/debit notes. No charge or
+    freight is capitalised into inventory cost here."""
+
+    __tablename__ = "job_work_bills"
+    __table_args__ = (
+        UniqueConstraint("company_id", "supplier_id", "bill_type", "invoice_no",
+                         name="uq_jwbill_supplier_invoice"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"), index=True)
+    factory_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("branches.id"), nullable=True, index=True)
+    supplier_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("suppliers.id"), index=True)
+    bill_type: Mapped[JobWorkBillType] = mapped_column(String(12), default=JobWorkBillType.INVOICE, index=True)
+    process: Mapped[str | None] = mapped_column(String(12), nullable=True)   # dominant process (optional)
+    invoice_no: Mapped[str] = mapped_column(String(50), index=True)
+    invoice_date: Mapped[date] = mapped_column(Date, index=True)
+    tax_code_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("tax_codes.id"), nullable=True)
+
+    # amounts (weight & length live on the lines; these are money)
+    service_charge: Mapped[object] = mapped_column(Money, default=0)
+    additional_charges: Mapped[object] = mapped_column(Money, default=0)
+    taxable_amount: Mapped[object] = mapped_column(Money, default=0)
+    cgst: Mapped[object] = mapped_column(Money, default=0)
+    sgst: Mapped[object] = mapped_column(Money, default=0)
+    igst: Mapped[object] = mapped_column(Money, default=0)
+    tds_rate: Mapped[object] = mapped_column(Quantity, default=0)
+    tds_amount: Mapped[object] = mapped_column(Money, default=0)
+    total_amount: Mapped[object] = mapped_column(Money, default=0)   # payable to vendor (gross - TDS)
+
+    status: Mapped[JobWorkBillStatus] = mapped_column(String(12), default=JobWorkBillStatus.DRAFT, index=True)
+    payment_status: Mapped[str] = mapped_column(String(10), default="UNPAID")
+    posting_reference: Mapped[str | None] = mapped_column(String(120), index=True)
+    remarks: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    lines: Mapped[list["JobWorkBillLine"]] = relationship(back_populates="bill", cascade="all, delete-orphan")
+
+
+class JobWorkBillLine(AuditMixin, Base):
+    """One charge line, optionally allocated to a specific job-work order, lot
+    (issue) and/or roll. Many lines bill many lots in one invoice; lines from
+    different bills bill one lot across invoices."""
+
+    __tablename__ = "job_work_bill_lines"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"), index=True)
+    bill_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("job_work_bills.id", ondelete="CASCADE"), index=True)
+    job_work_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("job_works.id"), nullable=True, index=True)
+    job_work_issue_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("job_work_issues.id"), nullable=True, index=True)
+    fabric_roll_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("fabric_rolls.id"), nullable=True, index=True)
+    lot_no: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
+    process: Mapped[str | None] = mapped_column(String(12), nullable=True)
+
+    qty: Mapped[object] = mapped_column(Quantity, default=0)
+    uom: Mapped[str] = mapped_column(String(10), default="KG")
+    weight_kg: Mapped[object | None] = mapped_column(Quantity, nullable=True)
+    length_m: Mapped[object | None] = mapped_column(Quantity, nullable=True)
+    rate: Mapped[object] = mapped_column(Money, default=0)
+    rate_basis: Mapped[str] = mapped_column(String(10), default="PER_KG")   # PER_KG / PER_M / PER_ROLL / LUMPSUM
+    amount: Mapped[object] = mapped_column(Money, default=0)
+
+    is_disputed: Mapped[bool] = mapped_column(Boolean, default=False)
+    disputed_amount: Mapped[object] = mapped_column(Money, default=0)
+    narration: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    bill: Mapped[JobWorkBill] = relationship(back_populates="lines")
