@@ -39,6 +39,7 @@ class WarehouseCategory(str, enum.Enum):
     SEMI_FINISHED = "SEMI_FINISHED"
     FINISHED_GOODS = "FINISHED_GOODS"
     TRADING = "TRADING"
+    VENDOR_CUSTODY = "VENDOR_CUSTODY"   # job worker's custody location (Stage 3C)
 
 
 class ProcessMode(AuditMixin, Base):

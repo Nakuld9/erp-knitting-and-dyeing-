@@ -62,8 +62,10 @@ def update_process_mode(payload: ProcessModeIn,
 
 @router.get("/warehouse-categories")
 def list_warehouse_categories(user: User = Depends(get_current_user)) -> list[str]:
-    """The allowed inventory-stage categories (for UI selectors)."""
-    return [c.value for c in WarehouseCategory]
+    """The allowed inventory-stage categories (for UI selectors). VENDOR_CUSTODY is
+    system-managed (auto-assigned to a job worker's custody warehouse) and is not a
+    manually selectable stage."""
+    return [c.value for c in WarehouseCategory if c != WarehouseCategory.VENDOR_CUSTODY]
 
 
 class CategoryIn(BaseModel):

@@ -149,6 +149,8 @@ from app.models.stores import StoreCategory, StoreItem  # noqa: F401
 from app.models.jobwork import (  # noqa: F401
     JobWork,
     JobWorkDirection,
+    JobWorkIssue,
+    JobWorkIssueStatus,
     JobWorkProcess,
     JobWorkStatus,
 )

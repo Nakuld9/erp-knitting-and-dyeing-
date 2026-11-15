@@ -69,3 +69,50 @@ class JobWork(AuditMixin, Base):
 
     status: Mapped[JobWorkStatus] = mapped_column(String(10), default=JobWorkStatus.OPEN, index=True)
     posting_reference: Mapped[str | None] = mapped_column(String(120), index=True)
+
+
+class JobWorkIssueStatus(str, enum.Enum):
+    """Lifecycle of material issued into a job worker's custody.
+
+    Stage 3C only ever creates OUTSTANDING issues. Receipts/returns/rejections
+    (Stage 3D) will move an issue to RESOLVED; the value is reserved here so the
+    status column is stable across stages."""
+    OUTSTANDING = "OUTSTANDING"
+    RESOLVED = "RESOLVED"
+
+
+class JobWorkIssue(AuditMixin, Base):
+    """Material issued into a job worker's custody (an internal job-work issue
+    challan). The material physically moves — in the authoritative inventory
+    ledger — from a source warehouse into the vendor's custody warehouse; it stays
+    company-owned and valued. This record carries the challan/traceability detail
+    and the vendor-wise outstanding position. It never posts a voucher."""
+
+    __tablename__ = "job_work_issues"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"), index=True)
+    factory_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("branches.id"), nullable=True, index=True)
+    # the job-work order this issue belongs to (optional link)
+    job_work_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("job_works.id"), nullable=True, index=True)
+    job_worker_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("suppliers.id"), index=True)
+    process: Mapped[str] = mapped_column(String(12), index=True)   # JobWorkProcess
+
+    source_warehouse_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("warehouses.id"), nullable=True)
+    custody_warehouse_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("warehouses.id"), index=True)
+
+    # inventory item that moved (ItemType + id); a roll reference where applicable
+    item_type: Mapped[str] = mapped_column(String(12))
+    item_id: Mapped[uuid.UUID] = mapped_column(Uuid, index=True)
+    fabric_roll_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("fabric_rolls.id"), nullable=True, index=True)
+
+    # weight (kg) and length (m) are DISTINCT and never conflated
+    qty: Mapped[object] = mapped_column(Quantity, default=0)
+    uom: Mapped[str] = mapped_column(String(10), default="KG")
+    weight_kg: Mapped[object | None] = mapped_column(Quantity, nullable=True)
+    length_m: Mapped[object | None] = mapped_column(Quantity, nullable=True)
+
+    issue_date: Mapped[date] = mapped_column(Date, index=True)
+    challan_no: Mapped[str] = mapped_column(String(40), index=True)
+    status: Mapped[JobWorkIssueStatus] = mapped_column(String(12), default=JobWorkIssueStatus.OUTSTANDING, index=True)
+    posting_reference: Mapped[str | None] = mapped_column(String(120), index=True)

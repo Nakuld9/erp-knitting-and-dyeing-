@@ -125,6 +125,9 @@ class Supplier(AuditMixin, Base):
     email: Mapped[str | None] = mapped_column(String(200), nullable=True)
     phone: Mapped[str | None] = mapped_column(String(40), nullable=True)
     is_chemical_supplier: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Authorised as a job worker / subcontractor (Stage 3C; additive). Reuses this
+    # same vendor master — no separate job-worker master.
+    is_job_worker: Mapped[bool] = mapped_column(Boolean, default=False)
     payment_term_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("payment_terms.id"), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
@@ -136,6 +139,9 @@ class Warehouse(AuditMixin, Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"), index=True)
     branch_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("branches.id"), nullable=True)
+    # When set, this warehouse is a job worker's custody location (Stage 3C):
+    # company-owned stock physically held at that vendor. Additive; nullable.
+    vendor_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("suppliers.id"), nullable=True, index=True)
     code: Mapped[str] = mapped_column(String(20), index=True)
     name: Mapped[str] = mapped_column(String(120))
     kind: Mapped[str] = mapped_column(String(30), default="STORE")  # STORE / GREIGE / FG / DISPENSING_TANK

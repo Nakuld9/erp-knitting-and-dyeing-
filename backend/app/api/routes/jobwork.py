@@ -60,6 +60,59 @@ def create(payload: JobWorkIn, db: Session = Depends(get_company_db),
     return _out(db, jw)
 
 
+class JobWorkIssueIn(BaseModel):
+    job_worker_id: uuid.UUID
+    process: str                         # KNITTING | DYEING | FINISHING | OTHER
+    item_type: str = "FABRIC"
+    item_id: uuid.UUID
+    qty: Decimal
+    source_warehouse_id: uuid.UUID | None = None
+    fabric_roll_id: uuid.UUID | None = None
+    job_work_id: uuid.UUID | None = None
+    factory_id: uuid.UUID | None = None
+    uom: str = "KG"
+    weight_kg: Decimal | None = None
+    length_m: Decimal | None = None
+    issue_date: date | None = None
+    challan_no: str | None = None
+
+
+@router.post("/issue", status_code=status.HTTP_201_CREATED)
+def issue_to_custody(payload: JobWorkIssueIn, db: Session = Depends(get_company_db),
+                     user: User = Depends(require_permission("voucher.create"))):
+    """Issue material into a job worker's custody (Stage 3C). Company-owned stock
+    moves into the vendor's custody warehouse; no sale, no GL, no new Roll ID."""
+    from app.core.context import FactoryAuthError, authorize_factory
+    from app.services import jobwork_custody as cust
+    from app.services.inventory import InsufficientStockError
+    if payload.factory_id is not None:
+        try:
+            authorize_factory(db, user, payload.factory_id, user.company_id)
+        except FactoryAuthError:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "not authorized for this factory")
+    try:
+        iss = cust.issue_to_vendor(db, company_id=user.company_id, created_by=user.id,
+                                   **payload.model_dump())
+        db.commit()
+    except (cust.JobWorkCustodyError, InsufficientStockError, ValueError) as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    return {"id": str(iss.id), "challan_no": iss.challan_no,
+            "custody_warehouse_id": str(iss.custody_warehouse_id), "qty": str(iss.qty),
+            "status": iss.status.value if hasattr(iss.status, "value") else iss.status}
+
+
+@router.get("/outstanding")
+def jobwork_outstanding(job_worker_id: uuid.UUID | None = None, factory_id: uuid.UUID | None = None,
+                        process: str | None = None, job_work_id: uuid.UUID | None = None,
+                        db: Session = Depends(get_company_db),
+                        user: User = Depends(require_permission("report.read"))):
+    """Vendor-wise outstanding custody position (Stage 3C)."""
+    from app.services import jobwork_custody as cust
+    return cust.vendor_outstanding(db, user.company_id, job_worker_id=job_worker_id,
+                                   factory_id=factory_id, process=process, job_work_id=job_work_id)
+
+
 @router.post("/{jw_id}/dispatch")
 def dispatch(jw_id: uuid.UUID, db: Session = Depends(get_company_db),
              user: User = Depends(require_permission("voucher.create"))):
