@@ -59,6 +59,9 @@ def _grey_order(db, demo, *, code, qty="100", conversion="600"):
 
 
 def _dye_job(db, demo, order, *, number, mode="INTERNAL", costs=None, lots=None, **kw):
+    if mode == "JOBWORK":  # Stage 3A: outsourced dyeing requires dye_outsourced enabled
+        from app.services.hybrid import update_process_mode
+        update_process_mode(db, demo["company_id"], {"dye_outsourced": True})
     job = dyeing.create_job(db, company_id=demo["company_id"], number=number, mode=mode,
                             grey_production_order_id=order.id,
                             jobwork_supplier_id=(demo["supplier_id"] if mode == "JOBWORK" else None))

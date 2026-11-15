@@ -29,7 +29,15 @@ def record_production(
     issue_ref = f"KNIT:{kp.number}:issue"
     existing = pe.find_existing(db, kp.company_id, issue_ref)
     if existing is not None:
+        # Already posted: this is completion/idempotent re-post of in-progress work,
+        # never blocked by process-mode config.
         return {"already_posted": True, "issue_voucher": existing}
+
+    # Hybrid process-mode (Stage 3A): in-house knitting requires knit_internal
+    # enabled. Blocks NEW work only; historical/in-progress postings are unaffected.
+    from app.models.hybrid import Process, WorkMode
+    from app.services import hybrid
+    hybrid.require_mode(db, kp.company_id, Process.KNITTING, WorkMode.INTERNAL)
 
     # 1) Issue yarn from stock (FIFO) -> actual cost. If a specific yarn lot is
     #    set, draw only from that lot so the rolls are traceable to the lot.

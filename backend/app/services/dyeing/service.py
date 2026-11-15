@@ -83,6 +83,13 @@ def create_job(
         raise DyeingError("mode must be INTERNAL or JOBWORK")
     if mode == DyeingMode.JOBWORK.value and jobwork_supplier_id is None:
         raise DyeingError("JOBWORK dyeing requires a jobwork_supplier_id")
+    # Hybrid process-mode (Stage 3A): a new dyeing job requires the matching mode
+    # enabled — INTERNAL->dye_internal, JOBWORK->dye_outsourced. Blocks NEW jobs
+    # only; issuing/output/completion of existing jobs is never blocked.
+    from app.models.hybrid import Process, WorkMode
+    from app.services import hybrid
+    work_mode = WorkMode.OUTSOURCED if mode == DyeingMode.JOBWORK.value else WorkMode.INTERNAL
+    hybrid.require_mode(db, _uid(company_id), Process.DYEING, work_mode)
     job = DyeingJob(
         company_id=_uid(company_id), number=number, mode=mode,
         grey_production_order_id=_uid(grey_production_order_id),

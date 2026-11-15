@@ -59,6 +59,18 @@ def create(db: Session, *, company_id: uuid.UUID, number: str, direction: str, p
     p = JobWorkProcess(process)
     if Decimal(str(qty_kg or 0)) <= 0:
         raise JobWorkError("Quantity (kg) must be positive")
+    # Hybrid process-mode (Stage 3A): a NEW job-work order requires the matching
+    # mode enabled. OUTWARD (we send our fabric out) -> <process>_outsourced;
+    # INWARD (we process others' material in-house) -> <process>_internal.
+    # JobWorkProcess.OTHER has no toggle and is not gated. dispatch()/bill() of an
+    # existing order are never blocked, so in-progress job work always completes.
+    from app.models.hybrid import Process as HProcess, WorkMode
+    from app.services import hybrid
+    _hproc = {JobWorkProcess.KNITTING: HProcess.KNITTING, JobWorkProcess.DYEING: HProcess.DYEING,
+              JobWorkProcess.FINISHING: HProcess.FINISHING}.get(p)
+    if _hproc is not None:
+        _wm = WorkMode.OUTSOURCED if d == JobWorkDirection.OUTWARD else WorkMode.INTERNAL
+        hybrid.require_mode(db, company_id, _hproc, _wm)
     from app.core.tenancy import require_company_record
     from app.models.masters import FabricType, TaxCode
     party_model = Customer if d == JobWorkDirection.INWARD else Supplier

@@ -43,6 +43,9 @@ def test_inward_job_work_bills_income_and_gst(db, demo):
 # -------------------------------- outward -----------------------------------
 
 def test_outward_job_work_books_cost_and_payable(db, demo):
+    # Stage 3A: outward (outsourced) dyeing job-work requires dye_outsourced enabled.
+    from app.services.hybrid import update_process_mode
+    update_process_mode(db, demo["company_id"], {"dye_outsourced": True})
     jw = svc.create(db, company_id=demo["company_id"], number="JW-OUT-1", direction="OUTWARD",
                     process="DYEING", party_id=demo["supplier_id"], order_date=date(2026, 11, 9),
                     qty_kg="1000", rate="20", tax_code_id=demo["tax_id"],

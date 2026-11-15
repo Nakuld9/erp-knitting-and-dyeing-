@@ -146,6 +146,8 @@ def test_dyed_cost_different_saleable_outputs_allocation(db, demo):
 
 def test_jobwork_mode_requires_charge_for_completeness(db, demo):
     order, v = _grey_order(db, demo, code="GR7", qty="40", conversion="200")
+    from app.services.hybrid import update_process_mode  # Stage 3A: enable outsourced dyeing
+    update_process_mode(db, demo["company_id"], {"dye_outsourced": True})
     job = dyeing.create_job(db, company_id=demo["company_id"], number="DJ-4", mode="JOBWORK",
                             grey_production_order_id=order.id, jobwork_supplier_id=demo["supplier_id"])
     dyeing.issue_grey(db, job_id=job.id, source_production_order_id=order.id, qty_kg=Decimal("40"))

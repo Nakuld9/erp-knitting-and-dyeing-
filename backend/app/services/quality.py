@@ -42,6 +42,11 @@ def record_finishing(db: Session, company_id: uuid.UUID, *, process_type, proces
                      shrinkage_pct=None, operator_id=None, remarks=None,
                      created_by=None) -> FinishingTransaction:
     pt = process_type if isinstance(process_type, FinishingProcess) else FinishingProcess(process_type)
+    # Hybrid process-mode (Stage 3A): in-house finishing requires finish_internal
+    # enabled. Blocks NEW finishing transactions only.
+    from app.models.hybrid import Process, WorkMode
+    from app.services import hybrid
+    hybrid.require_mode(db, company_id, Process.FINISHING, WorkMode.INTERNAL)
     if shrinkage_pct is None and input_weight_kg and output_weight_kg:
         iw, ow = Decimal(str(input_weight_kg)), Decimal(str(output_weight_kg))
         if iw > 0:
