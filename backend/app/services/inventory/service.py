@@ -276,6 +276,9 @@ def stock_on_hand(db: Session, company_id: uuid.UUID, *,
         select(FabricType).where(FabricType.company_id == company_id)).scalars()}
     store = {s.id: (s.code, s.name) for s in db.execute(
         select(StoreItem).where(StoreItem.company_id == company_id)).scalars()}
+    from app.models.trading import TradingFabricItem
+    trading = {t.id: (t.code, t.name) for t in db.execute(
+        select(TradingFabricItem).where(TradingFabricItem.company_id == company_id)).scalars()}
     whs = {w.id: (w.code, w.name, w.branch_id) for w in db.execute(
         select(Warehouse).where(Warehouse.company_id == company_id)).scalars()}
 
@@ -291,6 +294,11 @@ def stock_on_hand(db: Session, company_id: uuid.UUID, *,
         elif it == ItemType.STORE.value:
             code, name = store.get(ly.item_id, ("", "Store item"))
             gid = ("STORE", str(ly.item_id))
+        elif it == ItemType.TRADING_FABRIC.value:
+            # Trading fabric is aggregate and has its OWN SKU identity — never
+            # collapsed into manufactured greige/finished grouping.
+            code, name = trading.get(ly.item_id, ("", "Trading fabric"))
+            gid = ("TRADING_FABRIC", str(ly.item_id))
         else:  # FABRIC — collapse rolls into type + kind
             ft, kind = rolls.get(ly.item_id, (None, "GREIGE"))
             kind = kind.value if hasattr(kind, "value") else (kind or "GREIGE")

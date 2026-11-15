@@ -40,6 +40,7 @@ from app.api.routes import (
     rolls,
     stores,
     tenancy,
+    trading,
     transfers,
     vouchers,
 )
@@ -88,6 +89,7 @@ app.include_router(ewaybill.router)
 app.include_router(jobwork.router)
 app.include_router(stores.router)
 app.include_router(tenancy.router)
+app.include_router(trading.router)
 app.include_router(transfers.router)
 app.include_router(branding.router)
 app.include_router(printing.router)

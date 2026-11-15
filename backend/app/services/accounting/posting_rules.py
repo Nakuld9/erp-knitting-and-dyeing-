@@ -90,6 +90,52 @@ DEFAULT_RULES: dict[str, dict[str, str]] = {
 }
 
 
+# --- Trading-fabric posting slots (Stage 4B-1: declared, NOT configured) -----
+#
+# Trading purchases and sales must post to their OWN control/COGS accounts, kept
+# separate from manufactured greige (1070) / finished (1085) / COGS (5150). The
+# actual account codes are a CA/business decision and are NOT seeded here: these
+# event types are intentionally ABSENT from DEFAULT_RULES, so until a company
+# configures PostingRule rows for them, `resolve_account` raises (no silent
+# fall-back to a manufactured-fabric account). This declaration lists the slots a
+# future stage will require, purely so configuration can be validated up front.
+# No voucher is posted in this stage.
+TRADING_EVENT_SLOTS: dict[str, tuple[str, ...]] = {
+    "TRADING_GRN": ("inventory", "input_cgst", "input_sgst", "input_igst", "payable"),
+    "TRADING_DELIVERY": ("cogs", "inventory"),
+    "TRADING_PURCHASE_RETURN": ("payable", "inventory", "input_cgst", "input_sgst", "input_igst"),
+    "TRADING_SALES_RETURN": ("cogs", "inventory"),
+    "TRADING_ADJUSTMENT": ("adjustment", "inventory"),
+}
+
+
+def trading_rule_slots(event_type: str) -> tuple[str, ...]:
+    """The slots a trading event requires. Raises KeyError for a non-trading event."""
+    return TRADING_EVENT_SLOTS[event_type]
+
+
+def trading_rules_configured(db: Session, company_id: uuid.UUID) -> dict[str, dict[str, bool]]:
+    """Report, per trading event/slot, whether a company PostingRule is configured.
+
+    No defaults exist for trading events, so an unconfigured slot has no account.
+    This lets a future stage (or an admin screen) see exactly which CA-approved
+    account codes still need to be set before trading posting can be enabled. It
+    reads only; it configures nothing.
+    """
+    out: dict[str, dict[str, bool]] = {}
+    for event_type, slots in TRADING_EVENT_SLOTS.items():
+        configured = {
+            code for code in db.execute(
+                select(PostingRule.role).where(
+                    PostingRule.company_id == company_id,
+                    PostingRule.event_type == event_type,
+                )
+            ).scalars()
+        }
+        out[event_type] = {slot: (slot in configured) for slot in slots}
+    return out
+
+
 def resolve_account(db: Session, company_id: uuid.UUID, event_type: str, slot: str) -> str:
     row = db.execute(
         select(PostingRule.account_code).where(

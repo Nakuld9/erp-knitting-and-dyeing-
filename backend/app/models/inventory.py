@@ -25,8 +25,13 @@ from app.models.base import AuditMixin, Base
 class ItemType(str, enum.Enum):
     CHEMICAL = "CHEMICAL"   # chemicals and dyes (chemicals.id)
     YARN = "YARN"           # yarn_masters.id
-    FABRIC = "FABRIC"       # fabric_rolls.id (greige/finished)
+    FABRIC = "FABRIC"       # fabric_rolls.id (greige/finished) — MANUFACTURED fabric only
     STORE = "STORE"         # store_items.id (needles, spares, packing aids)
+    # Trading fabric: purchased-for-resale, aggregate-only (trading_fabric_items.id).
+    # A SEPARATE identity from manufactured FABRIC — never a FabricRoll, lot or
+    # genealogy. The stored value is kept to 12 chars so it fits the existing
+    # item_type String(12) columns with no alteration to the inventory tables.
+    TRADING_FABRIC = "TRADE_FABRIC"
 
 
 class MoveDirection(str, enum.Enum):
