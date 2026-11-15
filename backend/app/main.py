@@ -109,6 +109,16 @@ def _ownership_handler(request: Request, exc: CompanyOwnershipError):
     return JSONResponse(status_code=422, content={"detail": str(exc)})
 
 
+from app.services.hybrid import HybridConfigError  # noqa: E402
+
+
+@app.exception_handler(HybridConfigError)
+def _hybrid_config_handler(request: Request, exc: HybridConfigError):
+    """A disabled process-mode or an incompatible warehouse stage for a NEW
+    manufacturing transaction → 422 (a clear, safe validation error)."""
+    return JSONResponse(status_code=422, content={"detail": str(exc)})
+
+
 @app.get("/health", tags=["system"])
 def health() -> dict:
     """Liveness: the process is up and serving."""

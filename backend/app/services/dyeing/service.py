@@ -321,6 +321,16 @@ def complete_job(
         # order-delivery/dispatch/COGS path. The roll IS the inventory item
         # (item_id = roll.id); DyeingOutput.dyed_item_id links back to it.
         if o.dyed_item_id is None or db.get(FabricRoll, o.dyed_item_id) is None:
+            # Stage 3B: accepted dyed output may only be received into a
+            # SEMI_FINISHED warehouse (when the chosen warehouse is categorised).
+            dest_wh = _uid(warehouse_id) or o.warehouse_id
+            from app.models.hybrid import WarehouseCategory
+            from app.services import hybrid as _hybrid
+            try:
+                _hybrid.require_warehouse_stage(db, job.company_id, dest_wh,
+                                                WarehouseCategory.SEMI_FINISHED, factory_id=job.factory_id)
+            except _hybrid.HybridConfigError as e:
+                raise DyeingError(str(e))
             # Protected, company-scoped dyed Roll ID; the human "{job}-{lot}" is
             # preserved as a separate searchable reference (ref_code). kind=DYED
             # distinguishes dyed output from greige/finished (Stage-2 req 3 & 5).

@@ -83,6 +83,38 @@ def require_mode(db: Session, company_id: uuid.UUID, process: Process, mode: Wor
             "for this company; enable it in configuration before creating new work.")
 
 
+def require_warehouse_stage(db: Session, company_id: uuid.UUID, warehouse_id: uuid.UUID | None,
+                            expected: WarehouseCategory, *, factory_id: uuid.UUID | None = None):
+    """Validate a destination warehouse for a NEW manufacturing-stage receipt.
+
+    Rules (Stage 3B):
+    * A ``None`` warehouse is permitted (unspecified / legacy) and returns None —
+      the stage behaves as before.
+    * The warehouse must belong to ``company_id`` (cross-company is always
+      rejected), and, when a ``factory_id`` is given and the warehouse is tied to
+      a factory, it must be that factory (cross-factory is rejected).
+    * The category is enforced ONLY when the warehouse has one set: a warehouse
+      explicitly categorised for a different stage is rejected with a clear error.
+      An un-categorised (legacy) warehouse is allowed so existing operations never
+      break. Historical rolls are never reclassified by this check.
+    """
+    if warehouse_id is None:
+        return None
+    wh = db.get(Warehouse, warehouse_id)
+    if wh is None or wh.company_id != company_id:
+        raise HybridConfigError("Destination warehouse not found in the active company")
+    if factory_id is not None and wh.branch_id is not None and wh.branch_id != factory_id:
+        raise HybridConfigError(
+            f"Warehouse '{wh.code}' belongs to a different factory; select a warehouse "
+            "in this factory for this stage.")
+    want = WarehouseCategory(expected).value
+    if wh.category and wh.category != want:
+        raise HybridConfigError(
+            f"Warehouse '{wh.code}' is a {wh.category} warehouse; this stage requires a "
+            f"{want} warehouse. Select an authorised {want} warehouse.")
+    return wh
+
+
 def set_warehouse_category(db: Session, company_id: uuid.UUID, warehouse_id: uuid.UUID,
                            category: str | None, updated_by: uuid.UUID | None = None) -> Warehouse:
     """Set (or clear) a warehouse's inventory-stage category. Validates the value;

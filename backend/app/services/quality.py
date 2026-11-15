@@ -40,7 +40,7 @@ def record_finishing(db: Session, company_id: uuid.UUID, *, process_type, proces
                      fabric_roll_id=None, dye_batch_id=None, machine_id=None,
                      input_weight_kg=None, output_weight_kg=None, width_cm=None, gsm=None,
                      shrinkage_pct=None, operator_id=None, remarks=None,
-                     created_by=None) -> FinishingTransaction:
+                     fg_warehouse_id=None, created_by=None) -> FinishingTransaction:
     pt = process_type if isinstance(process_type, FinishingProcess) else FinishingProcess(process_type)
     # Hybrid process-mode (Stage 3A): in-house finishing requires finish_internal
     # enabled. Blocks NEW finishing transactions only.
@@ -64,6 +64,18 @@ def record_finishing(db: Session, company_id: uuid.UUID, *, process_type, proces
     if fabric_roll_id and pt in FINISHING_PROCESSES:
         roll = db.get(FabricRoll, fabric_roll_id)
         if roll is not None:
+            # Stage 3B: validate the FG destination and quality acceptance BEFORE
+            # mutating the roll, so a rejected/rework roll is never finished into
+            # finished goods and the move target is a FINISHED_GOODS warehouse.
+            if fg_warehouse_id is not None:
+                from app.models.hybrid import WarehouseCategory
+                hybrid.require_warehouse_stage(db, company_id, fg_warehouse_id,
+                                               WarehouseCategory.FINISHED_GOODS, factory_id=roll.factory_id)
+                q = (roll.quality_status or "").upper()
+                if q in ("REJECT", "REWORK"):
+                    raise ValueError(
+                        f"Roll {roll.roll_no} is {q}; a rejected/rework roll cannot be received "
+                        "into finished goods.")
             was_greige = (roll.kind == RollKind.GREIGE or roll.kind == RollKind.GREIGE.value)
             roll.kind = RollKind.FINISHED
             if width_cm is not None:
@@ -80,8 +92,28 @@ def record_finishing(db: Session, company_id: uuid.UUID, *, process_type, proces
             roll_genealogy.record_finishing(
                 db, roll, input_weight_kg=input_weight_kg, output_weight_kg=output_weight_kg,
                 production_ref=ft.number, recorded_by=created_by)
+            # Stage 3B: physically move the accepted roll into the FG warehouse and
+            # keep roll.warehouse_id authoritative. GL-neutral (transfer_stock only
+            # moves the warehouse dimension); the greige->FG value transfer above is
+            # the separate accounting entry.
+            if fg_warehouse_id is not None and roll.warehouse_id != fg_warehouse_id:
+                _move_roll_to_warehouse(db, company_id, roll, fg_warehouse_id)
     db.flush()
     return ft
+
+
+def _move_roll_to_warehouse(db: Session, company_id, roll: FabricRoll, to_warehouse_id) -> None:
+    """Move a roll's remaining fabric stock into ``to_warehouse_id`` and sync the
+    roll's authoritative current location. Uses the inventory ledger (no new
+    movement table, no GL value change). A roll with no remaining stock just has
+    its location pointer updated."""
+    bal = inventory.balance(db, company_id=company_id, item_type=ItemType.FABRIC, item_id=roll.id)
+    qty = bal["qty_on_hand"]
+    if qty and qty > 0:
+        inventory.transfer_stock(db, company_id=company_id, item_type=ItemType.FABRIC, item_id=roll.id,
+                                 from_warehouse_id=roll.warehouse_id, to_warehouse_id=to_warehouse_id,
+                                 qty=qty, source_module="finishing_fg_move", source_id=str(roll.id))
+    roll.warehouse_id = to_warehouse_id
 
 
 def _transfer_greige_to_fg(db: Session, company_id, roll: FabricRoll, process_date: date, created_by):

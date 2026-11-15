@@ -150,6 +150,14 @@ def receive_transfer(db: Session, transfer_id: uuid.UUID, company_id: uuid.UUID,
                 qty=accepted, unit_cost=t.unit_cost, warehouse_id=t.to_warehouse_id,
                 event_type="FACTORY_TRANSFER_IN", source_module="factory_transfer",
                 source_id=str(t.id))
+        # Stage 3B: a fabric roll's authoritative current location must follow the
+        # stock. When the transferred item is a FabricRoll, move its warehouse
+        # pointer to the destination so header and ledger cannot diverge.
+        if ItemType(t.item_type) == ItemType.FABRIC:
+            from app.models.manufacturing import FabricRoll
+            roll = db.get(FabricRoll, t.item_id)
+            if roll is not None and roll.company_id == company_id:
+                roll.warehouse_id = t.to_warehouse_id
     t.received_qty = recv
     t.rejected_qty = rej
     t.shortage_qty = dispatched - recv

@@ -86,8 +86,14 @@ def record_production(
     roll_identity.assert_factory_in_company(db, company_id=kp.company_id, factory_id=kp.factory_id)
     event_group_id = uuid.uuid4()
 
+    from app.models.hybrid import WarehouseCategory
     rolls = []
     for spec in roll_specs:
+        # Stage 3B: a new greige roll may only be received into a GREIGE warehouse
+        # (when the chosen warehouse is categorised). Legacy/uncategorised and
+        # unspecified warehouses are unchanged.
+        hybrid.require_warehouse_stage(db, kp.company_id, spec.get("warehouse_id"),
+                                       WarehouseCategory.GREIGE, factory_id=kp.factory_id)
         # Protected identity (Stage-2 requirement 3): a caller-supplied roll_no is
         # honoured only on this trusted service path (seeding / authorised import /
         # migration). The web API never forwards a client roll_no, so web output is
