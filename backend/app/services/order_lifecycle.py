@@ -262,6 +262,13 @@ def create_delivery(
             raise LifecycleError(f"Roll {rid} not found")
         if roll.delivery_note_id is not None:
             raise LifecycleError(f"Roll {roll.roll_no} is already dispatched")
+        # Stage 3D: a roll in a job worker's custody cannot be dispatched until its
+        # return to company custody is recorded.
+        from app.services.jobwork_custody import JobWorkCustodyError, assert_available_for_use
+        try:
+            assert_available_for_use(db, roll, action="dispatched")
+        except JobWorkCustodyError as exc:
+            raise LifecycleError(str(exc))
         rolls.append(roll)
 
     dn = DeliveryNote(company_id=company_id, customer_id=customer_id,

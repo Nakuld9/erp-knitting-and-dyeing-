@@ -16,7 +16,7 @@ import enum
 import uuid
 from datetime import date
 
-from sqlalchemy import Date, ForeignKey, String, Uuid
+from sqlalchemy import Boolean, Date, ForeignKey, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.types import Money, Quantity
@@ -74,11 +74,18 @@ class JobWork(AuditMixin, Base):
 class JobWorkIssueStatus(str, enum.Enum):
     """Lifecycle of material issued into a job worker's custody.
 
-    Stage 3C only ever creates OUTSTANDING issues. Receipts/returns/rejections
-    (Stage 3D) will move an issue to RESOLVED; the value is reserved here so the
-    status column is stable across stages."""
+    OUTSTANDING -> PARTIALLY_RECEIVED (some input accounted) -> CLOSED (all input
+    accounted). RESOLVED is kept as a legacy alias of CLOSED for stability."""
     OUTSTANDING = "OUTSTANDING"
+    PARTIALLY_RECEIVED = "PARTIALLY_RECEIVED"
+    CLOSED = "CLOSED"
     RESOLVED = "RESOLVED"
+
+
+class JobWorkInspection(str, enum.Enum):
+    ACCEPT = "ACCEPT"
+    REWORK = "REWORK"
+    REJECT = "REJECT"
 
 
 class JobWorkIssue(AuditMixin, Base):
@@ -114,5 +121,66 @@ class JobWorkIssue(AuditMixin, Base):
 
     issue_date: Mapped[date] = mapped_column(Date, index=True)
     challan_no: Mapped[str] = mapped_column(String(40), index=True)
-    status: Mapped[JobWorkIssueStatus] = mapped_column(String(12), default=JobWorkIssueStatus.OUTSTANDING, index=True)
+    status: Mapped[JobWorkIssueStatus] = mapped_column(String(18), default=JobWorkIssueStatus.OUTSTANDING, index=True)
+    posting_reference: Mapped[str | None] = mapped_column(String(120), index=True)
+
+    # Reconciliation running totals (Stage 3D). Input disposition:
+    #   issued qty = resolved_input_qty + remaining_outstanding, where
+    #   resolved_input_qty = accepted + returned + rejected + loss + shortage.
+    # kg and metres are tracked independently and never converted.
+    resolved_input_qty: Mapped[object] = mapped_column(Quantity, default=0)
+    accepted_output_qty: Mapped[object] = mapped_column(Quantity, default=0)
+    returned_qty: Mapped[object] = mapped_column(Quantity, default=0)
+    rejected_qty: Mapped[object] = mapped_column(Quantity, default=0)
+    process_loss_qty: Mapped[object] = mapped_column(Quantity, default=0)
+    shortage_qty: Mapped[object] = mapped_column(Quantity, default=0)
+
+
+class JobWorkReceipt(AuditMixin, Base):
+    """One receipt event against a :class:`JobWorkIssue`. An issue may have many
+    receipts (partial receipts). Each records its own date, quantities (input
+    disposition + accepted output), weight/length, inspection result, the output
+    roll (new or the same preserved roll) and audit. It never posts a voucher;
+    accepted output and unprocessed returns move via the inventory ledger
+    (GL-neutral). Recorded loss/rejection/shortage are reconciliation quantities
+    whose inventory write-off is deferred (no accounting-policy change here)."""
+
+    __tablename__ = "job_work_receipts"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"), index=True)
+    factory_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("branches.id"), nullable=True, index=True)
+    job_work_issue_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("job_work_issues.id"), index=True)
+    job_work_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("job_works.id"), nullable=True, index=True)
+    job_worker_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("suppliers.id"), index=True)
+    process: Mapped[str] = mapped_column(String(12), index=True)
+
+    receipt_date: Mapped[date] = mapped_column(Date, index=True)
+    challan_no: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
+
+    # input disposition (reconciles against the issue's input qty)
+    input_resolved_qty: Mapped[object] = mapped_column(Quantity, default=0)
+    accepted_input_qty: Mapped[object] = mapped_column(Quantity, default=0)
+    returned_qty: Mapped[object] = mapped_column(Quantity, default=0)
+    rejected_qty: Mapped[object] = mapped_column(Quantity, default=0)
+    rework_qty: Mapped[object] = mapped_column(Quantity, default=0)
+    process_loss_qty: Mapped[object] = mapped_column(Quantity, default=0)
+    shortage_qty: Mapped[object] = mapped_column(Quantity, default=0)
+
+    # accepted OUTPUT (separate; weight & length independent, never converted)
+    accepted_output_qty: Mapped[object] = mapped_column(Quantity, default=0)
+    output_weight_kg: Mapped[object | None] = mapped_column(Quantity, nullable=True)
+    output_length_m: Mapped[object | None] = mapped_column(Quantity, nullable=True)
+    uom: Mapped[str] = mapped_column(String(10), default="KG")
+
+    inspection_result: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    # lineage: the original roll issued, and the accepted output roll (new, or the
+    # same preserved roll when returned without transformation)
+    source_roll_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("fabric_rolls.id"), nullable=True, index=True)
+    output_roll_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("fabric_rolls.id"), nullable=True, index=True)
+    output_warehouse_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("warehouses.id"), nullable=True)
+    return_warehouse_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("warehouses.id"), nullable=True)
+
+    is_excess: Mapped[bool] = mapped_column(Boolean, default=False)
+    authorized_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
     posting_reference: Mapped[str | None] = mapped_column(String(120), index=True)

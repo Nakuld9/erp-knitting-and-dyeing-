@@ -113,6 +113,58 @@ def jobwork_outstanding(job_worker_id: uuid.UUID | None = None, factory_id: uuid
                                    factory_id=factory_id, process=process, job_work_id=job_work_id)
 
 
+class JobWorkReceiptIn(BaseModel):
+    job_work_issue_id: uuid.UUID
+    receipt_date: date | None = None
+    challan_no: str | None = None
+    accepted_input: Decimal = Decimal("0")
+    accepted_output_qty: Decimal | None = None
+    output_weight_kg: Decimal | None = None
+    output_length_m: Decimal | None = None
+    returned_qty: Decimal = Decimal("0")
+    rejected_qty: Decimal = Decimal("0")
+    rework_qty: Decimal = Decimal("0")
+    process_loss: Decimal = Decimal("0")
+    shortage_qty: Decimal = Decimal("0")
+    output_warehouse_id: uuid.UUID | None = None
+    return_warehouse_id: uuid.UUID | None = None
+    preserve_roll_id: uuid.UUID | None = None
+    inspection_result: str | None = None
+    authorize_excess: bool = False
+
+
+@router.post("/receipt", status_code=status.HTTP_201_CREATED)
+def receive_from_custody(payload: JobWorkReceiptIn, db: Session = Depends(get_company_db),
+                         user: User = Depends(require_permission("voucher.create"))):
+    """Record a (partial or full) receipt against a job-work issue (Stage 3D)."""
+    from app.services import jobwork_custody as cust
+    from app.services.inventory import InsufficientStockError
+    try:
+        r = cust.receive_from_vendor(db, company_id=user.company_id, created_by=user.id,
+                                     **payload.model_dump())
+        db.commit()
+    except (cust.JobWorkCustodyError, InsufficientStockError, ValueError) as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    return {"id": str(r.id), "job_work_issue_id": str(r.job_work_issue_id),
+            "input_resolved_qty": str(r.input_resolved_qty),
+            "accepted_output_qty": str(r.accepted_output_qty),
+            "output_roll_id": str(r.output_roll_id) if r.output_roll_id else None,
+            "is_excess": r.is_excess}
+
+
+@router.get("/issues/{issue_id}/reconciliation")
+def issue_reconciliation(issue_id: uuid.UUID, db: Session = Depends(get_company_db),
+                         user: User = Depends(require_permission("report.read"))):
+    """Input reconciliation for one issue (Stage 3D)."""
+    from app.models.jobwork import JobWorkIssue
+    from app.services import jobwork_custody as cust
+    issue = db.get(JobWorkIssue, issue_id)
+    if issue is None or issue.company_id != user.company_id:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Job-work issue not found")
+    return cust.reconciliation(db, issue)
+
+
 @router.post("/{jw_id}/dispatch")
 def dispatch(jw_id: uuid.UUID, db: Session = Depends(get_company_db),
              user: User = Depends(require_permission("voucher.create"))):

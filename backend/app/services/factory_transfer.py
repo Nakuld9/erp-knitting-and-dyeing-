@@ -70,6 +70,18 @@ def create_transfer_request(db: Session, *, company_id: uuid.UUID, item_type: It
     if src.branch_id == dst.branch_id:
         raise TransferError("A factory transfer requires two different factories; "
                             "use a plain warehouse transfer within one factory")
+    # Stage 3D: a fabric roll in a job worker's custody cannot be transferred until
+    # its return is recorded.
+    it = item_type.value if isinstance(item_type, ItemType) else item_type
+    if it == ItemType.FABRIC.value:
+        from app.models.manufacturing import FabricRoll
+        from app.services.jobwork_custody import JobWorkCustodyError, assert_available_for_use
+        roll = db.get(FabricRoll, item_id)
+        if roll is not None:
+            try:
+                assert_available_for_use(db, roll, action="transferred")
+            except JobWorkCustodyError as exc:
+                raise TransferError(str(exc))
     tdate = transfer_date or date.today()
     number = next_document_number(db, company_id=company_id, doc_type="FTR",
                                   fiscal_year=fiscal_year_for(tdate), prefix="FTR")
