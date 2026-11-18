@@ -103,6 +103,11 @@ DEFAULT_RULES: dict[str, dict[str, str]] = {
 TRADING_EVENT_SLOTS: dict[str, tuple[str, ...]] = {
     "TRADING_GRN": ("inventory", "input_cgst", "input_sgst", "input_igst", "payable"),
     "TRADING_DELIVERY": ("cogs", "inventory"),
+    # Trading sales invoice revenue recognition (Stage 4B-3A.1c.2): customer
+    # receivable, trading sales revenue and output GST. ABSENT from DEFAULT_RULES,
+    # so posting is fail-closed until a CA configures these company accounts; no
+    # fall-back to the manufactured SALES_INVOICE revenue account.
+    "TRADING_SALES": ("receivable", "sales", "output_cgst", "output_sgst", "output_igst"),
     "TRADING_PURCHASE_RETURN": ("payable", "inventory", "input_cgst", "input_sgst", "input_igst"),
     "TRADING_SALES_RETURN": ("cogs", "inventory"),
     "TRADING_ADJUSTMENT": ("adjustment", "inventory"),

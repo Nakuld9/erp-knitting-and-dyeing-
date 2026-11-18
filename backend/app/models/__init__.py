@@ -66,6 +66,8 @@ from app.models.trading import (  # noqa: F401
     TradingDispatchLine,
     TradingDispatchStatus,
     TradingDispatchFifoAllocation,
+    TradingAllocationStatus,
+    TradingDispatchInvoiceAllocation,
 )
 from app.models.hybrid import (  # noqa: F401
     Process,

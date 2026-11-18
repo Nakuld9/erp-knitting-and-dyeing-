@@ -368,6 +368,10 @@ class TradingDispatchLine(AuditMixin, Base):
     description: Mapped[str | None] = mapped_column(String(200), nullable=True)
     # Actual FIFO cost of goods sold for this line, set only on APPROVED.
     cogs_value: Mapped[object] = mapped_column(Money, default=0)
+    # Stage 4B-3A.1c.1 (additive): cumulative invoiced quantity (convenience
+    # counter). Authoritative uninvoiced = quantity minus the sum of ACTIVE
+    # TradingDispatchInvoiceAllocation rows; the two are reconciled at invoicing.
+    qty_invoiced: Mapped[object] = mapped_column(Quantity, default=0)
 
     dispatch: Mapped[TradingDispatch] = relationship(back_populates="lines")
 
@@ -395,3 +399,38 @@ class TradingDispatchFifoAllocation(AuditMixin, Base):
     total_cost: Mapped[object] = mapped_column(Money, default=0)
 
     dispatch: Mapped[TradingDispatch] = relationship(back_populates="allocations")
+
+
+# ===========================================================================
+# Trading dispatch -> invoice quantity allocation (Stage 4B-3A.1c.1)
+# ===========================================================================
+
+class TradingAllocationStatus(str, enum.Enum):
+    ACTIVE = "ACTIVE"       # counts against the dispatch line's uninvoiced quantity
+    RELEASED = "RELEASED"   # the draft invoice was cancelled; evidence retained
+
+
+class TradingDispatchInvoiceAllocation(AuditMixin, Base):
+    """Quantity-level link between a trading sales-invoice line and the dispatch
+    line it bills. One row per invoice line (one invoice line == one dispatch
+    line). Only ACTIVE rows count against a dispatch line's uninvoiced quantity;
+    cancelling a draft invoice RELEASES its rows (evidence is retained, never
+    deleted). No stock or accounting is touched by allocation.
+    """
+
+    __tablename__ = "trading_dispatch_invoice_allocations"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"), index=True)
+    invoice_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("sales_invoices.id", ondelete="CASCADE"), index=True)
+    invoice_line_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("sales_invoice_lines.id", ondelete="CASCADE"), index=True)
+    dispatch_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("trading_dispatches.id"), index=True)
+    dispatch_line_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("trading_dispatch_lines.id"), index=True)
+    quantity_allocated: Mapped[object] = mapped_column(Quantity, default=0)
+    uom_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("units_of_measure.id"), nullable=True)
+    status: Mapped[str] = mapped_column(String(10), default=TradingAllocationStatus.ACTIVE.value, index=True)
+    released_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

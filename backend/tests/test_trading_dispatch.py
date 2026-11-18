@@ -265,11 +265,10 @@ def test_lifecycle_moves_no_stock_and_posts_nothing(db, demo):
     assert ts.get_trading_so(db, cid, so.id).lines[0].qty_dispatched == D("0.000000")
 
 
-def test_no_reserved_or_invoice_or_fifo_ref_columns():
-    # 4B-3A.1b.2 adds cogs_value to the line (set only on approval); it must NOT
-    # introduce reservations, invoice allocation (that is 1c), or a per-line FIFO
-    # layer/posting reference (FIFO evidence lives in a separate allocations table).
+def test_no_reserved_or_fifo_ref_columns():
+    # The dispatch line carries cogs_value (1b.2) and qty_invoiced (1c.1 invoice
+    # allocation counter). It must NOT introduce stock reservations or a per-line
+    # FIFO layer/posting reference (FIFO evidence lives in a separate table).
     cols = {c.name for c in TradingDispatchLine.__table__.columns}
     assert not any("reserv" in c.lower() for c in cols)
-    assert "qty_invoiced" not in cols
     assert "layer_id" not in cols and "posting_reference" not in cols

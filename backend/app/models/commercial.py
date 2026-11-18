@@ -183,6 +183,11 @@ class SalesInvoice(AuditMixin, Base):
     tax_amount: Mapped[object] = mapped_column(Money, default=0)
     total_value: Mapped[object] = mapped_column(Money, default=0)
     posting_reference: Mapped[str | None] = mapped_column(String(120), index=True)
+    # Stage 4B-3A.1c.1 (additive): stream discriminator. New rows default to
+    # MANUFACTURED (set via the Python default without changing the manufactured
+    # route); trading invoices set TRADING. Historical rows remain NULL.
+    source: Mapped[str | None] = mapped_column(String(16), default="MANUFACTURED")
+    factory_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("branches.id"), nullable=True, index=True)
 
     lines: Mapped[list["SalesInvoiceLine"]] = relationship(
         back_populates="invoice", cascade="all, delete-orphan"
@@ -200,6 +205,10 @@ class SalesInvoiceLine(AuditMixin, Base):
     rate: Mapped[object] = mapped_column(Money, default=0)
     amount: Mapped[object] = mapped_column(Money, default=0)
     tax_code_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("tax_codes.id"), nullable=True)
+    # Stage 4B-3A.1c.1 (additive, trading only; NULL for manufactured lines):
+    trading_item_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("trading_fabric_items.id"), nullable=True)
+    discount: Mapped[object] = mapped_column(Money, default=0)
+    uom_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("units_of_measure.id"), nullable=True)
 
     invoice: Mapped[SalesInvoice] = relationship(back_populates="lines")
 
