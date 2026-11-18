@@ -224,3 +224,66 @@ class TradingGRNLine(AuditMixin, Base):
     remarks: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     grn: Mapped[TradingGRN] = relationship(back_populates="lines")
+
+
+# ===========================================================================
+# Trading sales order (Stage 4B-3A.1a)
+# ===========================================================================
+
+class TradingSOStatus(str, enum.Enum):
+    DRAFT = "DRAFT"
+    APPROVED = "APPROVED"       # authorised for future dispatch
+    PARTIAL = "PARTIAL"         # set only by a future dispatch stage (not here)
+    COMPLETED = "COMPLETED"     # set only by a future dispatch stage (not here)
+    CANCELLED = "CANCELLED"
+
+
+class TradingSalesOrder(AuditMixin, Base):
+    """A customer sales order for trading fabric. Creating or approving it moves
+    NO stock and posts NO accounting — it only records intent. Dispatch, COGS and
+    invoicing are later, separately-approved stages.
+    """
+
+    __tablename__ = "trading_sales_orders"
+    __table_args__ = (
+        UniqueConstraint("company_id", "order_number", name="uq_trading_so_company_number"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"), index=True)
+    customer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("customers.id"), index=True)
+    factory_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("branches.id"), nullable=True, index=True)
+    order_number: Mapped[str] = mapped_column(String(40), index=True)
+    order_date: Mapped[date] = mapped_column(Date)
+    expected_dispatch_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    customer_po_ref: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    status: Mapped[str] = mapped_column(String(12), default=TradingSOStatus.DRAFT.value, index=True)
+    remarks: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    lines: Mapped[list["TradingSalesOrderLine"]] = relationship(
+        back_populates="order", cascade="all, delete-orphan")
+
+
+class TradingSalesOrderLine(AuditMixin, Base):
+    __tablename__ = "trading_sales_order_lines"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("trading_sales_orders.id", ondelete="CASCADE"), index=True)
+    line_no: Mapped[int] = mapped_column(Integer, default=1)
+    trading_item_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("trading_fabric_items.id"), index=True)
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("warehouses.id"), index=True)
+    qty_ordered: Mapped[object] = mapped_column(Quantity, default=0)
+    qty_dispatched: Mapped[object] = mapped_column(Quantity, default=0)   # advanced only by a future dispatch stage
+    qty_cancelled: Mapped[object] = mapped_column(Quantity, default=0)
+    uom_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("units_of_measure.id"), nullable=True)
+    rate: Mapped[object] = mapped_column(Money, default=0)               # selling rate
+    discount: Mapped[object] = mapped_column(Money, default=0)           # per-line discount amount
+    tax_code_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("tax_codes.id"), nullable=True)
+    description: Mapped[str | None] = mapped_column(String(200), nullable=True)
+
+    order: Mapped[TradingSalesOrder] = relationship(back_populates="lines")

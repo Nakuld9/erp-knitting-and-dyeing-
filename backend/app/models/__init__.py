@@ -59,6 +59,9 @@ from app.models.trading import (  # noqa: F401
     TradingPOStatus,
     TradingPurchaseOrder,
     TradingPurchaseOrderLine,
+    TradingSOStatus,
+    TradingSalesOrder,
+    TradingSalesOrderLine,
 )
 from app.models.hybrid import (  # noqa: F401
     Process,

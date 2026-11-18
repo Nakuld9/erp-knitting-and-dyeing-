@@ -42,6 +42,7 @@ from app.api.routes import (
     tenancy,
     trading,
     trading_purchase,
+    trading_sales,
     transfers,
     vouchers,
 )
@@ -92,6 +93,7 @@ app.include_router(stores.router)
 app.include_router(tenancy.router)
 app.include_router(trading.router)
 app.include_router(trading_purchase.router)
+app.include_router(trading_sales.router)
 app.include_router(transfers.router)
 app.include_router(branding.router)
 app.include_router(printing.router)
