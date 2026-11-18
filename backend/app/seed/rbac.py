@@ -41,6 +41,7 @@ PERMISSIONS: list[tuple[str, str, str]] = [
     ("production.manage", "bom", "Create production orders and issue materials"),
     ("jobwork.over_allocate", "accounting", "Authorise job-work billing beyond the agreed charge"),
     ("trading.over_receive", "purchase", "Authorise a trading GRN beyond the PO outstanding quantity"),
+    ("trading.over_dispatch", "sales", "Authorise a trading dispatch beyond the sales-order outstanding quantity"),
 ]
 
 # role_code -> (name, [permission codes]); "*" means all permissions.

@@ -287,3 +287,111 @@ class TradingSalesOrderLine(AuditMixin, Base):
     description: Mapped[str | None] = mapped_column(String(200), nullable=True)
 
     order: Mapped[TradingSalesOrder] = relationship(back_populates="lines")
+
+
+# ===========================================================================
+# Trading dispatch (Stage 4B-3A.1b.1 — draft lifecycle only; no stock/accounting)
+# ===========================================================================
+
+class TradingDispatchStatus(str, enum.Enum):
+    DRAFT = "DRAFT"
+    SUBMITTED = "SUBMITTED"
+    APPROVED = "APPROVED"       # terminal: stock consumed (FIFO) + balanced COGS voucher posted
+    CANCELLED = "CANCELLED"
+
+
+class TradingDispatch(AuditMixin, Base):
+    """An aggregate-quantity dispatch of trading fabric against an approved
+    TradingSalesOrder. In this stage it is a commercial document only: creating,
+    submitting or cancelling it moves NO stock, posts NO accounting and does NOT
+    change the sales order's dispatched quantity. It is never a FabricRoll, lot,
+    genealogy node or packing list.
+    """
+
+    __tablename__ = "trading_dispatches"
+    __table_args__ = (
+        UniqueConstraint("company_id", "dispatch_number", name="uq_trading_dispatch_company_number"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"), index=True)
+    customer_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("customers.id"), index=True)
+    factory_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("branches.id"), nullable=True, index=True)
+    # Dispatch is always against an approved trading sales order (no direct dispatch).
+    sales_order_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("trading_sales_orders.id"), index=True)
+    dispatch_number: Mapped[str] = mapped_column(String(40), index=True)
+    dispatch_date: Mapped[date] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(12), default=TradingDispatchStatus.DRAFT.value, index=True)
+    vehicle_number: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    transporter: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    customer_delivery_ref: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    remarks: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    submitted_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    cancelled_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Stage 4B-3A.1b.2 — set only on APPROVED (atomic FIFO consume + COGS voucher).
+    cogs_value: Mapped[object] = mapped_column(Money, default=0)
+    # No ``index=True`` here: the explicit index is created in migration 0026, and a
+    # model-level auto-index breaks SQLite batch-downgrade table recreation.
+    posting_reference: Mapped[str | None] = mapped_column(String(120))
+    approved_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Over-dispatch beyond the sales-order line outstanding (authorised server-side + reason).
+    is_over_dispatched: Mapped[bool] = mapped_column(Boolean, default=False)
+    over_dispatch_reason: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    over_dispatched_by: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    over_dispatched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    lines: Mapped[list["TradingDispatchLine"]] = relationship(
+        back_populates="dispatch", cascade="all, delete-orphan")
+    allocations: Mapped[list["TradingDispatchFifoAllocation"]] = relationship(
+        back_populates="dispatch", cascade="all, delete-orphan")
+
+
+class TradingDispatchLine(AuditMixin, Base):
+    __tablename__ = "trading_dispatch_lines"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    dispatch_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("trading_dispatches.id", ondelete="CASCADE"), index=True)
+    line_no: Mapped[int] = mapped_column(Integer, default=1)
+    trading_item_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("trading_fabric_items.id"), index=True)
+    # Always tied to a specific line of the referenced sales order.
+    sales_order_line_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("trading_sales_order_lines.id"), index=True)
+    warehouse_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("warehouses.id"), index=True)
+    quantity: Mapped[object] = mapped_column(Quantity, default=0)
+    uom_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("units_of_measure.id"), nullable=True)
+    description: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Actual FIFO cost of goods sold for this line, set only on APPROVED.
+    cogs_value: Mapped[object] = mapped_column(Money, default=0)
+
+    dispatch: Mapped[TradingDispatch] = relationship(back_populates="lines")
+
+
+class TradingDispatchFifoAllocation(AuditMixin, Base):
+    """Per-layer FIFO consumption evidence for an APPROVED trading dispatch, so an
+    auditor can reconstruct: dispatch -> line -> stock layer -> receipt -> qty ->
+    unit cost -> total cost -> COGS voucher. One row per consumed FIFO layer.
+    Written only at approval and never mutated afterwards.
+    """
+
+    __tablename__ = "trading_dispatch_fifo_allocations"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"), index=True)
+    dispatch_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("trading_dispatches.id", ondelete="CASCADE"), index=True)
+    dispatch_line_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("trading_dispatch_lines.id", ondelete="CASCADE"), index=True)
+    stock_layer_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("inventory_valuation_layers.id"), index=True)
+    source_lot_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    quantity_consumed: Mapped[object] = mapped_column(Quantity, default=0)
+    unit_cost: Mapped[object] = mapped_column(Money, default=0)
+    total_cost: Mapped[object] = mapped_column(Money, default=0)
+
+    dispatch: Mapped[TradingDispatch] = relationship(back_populates="allocations")
