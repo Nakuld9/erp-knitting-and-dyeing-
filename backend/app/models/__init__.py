@@ -50,7 +50,16 @@ from app.models.audit import AuditLog, DocumentSequence  # noqa: F401
 from app.models.branding import CompanyBranding  # noqa: F401
 from app.models.genealogy import RollGenealogyEdge  # noqa: F401
 from app.models.printing import PrintedDocument  # noqa: F401
-from app.models.trading import TradingFabricItem  # noqa: F401
+from app.models.trading import (  # noqa: F401
+    TradingFabricItem,
+    TradingGRN,
+    TradingGRNLine,
+    TradingGRNSource,
+    TradingGRNStatus,
+    TradingPOStatus,
+    TradingPurchaseOrder,
+    TradingPurchaseOrderLine,
+)
 from app.models.hybrid import (  # noqa: F401
     Process,
     ProcessMode,
