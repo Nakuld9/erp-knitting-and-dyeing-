@@ -17,7 +17,7 @@ from __future__ import annotations
 import enum
 import uuid
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, Uuid
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, UniqueConstraint, Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.types import Money, Quantity
@@ -236,6 +236,14 @@ class ChemicalLot(AuditMixin, Base):
 
 class YarnLot(AuditMixin, Base):
     __tablename__ = "yarn_lots"
+    # The internal lot number is the company-scoped lot identity (the normal
+    # receipt path already keys its idempotency on "YARNLOT:<internal_lot_no>"
+    # per company). Enforce that identity at the database level so two concurrent
+    # transactions can never register the same new lot for one company — the
+    # loser fails on the unique index instead of silently double-creating.
+    __table_args__ = (
+        UniqueConstraint("company_id", "internal_lot_no", name="uq_yarn_lot_company_internal_no"),
+    )
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"), index=True)
     yarn_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("yarn_masters.id"), index=True)

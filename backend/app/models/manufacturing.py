@@ -5,7 +5,7 @@ import enum
 import uuid
 from datetime import date, datetime
 
-from sqlalchemy import Column, Date, DateTime, ForeignKey, Index, Integer, String, Table, Text, Uuid
+from sqlalchemy import Column, Date, DateTime, ForeignKey, Index, Integer, String, Table, Text, Uuid, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.types import Money, Quantity
@@ -71,6 +71,12 @@ class FabricRoll(AuditMixin, Base):
     # separate company databases may legitimately reuse a roll_no.
     __table_args__ = (
         Index("uq_fabric_rolls_company_roll_no", "company_id", "roll_no", unique=True),
+        # Opening-cutover legacy factory/handwritten label (Stage 6F-P3; additive).
+        # Company-scoped uniqueness for NON-EMPTY labels only (NULLs are distinct,
+        # so historical rows and rolls without a legacy label are never blocked).
+        Index("uq_fabric_rolls_company_legacy_label", "company_id", "legacy_label", unique=True,
+              sqlite_where=text("legacy_label IS NOT NULL"),
+              postgresql_where=text("legacy_label IS NOT NULL")),
     )
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     company_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("companies.id"), index=True)
@@ -81,6 +87,11 @@ class FabricRoll(AuditMixin, Base):
     # roll_no (e.g. a dyed roll's "{job}-{lot}"). Nullable; historical rows stay NULL.
     ref_code: Mapped[str | None] = mapped_column(String(60), nullable=True, index=True)
     barcode: Mapped[str | None] = mapped_column(String(60), nullable=True, index=True)
+    # Legacy factory/handwritten label captured at opening cutover (Stage 6F-P3).
+    # Preserved exactly as supplied (display value); never overwrites roll_no /
+    # ref_code / barcode. Searchable; company-scoped unique for non-empty values
+    # (see __table_args__). Historical rolls stay NULL.
+    legacy_label: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
     kind: Mapped[RollKind] = mapped_column(String(10), default=RollKind.GREIGE)
     knitting_production_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("knitting_production.id"), nullable=True, index=True

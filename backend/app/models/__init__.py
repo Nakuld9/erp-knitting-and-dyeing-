@@ -80,6 +80,23 @@ from app.models.yarn_sales import (  # noqa: F401
     YarnAllocationStatus,
     YarnDispatchInvoiceAllocation,
 )
+from app.models.opening import (  # noqa: F401
+    OpeningBatch,
+    OpeningBatchStatus,
+    OpeningBatchType,
+)
+from app.models.opening_stock import (  # noqa: F401
+    OpeningImportFile,
+    OpeningLineType,
+    OpeningLineValidation,
+    OpeningLotPolicy,
+    OpeningStockLine,
+)
+from app.models.opening_roll import (  # noqa: F401
+    OpeningRollKind,
+    OpeningRollLine,
+    OpeningRollRegistration,
+)
 from app.models.hybrid import (  # noqa: F401
     Process,
     ProcessMode,

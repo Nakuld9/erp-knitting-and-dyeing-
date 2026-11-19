@@ -43,6 +43,8 @@ PERMISSIONS: list[tuple[str, str, str]] = [
     ("trading.over_receive", "purchase", "Authorise a trading GRN beyond the PO outstanding quantity"),
     ("trading.over_dispatch", "sales", "Authorise a trading dispatch beyond the sales-order outstanding quantity"),
     ("yarn.over_dispatch", "sales", "Authorise a direct yarn-sales dispatch beyond the sales-order outstanding quantity"),
+    ("opening.read", "opening", "View opening-balance batches"),
+    ("opening.manage", "opening", "Create, submit, approve, close and cancel opening-balance batches"),
 ]
 
 # role_code -> (name, [permission codes]); "*" means all permissions.
@@ -53,7 +55,7 @@ ROLES: dict[str, tuple[str, list[str]]] = {
         "General Manager",
         ["master.read", "report.read", "report.financial", "sales.manage", "purchase.manage",
          "factory.access_all", "transfer.authorize", "bom.read", "bom.approve", "config.manage",
-         "jobwork.over_allocate"],
+         "jobwork.over_allocate", "opening.read", "opening.manage"],
     ),
     "PRODUCTION_MANAGER": (
         "Production Manager",
@@ -83,9 +85,9 @@ ROLES: dict[str, tuple[str, list[str]]] = {
             "master.read", "voucher.create", "voucher.post", "voucher.approve",
             "voucher.reverse", "period.close", "bank.reconcile", "report.read", "report.financial",
             "inventory.adjust", "asset.manage", "payroll.manage", "consolidation.approve",
-            "intercompany.approve", "jobwork.over_allocate",
+            "intercompany.approve", "jobwork.over_allocate", "opening.read", "opening.manage",
         ],
     ),
-    "AUDITOR": ("Auditor", ["master.read", "report.read", "report.financial"]),
+    "AUDITOR": ("Auditor", ["master.read", "report.read", "report.financial", "opening.read"]),
     "MAINTENANCE_ENGINEER": ("Maintenance Engineer", ["master.read"]),
 }

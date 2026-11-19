@@ -14,9 +14,11 @@ from reportlab.lib import colors
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models.core import Company
+from app.models.genealogy import RollGenealogyEdge
 from app.models.manufacturing import DyeBatch, FabricRoll
 from app.models.masters import FabricType
 
@@ -40,11 +42,24 @@ def roll_label_pdf(db: Session, company_id: uuid.UUID, roll_id: uuid.UUID) -> by
     company = db.get(Company, company_id)
     fabric = db.get(FabricType, roll.fabric_type_id) if roll.fabric_type_id else None
     batch = db.get(DyeBatch, roll.dye_batch_id) if roll.dye_batch_id else None
-    from app.models.masters import Machine, YarnLot, YarnMaster
+    from app.models.masters import Machine, Warehouse, YarnLot, YarnMaster
     machine = db.get(Machine, roll.machine_id) if roll.machine_id else None
     yarn = db.get(YarnMaster, roll.yarn_id) if roll.yarn_id else None
     ylot = db.get(YarnLot, roll.yarn_lot_id) if roll.yarn_lot_id else None
+    warehouse = db.get(Warehouse, roll.warehouse_id) if roll.warehouse_id else None
     code = roll.barcode or roll.roll_no
+
+    # Opening-registration indicator — derived from the reliable, persisted IMPORT
+    # genealogy origin edge (Stage 6F-P3), not from any fragile text prefix. The
+    # QR content and Roll ID are unchanged.
+    opening_edge = db.execute(
+        select(RollGenealogyEdge).where(
+            RollGenealogyEdge.output_roll_id == roll.id,
+            RollGenealogyEdge.process_type == "IMPORT").limit(1)).scalars().first()
+    opening_date = None
+    if opening_edge is not None:
+        dt = opening_edge.event_datetime or roll.created_at
+        opening_date = dt.date().isoformat() if dt else ""
 
     import io
     buf = io.BytesIO()
@@ -84,11 +99,22 @@ def roll_label_pdf(db: Session, company_id: uuid.UUID, roll_id: uuid.UUID) -> by
         f"Weight: {_fmt(roll.weight_kg,' kg')}   Length: {_fmt(roll.length_m,' m')}",
         f"GSM: {_fmt(roll.gsm)}   Width: {_fmt(roll.width_cm,' cm')}",
         f"Dye batch: {batch.batch_code if batch else '-'}",
+        f"Warehouse: {warehouse.code if warehouse else '-'}",
     ]
+    if roll.legacy_label:
+        lines.append(f"Legacy label: {roll.legacy_label}")
     y = H - 26 * mm
     for ln in lines:
         c.drawString(5 * mm, y, ln)
         y -= 5 * mm
+
+    # Opening-registration banner (only for rolls registered via opening cutover).
+    if opening_edge is not None:
+        c.setFillColor(colors.HexColor("#B45309"))
+        c.setFont("Helvetica-Bold", 8)
+        c.drawString(5 * mm, y, f"OPENING STOCK - REGISTERED {opening_date or ''}".strip())
+        y -= 5 * mm
+        c.setFillColor(colors.black)
 
     c.setFont("Helvetica", 7)
     c.setFillColor(colors.HexColor("#64748B"))

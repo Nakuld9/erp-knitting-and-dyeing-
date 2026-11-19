@@ -30,6 +30,7 @@ from app.api.routes import (
     inventory_ops,
     knitting,
     masters,
+    opening,
     operations,
     orders,
     payroll,
@@ -100,6 +101,7 @@ app.include_router(trading_sales.router)
 app.include_router(trading_dispatch.router)
 app.include_router(trading_invoice.router)
 app.include_router(yarn_sales.router)
+app.include_router(opening.router)
 app.include_router(transfers.router)
 app.include_router(branding.router)
 app.include_router(printing.router)
