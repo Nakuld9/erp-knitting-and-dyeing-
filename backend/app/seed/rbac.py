@@ -45,6 +45,10 @@ PERMISSIONS: list[tuple[str, str, str]] = [
     ("yarn.over_dispatch", "sales", "Authorise a direct yarn-sales dispatch beyond the sales-order outstanding quantity"),
     ("opening.read", "opening", "View opening-balance batches"),
     ("opening.manage", "opening", "Create, submit, approve, close and cancel opening-balance batches"),
+    ("opening.post_financial", "opening", "Authorise and post financial opening journals (CA-gated)"),
+    ("gst.read", "gst", "View GST imports, ITC register, reconciliation and reports"),
+    ("gst.itc_manage", "gst", "Import GST returns, reconcile, tag ITC, defer/claim, resolve differences"),
+    ("gst.itc_post", "gst", "Authorise GST policy, ITC reversal/reclaim posting and credit cross-utilisation (CA-gated)"),
 ]
 
 # role_code -> (name, [permission codes]); "*" means all permissions.
@@ -77,7 +81,8 @@ ROLES: dict[str, tuple[str, list[str]]] = {
     "ACCOUNTANT": (
         "Accountant",
         ["master.read", "voucher.create", "voucher.post", "bank.reconcile", "report.read",
-         "report.financial", "asset.manage", "payroll.manage", "intercompany.approve"],
+         "report.financial", "asset.manage", "payroll.manage", "intercompany.approve",
+         "gst.read", "gst.itc_manage"],
     ),
     "FINANCE_CONTROLLER": (
         "Finance Controller",
@@ -86,8 +91,10 @@ ROLES: dict[str, tuple[str, list[str]]] = {
             "voucher.reverse", "period.close", "bank.reconcile", "report.read", "report.financial",
             "inventory.adjust", "asset.manage", "payroll.manage", "consolidation.approve",
             "intercompany.approve", "jobwork.over_allocate", "opening.read", "opening.manage",
+            "opening.post_financial", "gst.read", "gst.itc_manage", "gst.itc_post",
         ],
     ),
-    "AUDITOR": ("Auditor", ["master.read", "report.read", "report.financial", "opening.read"]),
+    "AUDITOR": ("Auditor", ["master.read", "report.read", "report.financial", "opening.read",
+                            "gst.read"]),
     "MAINTENANCE_ENGINEER": ("Maintenance Engineer", ["master.read"]),
 }

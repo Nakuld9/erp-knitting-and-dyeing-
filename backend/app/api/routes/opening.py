@@ -30,11 +30,13 @@ from app.models.opening import OpeningBatch, OpeningBatchType
 from app.models.opening_stock import OpeningImportFile, OpeningLineType, OpeningStockLine
 from app.models.opening_roll import OpeningRollLine
 from app.models.opening_custody import OpeningCustodyLine
+from app.models.opening_financial import FinancialLineType
 from app.services import opening as svc
 from app.services import opening_excel as xl
 from app.services import opening_stock as stock_svc
 from app.services import opening_rolls as roll_svc
 from app.services import opening_custody as custody_svc
+from app.services import opening_financial as fin_svc
 
 _XLSX_MEDIA = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 # Batch type -> opening line type accepted by the P2 yarn/trading import endpoints.
@@ -46,6 +48,17 @@ _BATCH_LINE = {
 _ROLL_TYPE = OpeningBatchType.MANUFACTURED_ROLLS.value
 # P4 vendor-custody / vendor-held-WIP batch types (opening_custody service).
 _CUSTODY_TYPES = {OpeningBatchType.VENDOR_CUSTODY.value, OpeningBatchType.WIP.value}
+# P5 financial opening batch type (opening_financial service).
+_FIN_TYPE = OpeningBatchType.GL_BALANCES.value
+# P5 URL path segment -> FinancialLineType value (also the Excel template key).
+_FIN_SEG = {
+    "gl": FinancialLineType.GL.value,
+    "ar": FinancialLineType.AR.value,
+    "ap": FinancialLineType.AP.value,
+    "bank": FinancialLineType.BANK.value,
+    "fixed-asset": FinancialLineType.FIXED_ASSET.value,
+    "statutory": FinancialLineType.STATUTORY.value,
+}
 
 router = APIRouter(prefix="/api/opening", tags=["opening"])
 
@@ -74,12 +87,13 @@ def _raise(exc: svc.OpeningBatchError):
 
 
 def _raise_any(exc: Exception):
-    """Map P1 batch, P2 opening-stock and P3 opening-roll errors to HTTP codes."""
+    """Map P1 batch, P2 stock, P3 roll, P4 custody and P5 financial errors to HTTP codes."""
     msg = str(exc)
     if isinstance(exc, svc.OpeningBatchNotFound):
         raise HTTPException(status.HTTP_404_NOT_FOUND, msg)
     if isinstance(exc, (svc.SelfApprovalError, stock_svc.OpeningStockStateError,
-                        roll_svc.OpeningRollStateError, custody_svc.OpeningCustodyStateError)):
+                        roll_svc.OpeningRollStateError, custody_svc.OpeningCustodyStateError,
+                        fin_svc.OpeningFinancialStateError, fin_svc.PostingBlockedError)):
         raise HTTPException(status.HTTP_409_CONFLICT, msg)
     raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, msg)
 
@@ -253,12 +267,16 @@ def submit_batch(batch_id: uuid.UUID, db: Session = Depends(get_company_db),
             # P2 stock batch: validate all lines, then P1 DRAFT->SUBMITTED.
             batch = stock_svc.submit_batch(db, user.company_id, batch_id,
                                            submitted_by=user.id, actor_name=_actor_name(user))
+        elif batch.batch_type == _FIN_TYPE:
+            # P5 financial batch: assert lines valid, seed CA register, then P1 submit.
+            batch = fin_svc.submit_batch(db, user.company_id, batch_id,
+                                         submitted_by=user.id, actor_name=_actor_name(user))
         else:
             batch = svc.submit_batch(db, user.company_id, batch_id, submitted_by=user.id,
                                      actor_name=_actor_name(user))
         db.commit()
     except (svc.OpeningBatchError, stock_svc.OpeningStockError, roll_svc.OpeningRollError,
-            custody_svc.OpeningCustodyError) as exc:
+            custody_svc.OpeningCustodyError, fin_svc.OpeningFinancialError) as exc:
         db.rollback()
         _raise_any(exc)
     return _out(batch)
@@ -288,6 +306,12 @@ def approve_batch(batch_id: uuid.UUID, db: Session = Depends(get_company_db),
             batch, committed = stock_svc.approve_batch(db, user.company_id, batch_id,
                                                        approved_by=user.id,
                                                        actor_name=_actor_name(user))
+        elif batch.batch_type == _FIN_TYPE:
+            # P5 financial batch: P1 maker-checker approval ONLY. This does NOT post
+            # any voucher — posting is a separate, CA-gated, explicitly-authorised
+            # action via POST /financial/post.
+            batch = fin_svc.approve_batch(db, user.company_id, batch_id,
+                                          approved_by=user.id, actor_name=_actor_name(user))
         else:
             batch = svc.approve_batch(db, user.company_id, batch_id, approved_by=user.id,
                                       actor_name=_actor_name(user))
@@ -302,7 +326,7 @@ def approve_batch(batch_id: uuid.UUID, db: Session = Depends(get_company_db),
                             "a concurrent opening registered the same identity; "
                             "this batch was rolled back — revalidate and retry")
     except (svc.OpeningBatchError, stock_svc.OpeningStockError, roll_svc.OpeningRollError,
-            custody_svc.OpeningCustodyError) as exc:
+            custody_svc.OpeningCustodyError, fin_svc.OpeningFinancialError) as exc:
         db.rollback()
         _raise_any(exc)
     out = _out(batch)
@@ -468,11 +492,15 @@ def validate(batch_id: uuid.UUID, db: Session = Depends(get_company_db),
             result = roll_svc.revalidate_batch(db, user.company_id, batch_id)
         elif batch.batch_type in _CUSTODY_TYPES:
             result = custody_svc.revalidate_batch(db, user.company_id, batch_id)
+        elif batch.batch_type == _FIN_TYPE:
+            # P5 financial batch: lines are validated at import time; "validate" here
+            # returns the live reconciliation + posting-state assessment (read-only).
+            result = fin_svc.posting_state(db, user.company_id, batch_id)
         else:
             result = stock_svc.revalidate_batch(db, user.company_id, batch_id)
         db.commit()
     except (svc.OpeningBatchError, stock_svc.OpeningStockError, roll_svc.OpeningRollError,
-            custody_svc.OpeningCustodyError) as exc:
+            custody_svc.OpeningCustodyError, fin_svc.OpeningFinancialError) as exc:
         db.rollback()
         _raise_any(exc)
     return result
@@ -757,3 +785,251 @@ def roll_preview(batch_id: uuid.UUID, db: Session = Depends(get_company_db),
         return roll_svc.reconciliation_preview(db, user.company_id, batch_id)
     except svc.OpeningBatchError as exc:
         _raise(exc)
+
+
+# ===========================================================================
+# P5 — financial opening balances: templates, imports (6 kinds), lines,
+# reconciliation, CA decision register, hard-gated posting + reversal.
+#
+# IMPORTANT: approving a financial opening batch does NOT post anything. Real
+# company opening journals are posted ONLY via POST /financial/post, which is
+# hard-gated (APPROVED batch + every required CA decision APPROVED + every
+# reconciliation passing + explicit authorize=True) and guarded by the
+# dedicated ``opening.post_financial`` permission. No value is ever auto-plugged
+# to equity; ``inventory.receive`` is never called here.
+# ===========================================================================
+
+def _fin_seg(segment: str) -> str:
+    lt = _FIN_SEG.get(segment)
+    if lt is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND,
+                            f"unknown financial line type '{segment}'")
+    return lt
+
+
+def _get_fin_batch(db: Session, user: User, batch_id: uuid.UUID) -> OpeningBatch:
+    try:
+        batch = svc.get_batch(db, user.company_id, batch_id)
+    except svc.OpeningBatchNotFound as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
+    if batch.batch_type != _FIN_TYPE:
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            f"batch type '{batch.batch_type}' is not a financial opening batch")
+    return batch
+
+
+def _fin_line_out(l) -> dict:
+    """Generic serializer for any of the six financial line models: every column,
+    with UUID / Decimal / date / datetime coerced to strings and the JSON
+    validation_errors expanded."""
+    import json as _json
+    from decimal import Decimal as _D
+    out: dict = {}
+    for col in l.__table__.columns:
+        val = getattr(l, col.name)
+        if val is None:
+            out[col.name] = None
+        elif col.name == "validation_errors":
+            out[col.name] = _json.loads(val) if val else []
+        elif isinstance(val, uuid.UUID):
+            out[col.name] = str(val)
+        elif isinstance(val, _D):
+            out[col.name] = str(val)
+        elif isinstance(val, (date, datetime)):
+            out[col.name] = val.isoformat()
+        else:
+            out[col.name] = val
+    return out
+
+
+class CaDecisionIn(_Strict):
+    status: str
+    approved_treatment: str | None = None
+    supporting_reference: str | None = None
+    reviewer_name: str | None = None
+    notes: str | None = None
+
+
+class FinancialPostIn(_Strict):
+    authorize: bool = False
+
+
+class FinancialReverseIn(_Strict):
+    reason: str
+
+
+@router.get("/templates/financial/{segment}")
+def template_financial(segment: str,
+                       user: User = Depends(require_permission("opening.read"))):
+    line_type = _fin_seg(segment)
+    try:
+        content = xl.build_financial_template(line_type)
+    except xl.OpeningTemplateError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
+    return _template_response(content, f"opening_financial_{segment.replace('-', '_')}_template.xlsx")
+
+
+@router.post("/batches/{batch_id}/financial/{segment}/import",
+             status_code=status.HTTP_201_CREATED)
+def import_financial(batch_id: uuid.UUID, segment: str, file: UploadFile = File(...),
+                     db: Session = Depends(get_company_db),
+                     user: User = Depends(require_permission("opening.manage"))):
+    line_type = _fin_seg(segment)
+    batch = _get_fin_batch(db, user, batch_id)
+    content = file.file.read()
+    if not content:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "empty file")
+    file_hash = hashlib.sha256(content).hexdigest()
+    dup = db.execute(select(OpeningImportFile).where(
+        OpeningImportFile.batch_id == batch.id,
+        OpeningImportFile.file_hash == file_hash)).scalar_one_or_none()
+    if dup is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "this exact file has already been imported into the batch")
+    try:
+        meta, rows = xl.parse_workbook(content, expected_type=line_type)
+    except xl.OpeningTemplateError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    import_file = OpeningImportFile(
+        company_id=batch.company_id, batch_id=batch.id, line_type=line_type,
+        file_name=(file.filename or "upload.xlsx")[:255], file_hash=file_hash, content=content,
+        template_version=meta.get("template_version"), uploaded_by=user.id,
+        uploaded_at=datetime.now(timezone.utc), created_by=user.id, updated_by=user.id)
+    db.add(import_file)
+    db.flush()
+    try:
+        summary = fin_svc.import_rows(db, batch, line_type=line_type, rows=rows,
+                                      import_file=import_file, actor=user.id)
+        db.commit()
+    except fin_svc.OpeningFinancialError as exc:
+        db.rollback()
+        _raise_any(exc)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "duplicate financial opening line (batch dedup constraint)")
+    return summary
+
+
+@router.get("/batches/{batch_id}/financial-lines/{segment}")
+def list_financial_lines(batch_id: uuid.UUID, segment: str, status_filter: str | None = None,
+                         limit: int = 200, offset: int = 0,
+                         db: Session = Depends(get_company_db),
+                         user: User = Depends(require_permission("opening.read"))):
+    line_type = _fin_seg(segment)
+    try:
+        batch, rows, total = fin_svc.list_lines(db, user.company_id, batch_id, line_type,
+                                                status=status_filter, limit=limit, offset=offset)
+    except fin_svc.OpeningFinancialError as exc:
+        _raise_any(exc)
+    return {"batch_id": str(batch.id), "line_type": line_type, "total": total,
+            "limit": limit, "offset": offset, "items": [_fin_line_out(r) for r in rows]}
+
+
+@router.get("/batches/{batch_id}/financial-rejections")
+def list_financial_rejections(batch_id: uuid.UUID, db: Session = Depends(get_company_db),
+                              user: User = Depends(require_permission("opening.read"))):
+    try:
+        batch, out = fin_svc.rejections(db, user.company_id, batch_id)
+    except fin_svc.OpeningFinancialError as exc:
+        _raise_any(exc)
+    return {"batch_id": str(batch.id), "rejections": out}
+
+
+@router.get("/batches/{batch_id}/financial-reconcile")
+def financial_reconcile(batch_id: uuid.UUID, db: Session = Depends(get_company_db),
+                        user: User = Depends(require_permission("opening.read"))):
+    try:
+        return fin_svc.reconcile(db, user.company_id, batch_id)
+    except fin_svc.OpeningFinancialError as exc:
+        _raise_any(exc)
+
+
+@router.get("/batches/{batch_id}/financial-posting-state")
+def financial_posting_state(batch_id: uuid.UUID, db: Session = Depends(get_company_db),
+                            user: User = Depends(require_permission("opening.read"))):
+    try:
+        return fin_svc.posting_state(db, user.company_id, batch_id)
+    except fin_svc.OpeningFinancialError as exc:
+        _raise_any(exc)
+
+
+@router.get("/batches/{batch_id}/ca-decisions")
+def list_ca_decisions(batch_id: uuid.UUID, db: Session = Depends(get_company_db),
+                      user: User = Depends(require_permission("opening.read"))):
+    try:
+        batch, rows = fin_svc.ca_register(db, user.company_id, batch_id)
+        db.commit()
+    except fin_svc.OpeningFinancialError as exc:
+        db.rollback()
+        _raise_any(exc)
+    return {"batch_id": str(batch.id),
+            "decisions": [
+                {"decision_key": d.decision_key, "title": d.title, "is_required": d.is_required,
+                 "status": d.status, "approved_treatment": d.approved_treatment,
+                 "supporting_reference": d.supporting_reference, "reviewer_name": d.reviewer_name,
+                 "reviewer_id": str(d.reviewer_id) if d.reviewer_id else None,
+                 "approved_at": d.approved_at.isoformat() if d.approved_at else None,
+                 "notes": d.notes}
+                for d in rows]}
+
+
+@router.post("/batches/{batch_id}/ca-decisions/{decision_key}")
+def set_ca_decision(batch_id: uuid.UUID, decision_key: str, payload: CaDecisionIn,
+                    db: Session = Depends(get_company_db),
+                    user: User = Depends(require_permission("opening.manage"))):
+    try:
+        d = fin_svc.set_ca_decision(
+            db, user.company_id, batch_id, decision_key, status=payload.status,
+            approved_treatment=payload.approved_treatment,
+            supporting_reference=payload.supporting_reference,
+            reviewer_name=payload.reviewer_name or _actor_name(user),
+            reviewer_id=user.id, notes=payload.notes)
+        db.commit()
+    except fin_svc.OpeningFinancialError as exc:
+        db.rollback()
+        _raise_any(exc)
+    return {"decision_key": d.decision_key, "status": d.status,
+            "approved_treatment": d.approved_treatment,
+            "supporting_reference": d.supporting_reference, "reviewer_name": d.reviewer_name,
+            "approved_at": d.approved_at.isoformat() if d.approved_at else None}
+
+
+@router.post("/batches/{batch_id}/financial/post")
+def post_financial(batch_id: uuid.UUID, payload: FinancialPostIn,
+                   db: Session = Depends(get_company_db),
+                   user: User = Depends(require_permission("opening.post_financial"))):
+    """Hard-gated posting of the single balanced OB opening voucher. Requires the
+    ``opening.post_financial`` permission AND an explicit ``authorize=True``.
+    Blocked unless the batch is APPROVED, every required CA decision is APPROVED,
+    and every reconciliation passes. On success the batch is closed (cutover lock)."""
+    try:
+        voucher, lines = fin_svc.post_financial(
+            db, user.company_id, batch_id, authorize=payload.authorize,
+            posted_by=user.id, actor_name=_actor_name(user))
+        db.commit()
+    except fin_svc.OpeningFinancialError as exc:
+        db.rollback()
+        _raise_any(exc)
+    batch = svc.get_batch(db, user.company_id, batch_id)
+    return {"batch_id": str(batch.id), "batch_status": batch.status,
+            "voucher_number": voucher.number, "posting_reference": voucher.posting_reference,
+            "voucher_status": str(voucher.status), "lines_posted": lines}
+
+
+@router.post("/batches/{batch_id}/financial/reverse")
+def reverse_financial(batch_id: uuid.UUID, payload: FinancialReverseIn,
+                      db: Session = Depends(get_company_db),
+                      user: User = Depends(require_permission("opening.post_financial"))):
+    reason = (payload.reason or "").strip()
+    if not reason:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "reason is required")
+    try:
+        rev = fin_svc.reverse_financial(db, user.company_id, batch_id, reason=reason,
+                                        reversed_by=user.id, actor_name=_actor_name(user))
+        db.commit()
+    except fin_svc.OpeningFinancialError as exc:
+        db.rollback()
+        _raise_any(exc)
+    return {"batch_id": str(batch_id), "reversal_voucher_number": rev.number,
+            "reversal_status": str(rev.status)}

@@ -62,7 +62,7 @@ def test_transitions_via_endpoints(client, db, company, auth_headers):
     mh, ch = _login(client, "ob_maker"), _login(client, "ob_checker")
 
     bid = client.post("/api/opening/batches", headers=mh,
-                      json={"batch_type": "GL_BALANCES", "effective_date": ED}).json()["id"]
+                      json={"batch_type": "CUSTOMER_BALANCES", "effective_date": ED}).json()["id"]
     assert client.post(f"/api/opening/batches/{bid}/submit", headers=mh).status_code == 200
     # Checker (a different user) approves and closes.
     ap = client.post(f"/api/opening/batches/{bid}/approve", headers=ch)
@@ -86,7 +86,7 @@ def test_self_approval_rejected(client, db, company, auth_headers):
     # requirement). P2 self-approval on a stock batch is covered separately in
     # test_opening_stock_api.py::test_self_approval_blocked_api.
     bid = client.post("/api/opening/batches", headers=auth_headers,
-                      json={"batch_type": "GL_BALANCES", "effective_date": ED}).json()["id"]
+                      json={"batch_type": "CUSTOMER_BALANCES", "effective_date": ED}).json()["id"]
     client.post(f"/api/opening/batches/{bid}/submit", headers=auth_headers)
     # Same user tries to approve their own submission.
     r = client.post(f"/api/opening/batches/{bid}/approve", headers=auth_headers)

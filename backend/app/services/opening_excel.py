@@ -56,12 +56,61 @@ VENDOR_CUSTODY_COLUMNS: list[str] = [
     "source_document", "source_reference", "effective_date", "disputed_unknown", "notes",
 ]
 
+# --- P5 financial opening templates (keyed by FinancialLineType value) ---
+GL_BALANCE_COLUMNS: list[str] = [
+    "account_code", "debit", "credit", "narration", "source_document", "source_reference",
+]
+CUSTOMER_AR_COLUMNS: list[str] = [
+    "ar_kind", "customer_code", "invoice_no", "invoice_date", "due_date",
+    "original_amount", "received_amount", "outstanding_amount", "tax_reference",
+    "currency", "disputed_unknown", "source_document", "source_reference", "notes",
+]
+SUPPLIER_AP_COLUMNS: list[str] = [
+    "ap_kind", "supplier_code", "invoice_no", "invoice_date", "due_date",
+    "original_amount", "paid_amount", "outstanding_amount", "tds_amount", "tax_reference",
+    "disputed_unknown", "source_document", "source_reference", "notes",
+]
+BANK_CASH_COLUMNS: list[str] = [
+    "bank_account_name", "account_code", "is_cash", "book_balance", "statement_balance",
+    "outstanding_cheques", "deposits_in_transit", "effective_date",
+    "source_document", "source_reference", "notes",
+]
+FIXED_ASSET_COLUMNS: list[str] = [
+    "asset_code", "name", "category", "factory_code", "asset_account_code",
+    "accum_dep_account_code", "acquisition_date", "original_cost", "accumulated_depreciation",
+    "salvage_value", "method", "useful_life_months", "verification_status",
+    "source_document", "source_reference", "notes",
+]
+STATUTORY_COLUMNS: list[str] = [
+    "statutory_type", "account_code", "debit", "credit", "period_reference",
+    "challan_reference", "source_document", "source_reference", "notes",
+]
+
 _COLUMNS = {
     OpeningLineType.YARN.value: YARN_COLUMNS,
     OpeningLineType.TRADING_FABRIC.value: TRADING_COLUMNS,
     OpeningLineType.MANUFACTURED_ROLLS.value: MANUFACTURED_ROLL_COLUMNS,
     OpeningLineType.VENDOR_CUSTODY.value: VENDOR_CUSTODY_COLUMNS,
+    "GL_BALANCES": GL_BALANCE_COLUMNS,
+    "CUSTOMER_AR": CUSTOMER_AR_COLUMNS,
+    "SUPPLIER_AP": SUPPLIER_AP_COLUMNS,
+    "BANK_CASH": BANK_CASH_COLUMNS,
+    "FIXED_ASSETS": FIXED_ASSET_COLUMNS,
+    "STATUTORY": STATUTORY_COLUMNS,
 }
+
+# Friendly titles for the P5 financial templates.
+_FINANCIAL_TITLES = {
+    "GL_BALANCES": "GL Trial Balance Opening", "CUSTOMER_AR": "Customer AR Opening",
+    "SUPPLIER_AP": "Supplier AP Opening", "BANK_CASH": "Bank & Cash Opening",
+    "FIXED_ASSETS": "Fixed Asset Opening", "STATUTORY": "Statutory Balance Opening",
+}
+
+
+def build_financial_template(line_type: str) -> bytes:
+    if line_type not in _FINANCIAL_TITLES:
+        raise OpeningTemplateError(f"No financial opening template for '{line_type}'")
+    return _build(line_type, _FINANCIAL_TITLES[line_type])
 
 
 class OpeningTemplateError(ValueError):

@@ -27,6 +27,7 @@ from app.api.routes import (
     hardware,
     jobwork,
     inbox,
+    gst_itc,
     inventory_ops,
     knitting,
     masters,
@@ -102,6 +103,7 @@ app.include_router(trading_dispatch.router)
 app.include_router(trading_invoice.router)
 app.include_router(yarn_sales.router)
 app.include_router(opening.router)
+app.include_router(gst_itc.router)
 app.include_router(transfers.router)
 app.include_router(branding.router)
 app.include_router(printing.router)

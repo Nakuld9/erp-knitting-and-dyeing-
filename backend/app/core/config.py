@@ -83,6 +83,20 @@ class Settings(BaseSettings):
     # EWB is mandatory above this consignment value (₹50,000); below it is a warning.
     ewb_threshold: int = 50000
 
+    # --- GST returns download (GSTR-2A/2B / electronic ledgers) ---
+    # "manual": no live portal connectivity — users download JSON/Excel from the GST
+    # portal and import it here (the only route without a GSP). "gsp": a GSTN-approved
+    # GSP/ASP channel with portal API access enabled; requires the credentials below.
+    # There is NO public taxpayer API: direct programmatic download REQUIRES a GSP/ASP.
+    # The taxpayer's GST portal password is NEVER stored; GSP auth uses a runtime
+    # OTP/session token requested at call time.
+    gst_returns_mode: str = "manual"           # "manual" | "gsp"
+    gst_returns_gsp_base_url: str = ""
+    gst_returns_gsp_client_id: str = ""
+    gst_returns_gsp_client_secret: str = ""
+    gst_returns_gsp_subscription_key: str = ""
+    gst_returns_timeout_seconds: int = 30
+
     # --- Rounding ---
     # Number of decimal places kept for monetary amounts and quantities.
     money_scale: int = 2
