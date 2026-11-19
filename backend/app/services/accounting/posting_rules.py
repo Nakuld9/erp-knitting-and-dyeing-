@@ -114,6 +114,22 @@ TRADING_EVENT_SLOTS: dict[str, tuple[str, ...]] = {
 }
 
 
+# --- Direct yarn-sales posting slots (Stage 5B: declared, NOT configured) ----
+#
+# Selling yarn directly out of the Yarn Store must post to its OWN revenue/COGS
+# accounts — never the manufactured SALES_INVOICE revenue (4010), the trading
+# revenue (4011), or the manufactured/trading COGS accounts. The actual codes are
+# a CA/business decision and are intentionally ABSENT from DEFAULT_RULES, so until
+# a company configures PostingRule rows, ``resolve_account`` raises and posting is
+# fail-closed (HTTP 409). YARN_DELIVERY relieves yarn inventory (naturally 1060,
+# where yarn GRN posts) and debits a yarn COGS account; YARN_SALES recognises the
+# customer receivable, yarn sales revenue and output GST.
+YARN_EVENT_SLOTS: dict[str, tuple[str, ...]] = {
+    "YARN_DELIVERY": ("cogs", "inventory"),
+    "YARN_SALES": ("receivable", "sales", "output_cgst", "output_sgst", "output_igst"),
+}
+
+
 def trading_rule_slots(event_type: str) -> tuple[str, ...]:
     """The slots a trading event requires. Raises KeyError for a non-trading event."""
     return TRADING_EVENT_SLOTS[event_type]

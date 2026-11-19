@@ -209,6 +209,10 @@ class SalesInvoiceLine(AuditMixin, Base):
     trading_item_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("trading_fabric_items.id"), nullable=True)
     discount: Mapped[object] = mapped_column(Money, default=0)
     uom_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("units_of_measure.id"), nullable=True)
+    # Stage 5B (additive, direct yarn sales only; NULL for other lines). Preserve
+    # the ORIGINAL supplier yarn lot reference on the invoice line (never a new lot).
+    yarn_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("yarn_masters.id"), nullable=True)
+    yarn_lot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("yarn_lots.id"), nullable=True)
 
     invoice: Mapped[SalesInvoice] = relationship(back_populates="lines")
 

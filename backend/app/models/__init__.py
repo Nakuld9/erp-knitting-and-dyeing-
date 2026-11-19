@@ -69,6 +69,17 @@ from app.models.trading import (  # noqa: F401
     TradingAllocationStatus,
     TradingDispatchInvoiceAllocation,
 )
+from app.models.yarn_sales import (  # noqa: F401
+    YarnSOStatus,
+    YarnSalesOrder,
+    YarnSalesOrderLine,
+    YarnDispatchStatus,
+    YarnSalesDispatch,
+    YarnSalesDispatchLine,
+    YarnSalesDispatchFifoAllocation,
+    YarnAllocationStatus,
+    YarnDispatchInvoiceAllocation,
+)
 from app.models.hybrid import (  # noqa: F401
     Process,
     ProcessMode,

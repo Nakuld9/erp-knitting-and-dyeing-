@@ -2966,6 +2966,271 @@ function CompanyBranding(){
   </div>);
 }
 
+// ---- direct yarn sales (Stage 5E) -----------------------------------------
+// Sell yarn straight from the Yarn Store (shared ItemType.YARN FIFO pool), never
+// creating a roll, WIP or new lot. All stock/FIFO/COGS/GST decisions stay on the
+// backend; this screen only drives the Stage 5B endpoints and shows their results.
+function YarnLotTable({yarnId, warehouseId, onPick, selectedLot}){
+  const [av,setAv]=useState(null); const [err,setErr]=useState("");
+  useEffect(()=>{ if(!yarnId){ setAv(null); setErr(""); return; }
+    let q=`/api/yarn-sales/lot-availability?yarn_id=${yarnId}`; if(warehouseId) q+=`&warehouse_id=${warehouseId}`;
+    api(q).then(r=>{setAv(r);setErr("");}).catch(ex=>{setAv(null);setErr(ex.message);}); },[yarnId,warehouseId]);
+  if(!yarnId) return <div className="muted">Pick a yarn SKU to see its Yarn Store lots.</div>;
+  if(err) return <div className="err">{err}</div>;
+  if(!av) return <div className="muted">Loading lots…</div>;
+  return (<div>
+    <div className="muted" style={{fontSize:12,marginBottom:6}}>On-hand is informational (shared with production) — NOT a reservation or guaranteed allocation. FIFO is applied at dispatch unless a specific lot is chosen.</div>
+    <table><thead><tr><th>ERP lot</th><th>Supplier lot</th><th className="num">On hand</th><th className="num">Unit cost</th>{onPick&&<th></th>}</tr></thead>
+    <tbody>{(av.lots||[]).length===0?<tr><td colSpan={onPick?5:4} className="muted">No stock on hand for this SKU.</td></tr>
+      : av.lots.map(l=><tr key={l.lot_id} className={selectedLot===l.lot_id?"sel":""}>
+        <td>{l.internal_lot_no}</td><td>{l.supplier_lot_no||"—"}</td><td className="num">{inr2(l.on_hand_qty)}</td><td className="num">{inr2(l.unit_cost)}</td>
+        {onPick&&<td className="num"><button type="button" className="btn" onClick={()=>onPick(selectedLot===l.lot_id?"":l.lot_id)}>{selectedLot===l.lot_id?"Clear":"Use this lot"}</button></td>}</tr>)}</tbody></table>
+    <div className="muted" style={{fontSize:12,marginTop:4}}>Total on hand: {inr2(av.total_on_hand_qty)}</div>
+  </div>);
+}
+function YarnAllocations({id}){
+  const [rows,setRows]=useState(null);
+  useEffect(()=>{ api(`/api/yarn-sales/dispatches/${id}/allocations`).then(r=>setRows(r.items||[])).catch(()=>setRows([])); },[id]);
+  if(rows===null) return <div className="muted">Loading FIFO allocations…</div>;
+  if(rows.length===0) return <div className="muted">No FIFO allocation evidence yet (dispatch not approved).</div>;
+  return (<table><thead><tr><th>ERP lot</th><th>Supplier lot</th><th className="num">Consumed</th><th className="num">Unit cost</th><th className="num">Cost</th></tr></thead>
+    <tbody>{rows.map(a=><tr key={a.id}><td>{a.internal_lot_no||"—"}</td><td>{a.supplier_lot_no||"—"}</td>
+      <td className="num">{inr2(a.quantity_consumed)}</td><td className="num">{inr2(a.unit_cost)}</td><td className="num">{inr2(a.total_cost)}</td></tr>)}</tbody></table>);
+}
+function YarnDispatchDetail({d}){
+  const incon=(d.lines||[]).some(l=>l.reconciled===false);
+  return (<div>
+    <table><thead><tr><th>#</th><th className="num">Dispatched</th><th className="num">Invoiced</th><th className="num">Uninvoiced</th></tr></thead>
+      <tbody>{(d.lines||[]).map(l=><tr key={l.id} className={l.reconciled===false?"err":""}>
+        <td>{l.line_no}</td><td className="num">{inr2(l.quantity)}</td>
+        <td className="num">{inr2(l.invoiced_quantity)}</td>
+        <td className="num">{inr2(l.uninvoiced_quantity)}{l.reconciled===false?" ⚠":""}</td></tr>)}</tbody></table>
+    {incon && <div className="err" style={{marginTop:4}}>Allocation inconsistency: the invoiced counter disagrees with active invoice allocations. Backend reconciliation required.</div>}
+    <div className="muted" style={{fontSize:12,margin:"6px 0 2px"}}>FIFO stock consumption (actual supplier lots):</div>
+    <YarnAllocations id={d.id}/>
+  </div>);
+}
+function YarnSODetail({so}){
+  return (<div><table><thead><tr><th>#</th><th>Line</th><th className="num">Ordered</th><th className="num">Dispatched</th><th className="num">Outstanding</th></tr></thead>
+    <tbody>{(so.outstanding||[]).map(o=><tr key={o.line_id}><td>{o.line_no}</td><td>yarn line</td>
+      <td className="num">{inr2(o.ordered)}</td><td className="num">{inr2(o.dispatched)}</td><td className="num">{inr2(o.outstanding)}</td></tr>)}</tbody></table></div>);
+}
+function YarnInvoiceDetail({inv}){
+  return (<table><thead><tr><th>#</th><th>ERP lot</th><th>Supplier lot</th><th className="num">Qty</th><th className="num">Rate</th><th className="num">Amount</th></tr></thead>
+    <tbody>{(inv.lines||[]).map(l=><tr key={l.id}><td>{l.line_no}</td><td>{l.internal_lot_no||"—"}</td><td>{l.supplier_lot_no||"—"}</td>
+      <td className="num">{inr2(l.qty)}</td><td className="num">{inr2(l.rate)}</td><td className="num">{inr2(l.amount)}</td></tr>)}</tbody></table>);
+}
+function YarnSales(){
+  const customers=useList("/api/masters/customers"); const yarns=useList("/api/masters/yarns");
+  const taxes=useList("/api/masters/tax-codes"); const allWh=useList("/api/masters/warehouses");
+  const yarnWh=(allWh||[]).filter(w=>(w.category||"")!=="TRADING").map(w=>({id:w.id,name:w.code+" — "+w.name}));
+  const [sos,setSos]=useState([]); const [disps,setDisps]=useState([]); const [invs,setInvs]=useState([]);
+  const [busy,setBusy]=useState(false); const [err,setErr]=useState("");
+  const [res,setRes]=useState(null); const [dres,setDres]=useState(null); const [ires,setIres]=useState(null);
+  // order form (multi-line)
+  const blankLine=()=>({yarn_id:"",warehouse_id:"",qty_ordered:"",rate:"300",tax_code_id:""});
+  const [of,setOf]=useState({customer_id:"",order_number:genNo("YSO"),order_date:today()});
+  const [olines,setOlines]=useState([blankLine()]);
+  // explorer
+  const [explore,setExplore]=useState({yarn_id:"",warehouse_id:""});
+  // dispatch form
+  const [df,setDf]=useState({sales_order_id:""}); const [dlines,setDlines]=useState([]);
+  // invoice form
+  const [inf,setInf]=useState({dispatch_id:""}); const [ilines,setIlines]=useState([]);
+
+  const load=useCallback(()=>{
+    api("/api/yarn-sales/orders").then(r=>setSos(r.items||[])).catch(()=>{});
+    api("/api/yarn-sales/dispatches").then(r=>setDisps(r.items||[])).catch(()=>{});
+    api("/api/yarn-sales/sales-invoices").then(r=>setInvs(r.items||[])).catch(()=>{});
+  },[]);
+  useEffect(()=>{load()},[load]);
+  const run=async(fn)=>{ if(busy) return; setBusy(true); setErr("");
+    try{ await fn(); } catch(ex){ setErr(ex.message); } finally{ setBusy(false); } };
+
+  const createOrder=e=>{ e.preventDefault(); setRes(null);
+    return run(async()=>{
+      const lines=olines.filter(l=>l.yarn_id).map(l=>({yarn_id:l.yarn_id, warehouse_id:l.warehouse_id||null,
+        qty_ordered:l.qty_ordered, rate:l.rate, tax_code_id:l.tax_code_id||null}));
+      if(lines.length===0){ throw new Error("Add at least one yarn line with a SKU"); }
+      if(lines.some(l=>!(Number(l.qty_ordered)>0))){ throw new Error("Each line needs a positive quantity"); }
+      const r=await api("/api/yarn-sales/orders",{method:"POST",body:{
+        customer_id:of.customer_id, order_number:of.order_number, order_date:of.order_date, lines}});
+      setRes({order:r.order_number, status:r.status}); setOf({...of,order_number:genNo("YSO")}); setOlines([blankLine()]); load();
+    }); };
+  const approveOrder=id=>run(async()=>{ await api(`/api/yarn-sales/orders/${id}/approve`,{method:"POST"}); load(); });
+  const cancelOrder=id=>run(async()=>{ await api(`/api/yarn-sales/orders/${id}/cancel`,{method:"POST"}); load(); });
+
+  const pickSOForDispatch=async soId=>{ setDf({sales_order_id:soId}); setDlines([]);
+    if(!soId) return;
+    try{ const so=await api(`/api/yarn-sales/orders/${soId}`);
+      setDlines((so.outstanding||[]).filter(o=>Number(o.outstanding)>0).map(o=>{
+        const line=(so.lines||[]).find(l=>l.id===o.line_id)||{};
+        return {sales_order_line_id:o.line_id, yarn_id:line.yarn_id, warehouse_id:line.warehouse_id||"",
+          outstanding:o.outstanding, lot_id:"", quantity:o.outstanding}; }));
+    }catch(ex){ setErr(ex.message); } };
+  const createDispatch=e=>{ e.preventDefault(); setDres(null);
+    return run(async()=>{
+      const so=sos.find(s=>s.id===df.sales_order_id); if(!so){ throw new Error("Pick an approved sales order"); }
+      const lines=dlines.filter(l=>Number(l.quantity)>0).map(l=>({yarn_id:l.yarn_id,
+        sales_order_line_id:l.sales_order_line_id, warehouse_id:l.warehouse_id||null,
+        lot_id:l.lot_id||null, quantity:l.quantity}));
+      if(lines.length===0){ throw new Error("Enter a quantity on at least one line"); }
+      const r=await api("/api/yarn-sales/dispatches",{method:"POST",body:{
+        customer_id:so.customer_id, sales_order_id:df.sales_order_id, dispatch_number:genNo("YDSP"),
+        dispatch_date:today(), lines}});
+      setDres({dispatch:r.dispatch_number, status:r.status}); setDf({sales_order_id:""}); setDlines([]); load();
+    }); };
+  const submitDispatch=id=>run(async()=>{ await api(`/api/yarn-sales/dispatches/${id}/submit`,{method:"POST"}); load(); });
+  const approveDispatch=id=>run(async()=>{ await api(`/api/yarn-sales/dispatches/${id}/approve`,{method:"POST",body:{}}); load(); });
+  const cancelDispatch=id=>run(async()=>{ await api(`/api/yarn-sales/dispatches/${id}/cancel`,{method:"POST"}); load(); });
+
+  const pickDispForInvoice=async dId=>{ setInf({dispatch_id:dId}); setIlines([]);
+    if(!dId) return;
+    try{ const d=await api(`/api/yarn-sales/dispatches/${dId}`);
+      // Only lines with remaining uninvoiced qty; default the invoice qty to that
+      // remaining amount (never the full dispatched qty). Backend stays authoritative.
+      setIlines((d.lines||[]).filter(l=>Number(l.uninvoiced_quantity)>0).map(l=>({
+        dispatch_line_id:l.id, yarn_id:l.yarn_id, max:l.uninvoiced_quantity,
+        quantity:l.uninvoiced_quantity, rate:"300", tax_code_id:""}))); }
+    catch(ex){ setErr(ex.message); } };
+  const createInvoice=e=>{ e.preventDefault(); setIres(null);
+    return run(async()=>{
+      const d=disps.find(x=>x.id===inf.dispatch_id); if(!d){ throw new Error("Pick an approved dispatch"); }
+      const lines=ilines.filter(l=>Number(l.quantity)>0).map(l=>({dispatch_line_id:l.dispatch_line_id,
+        quantity:l.quantity, rate:l.rate, tax_code_id:l.tax_code_id||null}));
+      if(lines.length===0){ throw new Error("Enter a quantity to invoice"); }
+      const r=await api("/api/yarn-sales/sales-invoices",{method:"POST",body:{
+        customer_id:d.customer_id, number:genNo("YINV"), invoice_date:today(), lines}});
+      setIres({invoice:r.number, status:r.status}); setInf({dispatch_id:""}); setIlines([]); load();
+    }); };
+  const postInvoice=id=>run(async()=>{ await api(`/api/yarn-sales/sales-invoices/${id}/post`,{method:"POST"}); load(); });
+  const cancelInvoice=id=>run(async()=>{ await api(`/api/yarn-sales/sales-invoices/${id}/cancel`,{method:"POST"}); load(); });
+
+  const approvedSOs=sos.filter(s=>s.status==="APPROVED"||s.status==="PARTIAL");
+  const approvedDisps=disps.filter(d=>d.status==="APPROVED");
+  return (<div>
+    <Panel title="Create a yarn sales order (from Yarn Store)">
+      <form onSubmit={createOrder}>
+        <div className="row mb">
+          <div className="field"><label>Customer</label><Opts items={customers} value={of.customer_id} onChange={e=>setOf({...of,customer_id:e.target.value})}/></div>
+          <div className="field"><label>SO number</label><input value={of.order_number} onChange={e=>setOf({...of,order_number:e.target.value})}/></div>
+          <div className="field"><label>Order date</label><input type="date" value={of.order_date} onChange={e=>setOf({...of,order_date:e.target.value})}/></div>
+        </div>
+        <table><thead><tr><th>Yarn SKU</th><th>Yarn Store warehouse</th><th className="num">Qty</th><th className="num">Rate</th><th>Tax</th><th></th></tr></thead>
+          <tbody>{olines.map((l,i)=><tr key={i}>
+            <td><Opts items={yarns} labelKey="label" value={l.yarn_id} onChange={e=>setOlines(ls=>ls.map((x,j)=>j===i?{...x,yarn_id:e.target.value}:x))}/></td>
+            <td><Opts items={yarnWh} value={l.warehouse_id} onChange={e=>setOlines(ls=>ls.map((x,j)=>j===i?{...x,warehouse_id:e.target.value}:x))} placeholder="— (any)"/></td>
+            <td className="num"><input style={{width:90}} value={l.qty_ordered} onChange={e=>setOlines(ls=>ls.map((x,j)=>j===i?{...x,qty_ordered:e.target.value}:x))}/></td>
+            <td className="num"><input style={{width:90}} value={l.rate} onChange={e=>setOlines(ls=>ls.map((x,j)=>j===i?{...x,rate:e.target.value}:x))}/></td>
+            <td><Opts items={taxes} value={l.tax_code_id} onChange={e=>setOlines(ls=>ls.map((x,j)=>j===i?{...x,tax_code_id:e.target.value}:x))} placeholder="—"/></td>
+            <td className="num">{olines.length>1&&<button type="button" className="btn" onClick={()=>setOlines(ls=>ls.filter((_,j)=>j!==i))}>✕</button>}</td></tr>)}</tbody></table>
+        <div className="row" style={{marginTop:8}}>
+          <button type="button" className="btn" onClick={()=>setOlines(ls=>[...ls,blankLine()])}>+ Add line</button>
+          <button className="btn" disabled={busy}>{busy?"Working…":"Create SO"}</button>
+        </div>
+        {err && <div className="err">{err}</div>}
+      </form>
+      <Result r={res}/>
+    </Panel>
+
+    <Panel title="Yarn Store lot availability (informational)">
+      <div className="row mb">
+        <div className="field"><label>Yarn SKU</label><Opts items={yarns} labelKey="label" value={explore.yarn_id} onChange={e=>setExplore({...explore,yarn_id:e.target.value})} placeholder="Select a SKU…"/></div>
+        <div className="field"><label>Warehouse</label><Opts items={yarnWh} value={explore.warehouse_id} onChange={e=>setExplore({...explore,warehouse_id:e.target.value})} placeholder="— (all)"/></div>
+      </div>
+      <YarnLotTable yarnId={explore.yarn_id} warehouseId={explore.warehouse_id}/>
+    </Panel>
+
+    <Panel title="Yarn sales orders">
+      <DataTable rows={sos} pageSize={10} empty="None yet." initialSort={{key:"order_date",dir:"desc"}}
+        searchKeys={["order_number","status"]} expand={s=><YarnSODetail so={s}/>}
+        columns={[
+          {key:"order_number",label:"Number"},
+          {key:"order_date",label:"Date"},
+          {key:"status",label:"Status",render:s=>stBadge(s.status)},
+          {key:"act",label:"",sortable:false,num:true,render:s=><span>
+            {s.status==="DRAFT"&&<button className="btn" disabled={busy} onClick={()=>approveOrder(s.id)}>Approve</button>}
+            {(s.status==="DRAFT"||s.status==="APPROVED")&&<button className="btn" disabled={busy} style={{marginLeft:6}} onClick={()=>cancelOrder(s.id)}>Cancel</button>}
+          </span>},
+        ]}/>
+    </Panel>
+
+    <Panel title="Create a dispatch (consumes Yarn Store FIFO + posts COGS on approve)">
+      <form onSubmit={createDispatch}>
+        <div className="row mb">
+          <div className="field" style={{flex:1}}><label>Against approved sales order</label>
+            <Opts items={approvedSOs.map(s=>({id:s.id,name:s.order_number+" · "+s.status}))} value={df.sales_order_id} onChange={e=>pickSOForDispatch(e.target.value)} placeholder="Select…"/></div>
+        </div>
+        {dlines.length>0 && <table><thead><tr><th>Yarn</th><th className="num">Outstanding</th><th className="num">Dispatch qty</th><th>Specific lot (optional)</th></tr></thead>
+          <tbody>{dlines.map((l,i)=><tr key={l.sales_order_line_id}>
+            <td>{(yarns.find(y=>y.id===l.yarn_id)||{}).label||l.yarn_id}</td>
+            <td className="num">{inr2(l.outstanding)}</td>
+            <td className="num"><input style={{width:90}} value={l.quantity} onChange={e=>setDlines(ls=>ls.map((x,j)=>j===i?{...x,quantity:e.target.value}:x))}/></td>
+            <td><div className="muted" style={{fontSize:12,marginBottom:4}}>{l.lot_id?("Specific lot selected ("+l.lot_id.slice(0,8)+"…) — only this lot is drawn"):"FIFO (automatic across lots)"}</div>
+              <YarnLotTable yarnId={l.yarn_id} warehouseId={l.warehouse_id} selectedLot={l.lot_id}
+                onPick={v=>setDlines(ls=>ls.map((x,j)=>j===i?{...x,lot_id:v}:x))}/></td></tr>)}</tbody></table>}
+        <div className="row" style={{marginTop:8}}><button className="btn" disabled={busy||!df.sales_order_id}>{busy?"Working…":"Create dispatch"}</button></div>
+        {err && <div className="err">{err}</div>}
+      </form>
+      <Result r={dres}/>
+    </Panel>
+
+    <Panel title="Yarn dispatches">
+      <DataTable rows={disps} pageSize={10} empty="None yet." initialSort={{key:"dispatch_date",dir:"desc"}}
+        searchKeys={["dispatch_number","status"]} expand={d=><YarnDispatchDetail d={d}/>}
+        columns={[
+          {key:"dispatch_number",label:"Number"},
+          {key:"dispatch_date",label:"Date"},
+          {key:"cogs_value",label:"COGS",num:true,render:d=>Number(d.cogs_value)>0?inr2(d.cogs_value):"—"},
+          {key:"status",label:"Status",render:d=>stBadge(d.status)},
+          {key:"act",label:"",sortable:false,num:true,render:d=><span>
+            {d.status==="DRAFT"&&<button className="btn" disabled={busy} onClick={()=>submitDispatch(d.id)}>Submit</button>}
+            {d.status==="SUBMITTED"&&<button className="btn" disabled={busy} onClick={()=>approveDispatch(d.id)}>Approve</button>}
+            {(d.status==="DRAFT"||d.status==="SUBMITTED")&&<button className="btn" disabled={busy} style={{marginLeft:6}} onClick={()=>cancelDispatch(d.id)}>Cancel</button>}
+          </span>},
+        ]}/>
+    </Panel>
+
+    <Panel title="Create a yarn sales invoice (revenue + GST + receivable on post)">
+      <form onSubmit={createInvoice}>
+        <div className="row mb">
+          <div className="field" style={{flex:1}}><label>Against approved dispatch</label>
+            <Opts items={approvedDisps.map(d=>({id:d.id,name:d.dispatch_number}))} value={inf.dispatch_id} onChange={e=>pickDispForInvoice(e.target.value)} placeholder="Select…"/></div>
+        </div>
+        {inf.dispatch_id && ilines.length===0 && <div className="muted" style={{marginBottom:8}}>This dispatch is fully invoiced — nothing left to invoice.</div>}
+        {ilines.length>0 && <table><thead><tr><th>Yarn</th><th className="num">Uninvoiced</th><th className="num">Invoice qty</th><th className="num">Rate</th><th>Tax</th></tr></thead>
+          <tbody>{ilines.map((l,i)=><tr key={l.dispatch_line_id}>
+            <td>{(yarns.find(y=>y.id===l.yarn_id)||{}).label||l.yarn_id}</td>
+            <td className="num">{inr2(l.max)}</td>
+            <td className="num"><input style={{width:90}} value={l.quantity} onChange={e=>setIlines(ls=>ls.map((x,j)=>j===i?{...x,quantity:e.target.value}:x))}/></td>
+            <td className="num"><input style={{width:90}} value={l.rate} onChange={e=>setIlines(ls=>ls.map((x,j)=>j===i?{...x,rate:e.target.value}:x))}/></td>
+            <td><Opts items={taxes} value={l.tax_code_id} onChange={e=>setIlines(ls=>ls.map((x,j)=>j===i?{...x,tax_code_id:e.target.value}:x))} placeholder="—"/></td></tr>)}</tbody></table>}
+        <div className="row" style={{marginTop:8}}><button className="btn" disabled={busy||!inf.dispatch_id}>{busy?"Working…":"Create invoice"}</button></div>
+        {err && <div className="err">{err}</div>}
+      </form>
+      <Result r={ires}/>
+    </Panel>
+
+    <Panel title="Yarn sales invoices">
+      <DataTable rows={invs} pageSize={10} empty="None yet." initialSort={{key:"invoice_date",dir:"desc"}}
+        searchKeys={["number","status"]} expand={inv=><YarnInvoiceDetail inv={inv}/>}
+        columns={[
+          {key:"number",label:"Number"},
+          {key:"invoice_date",label:"Date"},
+          {key:"source",label:"Source"},
+          {key:"taxable_value",label:"Taxable",num:true,render:inv=>inr2(inv.taxable_value)},
+          {key:"tax_amount",label:"Tax",num:true,render:inv=>inr2(inv.tax_amount)},
+          {key:"total_value",label:"Total",num:true,render:inv=>inr2(inv.total_value)},
+          {key:"status",label:"Status",render:inv=>stBadge(inv.status)},
+          {key:"act",label:"",sortable:false,num:true,render:inv=><span>
+            {inv.status==="DRAFT"&&<button className="btn" disabled={busy} onClick={()=>postInvoice(inv.id)}>Post</button>}
+            {inv.status==="DRAFT"&&<button className="btn" disabled={busy} style={{marginLeft:6}} onClick={()=>cancelInvoice(inv.id)}>Cancel</button>}
+          </span>},
+        ]}/>
+    </Panel>
+  </div>);
+}
+
 const PAGES={
   group:{t:"Group Dashboard",c:GroupDash},
   owner:{t:"Owner Dashboard",c:OwnerDash}, factory:{t:"Factory Dashboard",c:FactoryDash},
@@ -2980,6 +3245,7 @@ const PAGES={
   stores:{t:"Stores & Spares",c:Stores},
   pipeline:{t:"Sales Pipeline (enquiry → quote → SO)",c:SalesPipeline},
   salesorders:{t:"Sales Orders & Dispatch",c:SalesOrders},
+  yarnsales:{t:"Direct Yarn Sales",c:YarnSales},
   sales:{t:"Sales Invoice",c:Sales}, dyeing:{t:"Dyeing & Dispensing",c:Dyeing},
   jobwork:{t:"Job Work (inward / outward)",c:JobWork},
   customers:{t:"Customers",c:()=> <PartyPage kind="customers"/>},
@@ -2998,7 +3264,7 @@ const PAGES={
   reports:{t:"Reports",c:Reports},
 };
 const NAV_ICON={group:"🏛️",owner:"📊",factory:"🏭",accounts:"💼",chemical:"🧪",bom:"🧵",prodcost:"💷",purchaseorders:"📝",purchase:"📥",
-  knitting:"🧶",batching:"🧺",pipeline:"🎯",salesorders:"🛒",sales:"🧾",dyeing:"🎨",vouchers:"📒",
+  knitting:"🧶",batching:"🧺",pipeline:"🎯",salesorders:"🛒",yarnsales:"🧶",sales:"🧾",dyeing:"🎨",vouchers:"📒",
   inventoryops:"🔁",stock:"📦",stores:"🪡",jobwork:"🔄",masters:"🗃️",coa:"📚",customers:"👤",suppliers:"🏢",warehouses:"🏬",quality:"🔍",assets:"🏗️",
   payroll:"💰",costing:"📐",devices:"🖨️",reports:"📈",approvals:"✔️",notifications:"🔔",acctops:"🧮",admin:"⚙️",branding:"🏷️",tenancy:"🏛️"};
 function fyLabel(){ const d=new Date(); const y=d.getMonth()>=3?d.getFullYear():d.getFullYear()-1; return `FY ${y}–${(y+1)%100}`; }
@@ -3076,7 +3342,7 @@ function App(){
         <div className="group">Transactions</div>
         {navBtn("bom","Fabric BOM")}{navBtn("prodcost","Production Cost")}
         {navBtn("purchaseorders","Purchase Orders")}{navBtn("purchase","Purchase (GRN)")}{navBtn("knitting","Knitting")}
-        {navBtn("batching","Batching")}{navBtn("pipeline","Sales Pipeline")}{navBtn("salesorders","Sales Orders")}{navBtn("sales","Sales Invoice")}{navBtn("dyeing","Dyeing & Dispensing")}{navBtn("jobwork","Job Work")}{navBtn("vouchers","Vouchers")}
+        {navBtn("batching","Batching")}{navBtn("pipeline","Sales Pipeline")}{navBtn("salesorders","Sales Orders")}{navBtn("yarnsales","Direct Yarn Sales")}{navBtn("sales","Sales Invoice")}{navBtn("dyeing","Dyeing & Dispensing")}{navBtn("jobwork","Job Work")}{navBtn("vouchers","Vouchers")}
         {navBtn("inventoryops","Inventory Ops")}{navBtn("stock","Stock on Hand")}{navBtn("stores","Stores & Spares")}
         <div className="group">Masters</div>
         {navBtn("masters","Master Data")}{navBtn("coa","Chart of Accounts")}{navBtn("customers","Customers")}{navBtn("suppliers","Suppliers")}{navBtn("warehouses","Warehouses")}
