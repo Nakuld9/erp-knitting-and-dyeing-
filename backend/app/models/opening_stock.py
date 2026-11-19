@@ -54,6 +54,7 @@ class OpeningLineType(str, enum.Enum):
     YARN = "YARN"
     TRADING_FABRIC = "TRADE_FABRIC"
     MANUFACTURED_ROLLS = "MANUFACTURED_ROLLS"
+    VENDOR_CUSTODY = "VENDOR_CUSTODY"
 
 
 class OpeningLineValidation(str, enum.Enum):

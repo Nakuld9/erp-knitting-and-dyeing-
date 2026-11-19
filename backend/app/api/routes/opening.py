@@ -29,10 +29,12 @@ from app.models.core import User
 from app.models.opening import OpeningBatch, OpeningBatchType
 from app.models.opening_stock import OpeningImportFile, OpeningLineType, OpeningStockLine
 from app.models.opening_roll import OpeningRollLine
+from app.models.opening_custody import OpeningCustodyLine
 from app.services import opening as svc
 from app.services import opening_excel as xl
 from app.services import opening_stock as stock_svc
 from app.services import opening_rolls as roll_svc
+from app.services import opening_custody as custody_svc
 
 _XLSX_MEDIA = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 # Batch type -> opening line type accepted by the P2 yarn/trading import endpoints.
@@ -42,6 +44,8 @@ _BATCH_LINE = {
 }
 # P3 manufactured-roll batch type (handled by the opening_rolls service).
 _ROLL_TYPE = OpeningBatchType.MANUFACTURED_ROLLS.value
+# P4 vendor-custody / vendor-held-WIP batch types (opening_custody service).
+_CUSTODY_TYPES = {OpeningBatchType.VENDOR_CUSTODY.value, OpeningBatchType.WIP.value}
 
 router = APIRouter(prefix="/api/opening", tags=["opening"])
 
@@ -75,7 +79,7 @@ def _raise_any(exc: Exception):
     if isinstance(exc, svc.OpeningBatchNotFound):
         raise HTTPException(status.HTTP_404_NOT_FOUND, msg)
     if isinstance(exc, (svc.SelfApprovalError, stock_svc.OpeningStockStateError,
-                        roll_svc.OpeningRollStateError)):
+                        roll_svc.OpeningRollStateError, custody_svc.OpeningCustodyStateError)):
         raise HTTPException(status.HTTP_409_CONFLICT, msg)
     raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, msg)
 
@@ -241,6 +245,10 @@ def submit_batch(batch_id: uuid.UUID, db: Session = Depends(get_company_db),
             # P3 manufactured-roll batch: validate all roll lines, then P1 submit.
             batch = roll_svc.submit_batch(db, user.company_id, batch_id,
                                           submitted_by=user.id, actor_name=_actor_name(user))
+        elif batch.batch_type in _CUSTODY_TYPES:
+            # P4 vendor-custody batch: validate all custody lines, then P1 submit.
+            batch = custody_svc.submit_batch(db, user.company_id, batch_id,
+                                             submitted_by=user.id, actor_name=_actor_name(user))
         elif batch.batch_type in _BATCH_LINE:
             # P2 stock batch: validate all lines, then P1 DRAFT->SUBMITTED.
             batch = stock_svc.submit_batch(db, user.company_id, batch_id,
@@ -249,7 +257,8 @@ def submit_batch(batch_id: uuid.UUID, db: Session = Depends(get_company_db),
             batch = svc.submit_batch(db, user.company_id, batch_id, submitted_by=user.id,
                                      actor_name=_actor_name(user))
         db.commit()
-    except (svc.OpeningBatchError, stock_svc.OpeningStockError, roll_svc.OpeningRollError) as exc:
+    except (svc.OpeningBatchError, stock_svc.OpeningStockError, roll_svc.OpeningRollError,
+            custody_svc.OpeningCustodyError) as exc:
         db.rollback()
         _raise_any(exc)
     return _out(batch)
@@ -267,6 +276,12 @@ def approve_batch(batch_id: uuid.UUID, db: Session = Depends(get_company_db),
             batch, committed = roll_svc.approve_batch(db, user.company_id, batch_id,
                                                       approved_by=user.id,
                                                       actor_name=_actor_name(user))
+        elif batch.batch_type in _CUSTODY_TYPES:
+            # P4 vendor-custody: P1 maker-checker approve + create custody FIFO
+            # layers + opening-origin JobWorkIssue (no voucher), one transaction.
+            batch, committed = custody_svc.approve_batch(db, user.company_id, batch_id,
+                                                         approved_by=user.id,
+                                                         actor_name=_actor_name(user))
         elif batch.batch_type in _BATCH_LINE:
             # P2 stock batch: P1 maker-checker approve + create opening FIFO layers
             # (no accounting voucher), all in one transaction.
@@ -286,7 +301,8 @@ def approve_batch(batch_id: uuid.UUID, db: Session = Depends(get_company_db),
         raise HTTPException(status.HTTP_409_CONFLICT,
                             "a concurrent opening registered the same identity; "
                             "this batch was rolled back — revalidate and retry")
-    except (svc.OpeningBatchError, stock_svc.OpeningStockError, roll_svc.OpeningRollError) as exc:
+    except (svc.OpeningBatchError, stock_svc.OpeningStockError, roll_svc.OpeningRollError,
+            custody_svc.OpeningCustodyError) as exc:
         db.rollback()
         _raise_any(exc)
     out = _out(batch)
@@ -450,13 +466,154 @@ def validate(batch_id: uuid.UUID, db: Session = Depends(get_company_db),
         batch = svc.get_batch(db, user.company_id, batch_id)
         if batch.batch_type == _ROLL_TYPE:
             result = roll_svc.revalidate_batch(db, user.company_id, batch_id)
+        elif batch.batch_type in _CUSTODY_TYPES:
+            result = custody_svc.revalidate_batch(db, user.company_id, batch_id)
         else:
             result = stock_svc.revalidate_batch(db, user.company_id, batch_id)
         db.commit()
-    except (svc.OpeningBatchError, stock_svc.OpeningStockError, roll_svc.OpeningRollError) as exc:
+    except (svc.OpeningBatchError, stock_svc.OpeningStockError, roll_svc.OpeningRollError,
+            custody_svc.OpeningCustodyError) as exc:
         db.rollback()
         _raise_any(exc)
     return result
+
+
+# ===========================================================================
+# P4 — vendor-custody / vendor-held-WIP opening: template, import, lines, preview
+# ===========================================================================
+
+def _custody_line_out(l: OpeningCustodyLine) -> dict:
+    import json as _json
+    return {
+        "id": str(l.id), "batch_id": str(l.batch_id), "row_number": l.row_number,
+        "line_kind": l.line_kind, "custody_type": l.custody_type,
+        "registration_mode": l.registration_mode,
+        "job_worker_id": str(l.job_worker_id) if l.job_worker_id else None,
+        "prior_vendor_id": str(l.prior_vendor_id) if l.prior_vendor_id else None,
+        "process": l.process, "source_jobwork_ref": l.source_jobwork_ref,
+        "factory_id": str(l.factory_id) if l.factory_id else None,
+        "erp_roll_no": l.erp_roll_no, "legacy_label": l.legacy_label,
+        "roll_kind": l.roll_kind, "origin_stream": l.origin_stream,
+        "fabric_roll_id": str(l.fabric_roll_id) if l.fabric_roll_id else None,
+        "yarn_id": str(l.yarn_id) if l.yarn_id else None, "internal_lot_no": l.internal_lot_no,
+        "yarn_lot_id": str(l.yarn_lot_id) if l.yarn_lot_id else None,
+        "net_weight_kg": str(l.net_weight_kg) if l.net_weight_kg is not None else None,
+        "quantity": str(l.quantity), "unit_cost": str(l.unit_cost), "total_value": str(l.total_value),
+        "valuation_source": l.valuation_source, "disputed_unknown": l.disputed_unknown,
+        "effective_date": l.effective_date.isoformat() if l.effective_date else None,
+        "source_document": l.source_document, "source_reference": l.source_reference, "notes": l.notes,
+        "validation_status": l.validation_status,
+        "validation_errors": _json.loads(l.validation_errors) if l.validation_errors else [],
+        "custody_warehouse_id": str(l.custody_warehouse_id) if l.custody_warehouse_id else None,
+        "stock_layer_id": str(l.stock_layer_id) if l.stock_layer_id else None,
+        "job_work_issue_id": str(l.job_work_issue_id) if l.job_work_issue_id else None,
+        "committed_at": l.committed_at.isoformat() if l.committed_at else None,
+    }
+
+
+def _authz_custody_line_factories(db: Session, user: User, import_file_id: uuid.UUID):
+    factory_ids = db.execute(select(OpeningCustodyLine.factory_id).where(
+        OpeningCustodyLine.import_file_id == import_file_id,
+        OpeningCustodyLine.factory_id.isnot(None)).distinct()).scalars().all()
+    for fid in factory_ids:
+        try:
+            authorize_factory(db, user, fid, user.company_id)
+        except FactoryAuthError:
+            raise HTTPException(status.HTTP_403_FORBIDDEN,
+                                "not authorized for a factory referenced in the import")
+
+
+def _get_draft_custody_batch(db: Session, user: User, batch_id: uuid.UUID):
+    try:
+        batch = svc.get_batch(db, user.company_id, batch_id)
+    except svc.OpeningBatchNotFound as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc))
+    if batch.batch_type not in _CUSTODY_TYPES:
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            f"batch type '{batch.batch_type}' does not accept vendor-custody lines")
+    return batch
+
+
+@router.get("/templates/vendor-custody")
+def template_vendor_custody(user: User = Depends(require_permission("opening.read"))):
+    return _template_response(xl.build_vendor_custody_template(),
+                              "opening_vendor_custody_template.xlsx")
+
+
+@router.post("/batches/{batch_id}/vendor-custody/import", status_code=status.HTTP_201_CREATED)
+def import_vendor_custody(batch_id: uuid.UUID, file: UploadFile = File(...),
+                          db: Session = Depends(get_company_db),
+                          user: User = Depends(require_permission("opening.manage"))):
+    batch = _get_draft_custody_batch(db, user, batch_id)
+    content = file.file.read()
+    if not content:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "empty file")
+    file_hash = hashlib.sha256(content).hexdigest()
+    dup = db.execute(select(OpeningImportFile).where(
+        OpeningImportFile.batch_id == batch.id,
+        OpeningImportFile.file_hash == file_hash)).scalar_one_or_none()
+    if dup is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT,
+                            "this exact file has already been imported into the batch")
+    try:
+        meta, rows = xl.parse_workbook(content, expected_type=OpeningLineType.VENDOR_CUSTODY.value)
+    except xl.OpeningTemplateError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc))
+    import_file = OpeningImportFile(
+        company_id=batch.company_id, batch_id=batch.id,
+        line_type=OpeningLineType.VENDOR_CUSTODY.value,
+        file_name=(file.filename or "upload.xlsx")[:255], file_hash=file_hash, content=content,
+        template_version=meta.get("template_version"), uploaded_by=user.id,
+        uploaded_at=datetime.now(timezone.utc), created_by=user.id, updated_by=user.id)
+    db.add(import_file)
+    db.flush()
+    try:
+        summary = custody_svc.import_rows(db, batch, rows=rows, import_file=import_file, actor=user.id)
+        _authz_custody_line_factories(db, user, import_file.id)
+        db.commit()
+    except HTTPException:
+        db.rollback()
+        raise
+    except custody_svc.OpeningCustodyError as exc:
+        db.rollback()
+        _raise_any(exc)
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, "duplicate opening custody line (batch dedup)")
+    return summary
+
+
+@router.get("/batches/{batch_id}/custody-lines")
+def list_custody_lines(batch_id: uuid.UUID, status_filter: str | None = None,
+                       limit: int = 100, offset: int = 0,
+                       db: Session = Depends(get_company_db),
+                       user: User = Depends(require_permission("opening.read"))):
+    try:
+        batch, rows, total = custody_svc.list_lines(db, user.company_id, batch_id,
+                                                    status=status_filter, limit=limit, offset=offset)
+    except svc.OpeningBatchError as exc:
+        _raise(exc)
+    return {"batch_id": str(batch.id), "total": total, "limit": limit, "offset": offset,
+            "items": [_custody_line_out(r) for r in rows]}
+
+
+@router.get("/batches/{batch_id}/custody-rejections")
+def list_custody_rejections(batch_id: uuid.UUID, db: Session = Depends(get_company_db),
+                            user: User = Depends(require_permission("opening.read"))):
+    try:
+        batch, rows = custody_svc.rejections(db, user.company_id, batch_id)
+    except svc.OpeningBatchError as exc:
+        _raise(exc)
+    return {"batch_id": str(batch.id), "rejections": rows}
+
+
+@router.get("/batches/{batch_id}/custody-preview")
+def custody_preview(batch_id: uuid.UUID, db: Session = Depends(get_company_db),
+                    user: User = Depends(require_permission("opening.read"))):
+    try:
+        return custody_svc.reconciliation_preview(db, user.company_id, batch_id)
+    except svc.OpeningBatchError as exc:
+        _raise(exc)
 
 
 # ===========================================================================

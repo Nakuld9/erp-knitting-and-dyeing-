@@ -47,10 +47,20 @@ MANUFACTURED_ROLL_COLUMNS: list[str] = [
     "physical_verification_status", "disputed_unknown", "notes",
 ]
 
+VENDOR_CUSTODY_COLUMNS: list[str] = [
+    "line_kind", "custody_type", "vendor_code", "process", "factory_code",
+    "erp_roll_no", "legacy_label", "roll_kind", "origin_stream",
+    "yarn_code", "internal_lot_no", "fabric_sku_or_structure", "gsm", "width_cm",
+    "colour", "shade_code", "dye_lot", "quantity", "net_weight_kg", "uom_code",
+    "unit_cost", "total_value", "valuation_source", "jobwork_ref", "prior_vendor_code",
+    "source_document", "source_reference", "effective_date", "disputed_unknown", "notes",
+]
+
 _COLUMNS = {
     OpeningLineType.YARN.value: YARN_COLUMNS,
     OpeningLineType.TRADING_FABRIC.value: TRADING_COLUMNS,
     OpeningLineType.MANUFACTURED_ROLLS.value: MANUFACTURED_ROLL_COLUMNS,
+    OpeningLineType.VENDOR_CUSTODY.value: VENDOR_CUSTODY_COLUMNS,
 }
 
 
@@ -90,6 +100,10 @@ def build_manufactured_rolls_template() -> bytes:
     return _build(OpeningLineType.MANUFACTURED_ROLLS.value, "Manufactured Roll Opening")
 
 
+def build_vendor_custody_template() -> bytes:
+    return _build(OpeningLineType.VENDOR_CUSTODY.value, "Vendor Custody Opening")
+
+
 def template_for(line_type: str) -> bytes:
     if line_type == OpeningLineType.YARN.value:
         return build_yarn_template()
@@ -97,6 +111,8 @@ def template_for(line_type: str) -> bytes:
         return build_trading_template()
     if line_type == OpeningLineType.MANUFACTURED_ROLLS.value:
         return build_manufactured_rolls_template()
+    if line_type == OpeningLineType.VENDOR_CUSTODY.value:
+        return build_vendor_custody_template()
     raise OpeningTemplateError(f"No opening template for line type '{line_type}'")
 
 

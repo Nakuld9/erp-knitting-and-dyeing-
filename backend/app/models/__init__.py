@@ -97,6 +97,12 @@ from app.models.opening_roll import (  # noqa: F401
     OpeningRollLine,
     OpeningRollRegistration,
 )
+from app.models.opening_custody import (  # noqa: F401
+    OpeningCustodyKind,
+    OpeningCustodyLine,
+    OpeningCustodyRegistration,
+    OpeningCustodyType,
+)
 from app.models.hybrid import (  # noqa: F401
     Process,
     ProcessMode,
